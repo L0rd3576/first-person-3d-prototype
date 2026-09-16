@@ -1,0 +1,19 @@
+# Rust / Tauri build output
+/src-tauri/target/
+/src-tauri/gen/schemas/
+
+# Node
+/node_modules/
+
+# OS junk files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor directories
+.vscode/
+.idea/
+
+# NOTE: frontend/vendor/ and vendor/ (vendored three.min.js) are
+# intentionally NOT ignored — they must be committed.

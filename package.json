@@ -1,0 +1,13 @@
+{
+  "name": "first-person-3d-prototype",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "node scripts/sync-frontend.js",
+    "build": "node scripts/sync-frontend.js"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
