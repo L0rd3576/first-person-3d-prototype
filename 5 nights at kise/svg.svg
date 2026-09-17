@@ -1,0 +1,13 @@
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+ <g>
+  <title>Layer 1</title>
+  <line stroke="#000" fill="none" x1="314.39998" y1="80.8" x2="663.39999" y2="79.8" id="svg_5" stroke-linejoin="undefined" stroke-linecap="undefined"/>
+  <line fill="none" stroke="#000" x1="662.39999" y1="79.8" x2="658.39999" y2="573.79999" id="svg_6" stroke-linejoin="undefined" stroke-linecap="undefined"/>
+  <line fill="none" stroke="#000" x1="294.39999" y1="79.8" x2="293.39999" y2="572.79999" id="svg_7" stroke-linejoin="undefined" stroke-linecap="undefined"/>
+  <line stroke="#000" fill="none" x1="294.39999" y1="572.79999" x2="597.39999" y2="570.79999" id="svg_9" stroke-linejoin="undefined" stroke-linecap="undefined"/>
+  <line stroke="#000" fill="none" x1="596.39999" y1="571.79999" x2="596.39999" y2="459.79999" id="svg_10" stroke-linejoin="undefined" stroke-linecap="undefined"/>
+  <rect transform="rotate(-33.774 491.24 295.066)" stroke="#000" fill="none" x="432.84588" y="284.14676" width="116.78891" height="21.83853" id="svg_11"/>
+  <rect stroke="#000" id="svg_1" height="101" width="12" y="221.39999" x="324.99999" fill="none"/>
+ </g>
+
+</svg>
