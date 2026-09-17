@@ -294,6 +294,12 @@
   const ENEMY_TURN_SPEED = 3.0;         // radians/sec the enemy can turn — not an instant snap
   const KNOCKBACK_STRENGTH = 8.0;       // velocity impulse applied away from the enemy on hit
 
+  // How often each enemy recomputes its nav-grid path to the player (see
+  // findGridPath below) -- jittered per enemy so up to 50 live enemies
+  // never all repath on the same frame.
+  const NAV_REPATH_INTERVAL = 0.8;      // seconds
+  const NAV_REPATH_JITTER = 0.4;        // seconds, added on top, randomized per repath
+
   // Per-enemy stat variance (see randomStatVariance, spawnEnemy below):
   // each spawned enemy's speed and size are independently offset by a
   // random +/- percentage in this range. Fixed regardless of wave number.
@@ -312,12 +318,21 @@
   const MAX_ENEMIES_PER_WAVE = 50;       // caps f(w) = 2w
 
   // Green enemy: a faster variant that starts showing up at
-  // GREEN_ENEMY_START_WAVE, exactly one per wave from then on (the rest
-  // of that wave's enemies are the normal kind). "250% faster" = speed
-  // multiplied by 1 + 2.5 = 3.5x, same convention as e.g. "100% faster"
-  // meaning double speed.
-  const GREEN_ENEMY_START_WAVE = 5;
-  const GREEN_ENEMY_SPEED_MULTIPLIER = 3.5;
+  // GREEN_ENEMY_START_WAVE. The count ramps up two waves at a time --
+  // 1 on waves 4-5, 2 on waves 6-7, 3 on waves 8-9, etc. (the rest of
+  // that wave's enemies are the normal kind) -- see
+  // greenEnemyCountForWave below. Moves at 330% of the normal enemy's
+  // speed -- i.e. a 3.3x multiplier.
+  const GREEN_ENEMY_START_WAVE = 4;
+  const GREEN_ENEMY_SPEED_MULTIPLIER = 3.3;
+
+  // floor((wave - START) / 2) + 1 for wave >= START, else 0 -- i.e. the
+  // count steps up by one every 2 waves starting from 1 at
+  // GREEN_ENEMY_START_WAVE: 1, 1, 2, 2, 3, 3, ...
+  function greenEnemyCountForWave(wave) {
+    if (wave < GREEN_ENEMY_START_WAVE) return 0;
+    return Math.floor((wave - GREEN_ENEMY_START_WAVE) / 2) + 1;
+  }
 
   // Hitscan weapon: left-click fires an instant raycast down the crosshair.
   // Ammo is tracked as loaded (chamber + magazine, max 13) and reserve
@@ -328,14 +343,14 @@
   const WEAPON_DAMAGE = 40;                       // damage dealt per hit
   const MAGAZINE_CAPACITY = 12;                   // rounds a reload draws from reserve into the magazine
   const MAX_LOADED_AMMO = MAGAZINE_CAPACITY + 1;  // magazine + 1 chambered round
-  const DEFAULT_RESERVE_AMMO = 36;                // starting spare rounds -- not specified, picked as 3 magazines' worth
+  const DEFAULT_RESERVE_AMMO = 48;                // starting spare rounds -- 4 magazines' worth (1 extra on top of the original 3)
   const RELOAD_DURATION = 1.5;                    // seconds the reload locks firing before ammo updates
 
   // Ammo pickups: killing an enemy has a flat chance to drop one at the
   // enemy's death position. Floats above the ground and refills reserve
   // ammo when the player walks over it; despawns on its own if left
   // uncollected too long.
-  const AMMO_DROP_CHANCE = 0.2;              // 20% chance per enemy kill
+  const AMMO_DROP_CHANCE = 0.3;              // 30% chance per enemy kill
   const AMMO_PICKUP_AMOUNT = 12;             // reserve rounds granted on pickup
   const AMMO_PICKUP_LIFETIME = 60;           // seconds before an uncollected pickup despawns
   const AMMO_PICKUP_COLLECT_DISTANCE = 0.8;  // horizontal distance that counts as "walked over"
@@ -690,71 +705,6 @@
     };
   }
 
-  // ------------------------------------------------------------------
-  // BUILDING ZONES: "inside" vs "outside" the building traced by the
-  // floor plan's exterior walls above. The building's footprint is a
-  // single open rectangle (floorPlanMinX/MaxX/MinY/MaxY, just above,
-  // already bound the exterior wall endpoints -- the diagonal wall and
-  // pillar are interior obstacles well within that box), so a plain
-  // bounding-box check against it is enough; nothing about the interior
-  // is concave enough to need a polygon. Reusing those same min/max
-  // values (rather than a second hand-picked box) means the zone always
-  // matches the walls even if the floor plan is edited later.
-  // ------------------------------------------------------------------
-  const buildingInteriorBoundsGame = (() => {
-    const min = floorPlanToGame(floorPlanMinX, floorPlanMinY);
-    const max = floorPlanToGame(floorPlanMaxX, floorPlanMaxY);
-    return { minX: min.x, maxX: max.x, minZ: min.z, maxZ: max.z };
-  })();
-
-  // Usable for any entity -- player or enemy -- each frame; just a
-  // position check, no per-entity state involved.
-  function isInsideBuilding(gameX, gameZ) {
-    return (
-      gameX >= buildingInteriorBoundsGame.minX &&
-      gameX <= buildingInteriorBoundsGame.maxX &&
-      gameZ >= buildingInteriorBoundsGame.minZ &&
-      gameZ <= buildingInteriorBoundsGame.maxZ
-    );
-  }
-
-  // ------------------------------------------------------------------
-  // BUILDING ENTRANCES: the 2 fixed points where the exterior wall has
-  // a gap -- the un-walled break between svg_7 and svg_5 in the top
-  // wall, and the open south edge of the bottom-right pocket left by
-  // svg_9/svg_10 (see floorPlanLines above; also see the ENEMY SPAWNERS
-  // comment below, which places its own points just outside these same
-  // two gaps). Plain markers run through floorPlanToGame, same as the
-  // spawners below, so they're easy to drag to a new spot if the floor
-  // plan changes. Kept as a flat list rather than "north"/"south" keys
-  // since nothing downstream cares which is which -- SEEKING_ENTRANCE
-  // enemies just pick whichever is closest to them (see
-  // findClosestEntrance below).
-  // ------------------------------------------------------------------
-  const BUILDING_ENTRANCE_POINTS_SVG = [
-    { x: 304, y: 80 },  // north -- gap in the top wall
-    { x: 628, y: 572 }, // south -- open edge of the bottom-right pocket
-  ];
-  const buildingEntrances = BUILDING_ENTRANCE_POINTS_SVG.map((point) => {
-    const gamePos = floorPlanToGame(point.x, point.y);
-    return new THREE.Vector3(gamePos.x, 0, gamePos.z);
-  });
-
-  function findClosestEntrance(position) {
-    let closest = buildingEntrances[0];
-    let closestDistSq = Infinity;
-    for (const entrance of buildingEntrances) {
-      const dx = entrance.x - position.x;
-      const dz = entrance.z - position.z;
-      const distSq = dx * dx + dz * dz;
-      if (distSq < closestDistSq) {
-        closestDistSq = distSq;
-        closest = entrance;
-      }
-    }
-    return closest;
-  }
-
   const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x9a8f80, roughness: 0.9 });
 
   // Collision segments consumed by resolveWallCollisions() below --
@@ -787,6 +737,21 @@
   for (const line of floorPlanLines) buildWall(line, WALL_THICKNESS);
   for (const rectWall of floorPlanRects) buildWall(rectWall, rectWall.thicknessSvg * FLOOR_PLAN_SCALE);
 
+  // Closest point on a wall collider's centerline to (x, z), plus the
+  // distance to it -- the one piece of segment-projection math every
+  // wall-distance check in this file needs (collision push-out, spawn
+  // point validation, nav-grid walkability, line-of-sight tests below).
+  function closestPointOnWall(wall, x, z) {
+    const segX = wall.x2 - wall.x1;
+    const segZ = wall.z2 - wall.z1;
+    const segLengthSq = segX * segX + segZ * segZ;
+    let t = segLengthSq > 0 ? ((x - wall.x1) * segX + (z - wall.z1) * segZ) / segLengthSq : 0;
+    t = Math.max(0, Math.min(1, t));
+    const closestX = wall.x1 + segX * t;
+    const closestZ = wall.z1 + segZ * t;
+    return { x: closestX, z: closestZ, distance: Math.hypot(x - closestX, z - closestZ) };
+  }
+
   // Pushes (x, z) out of any wall collider it overlaps, given a
   // collision radius (the player's own, or an enemy's -- see
   // moveWithWallCollision below, the only caller). Several passes per
@@ -795,19 +760,10 @@
   function resolveWallCollisions(position, radius) {
     for (let pass = 0; pass < 4; pass++) {
       for (const wall of wallColliders) {
-        const segX = wall.x2 - wall.x1;
-        const segZ = wall.z2 - wall.z1;
-        const segLengthSq = segX * segX + segZ * segZ;
-        let t = segLengthSq > 0
-          ? ((position.x - wall.x1) * segX + (position.z - wall.z1) * segZ) / segLengthSq
-          : 0;
-        t = Math.max(0, Math.min(1, t));
-
-        const closestX = wall.x1 + segX * t;
-        const closestZ = wall.z1 + segZ * t;
-        const dx = position.x - closestX;
-        const dz = position.z - closestZ;
-        const distance = Math.hypot(dx, dz);
+        const closest = closestPointOnWall(wall, position.x, position.z);
+        const dx = position.x - closest.x;
+        const dz = position.z - closest.z;
+        const distance = closest.distance;
         const minDistance = wall.halfThickness + radius;
 
         if (distance < minDistance) {
@@ -934,22 +890,282 @@
     return spawner;
   }
 
-  // Three spawn points outside the main enclosure (rather than inside it
+  // Five spawn points ringing the main enclosure (rather than inside it
   // with the player), each clear of every wall/pillar collider by a wide
-  // margin; spawnEnemyFromRandomSpawner() picks one at random each time
-  // an enemy spawns. The north and south points sit just past the floor
-  // plan's two actual gaps (the new opening in the top wall, and the
-  // open south edge of the bottom-right pocket) so enemies have a real
-  // path in; the east point relies on the wall-sliding behavior of
-  // moveWithWallCollision to find its way to one of those gaps.
+  // margin -- verified below by assertSpawnPointClearOfWalls rather than
+  // just eyeballed. spawnEnemyFromRandomSpawner() picks one at random
+  // each time an enemy spawns. None of them need to sit near an actual
+  // gap in the walls: see the nav-grid A* pathfinding further below,
+  // which finds a real route in through whatever gaps the floor plan
+  // has rather than relying on wall-sliding luck to stumble into one.
   const ENEMY_SPAWN_POINTS_SVG = [
     { x: 303, y: 45 },  // north, outside the top-wall gap
     { x: 627, y: 615 }, // south, outside the bottom-right pocket's open edge
     { x: 720, y: 320 }, // east, outside the right wall
+    { x: 243, y: 320 }, // west, outside the left wall
+    { x: 250, y: 615 }, // southwest, outside the bottom-left corner
   ];
+
+  // Fails loudly (rather than silently spawning enemies inside/against a
+  // wall) if a point above is ever moved too close to a wall/pillar
+  // collider. Same segment-distance math as resolveWallCollisions, just
+  // reporting instead of pushing out.
+  const SPAWN_POINT_WALL_CLEARANCE = 1.0; // game units, beyond the wall's own half-thickness
+
+  function assertSpawnPointClearOfWalls(position) {
+    for (const wall of wallColliders) {
+      const distance = closestPointOnWall(wall, position.x, position.z).distance;
+      if (distance < wall.halfThickness + SPAWN_POINT_WALL_CLEARANCE) {
+        console.warn("Enemy spawn point too close to a wall:", position, "distance:", distance);
+      }
+    }
+  }
+
   for (const point of ENEMY_SPAWN_POINTS_SVG) {
     const spawnPos = floorPlanToGame(point.x, point.y);
+    assertSpawnPointClearOfWalls(spawnPos);
     createEnemySpawner(new THREE.Vector3(spawnPos.x, 0, spawnPos.z));
+  }
+
+  // ------------------------------------------------------------------
+  // NAVIGATION GRID + A*: gives enemies a real path to the player
+  // instead of a straight line plus wall-sliding luck. Everything here
+  // is derived from wallColliders and the spawn points computed above --
+  // nothing names a specific gap, corner, or coordinate -- so if the
+  // floor plan changes (walls moved, a room added, the building made
+  // bigger) or spawners move, this rebuilds itself to match on next
+  // load without any of the logic below needing to change.
+  //
+  // Approach: rasterize walkable space into a grid (a cell is blocked if
+  // its center is too close to any wall/pillar collider), run A* over it
+  // per enemy, then string-pull the raw grid path down to a handful of
+  // waypoints that hug corners instead of tracing every grid step. Path
+  // waypoints are cached per enemy and only recomputed on a timer (see
+  // NAV_REPATH_INTERVAL in updateEnemies) rather than every frame --
+  // grid A* for 50-ish live enemies every frame would be wasted work.
+  // ------------------------------------------------------------------
+  const NAV_GRID_CELL_SIZE = 0.75;      // game units -- fine enough to route around the pillar/diagonal wall
+  const NAV_GRID_MARGIN = 3;            // game units of clearance beyond the outermost spawn point
+  const NAV_GRID_WALL_CLEARANCE = 0.45; // keeps a walkable cell's center from grazing a wall
+  const NAV_ASTAR_MAX_EXPANSIONS = 4000; // safety cap -- a bigger/oddly-shaped future map can't blow the frame budget
+  const NAV_WAYPOINT_REACHED_DISTANCE = NAV_GRID_CELL_SIZE * 0.6; // close enough to a waypoint to advance past it
+
+  // Bounding box of the walls, widened to cover every spawn point (so
+  // an enemy starting outside is never off-grid) plus a flat margin.
+  const navGridBounds = (() => {
+    const a = floorPlanToGame(floorPlanMinX, floorPlanMinY);
+    const b = floorPlanToGame(floorPlanMaxX, floorPlanMaxY);
+    let minX = Math.min(a.x, b.x), maxX = Math.max(a.x, b.x);
+    let minZ = Math.min(a.z, b.z), maxZ = Math.max(a.z, b.z);
+    for (const spawner of enemySpawners) {
+      minX = Math.min(minX, spawner.position.x);
+      maxX = Math.max(maxX, spawner.position.x);
+      minZ = Math.min(minZ, spawner.position.z);
+      maxZ = Math.max(maxZ, spawner.position.z);
+    }
+    return {
+      minX: minX - NAV_GRID_MARGIN, maxX: maxX + NAV_GRID_MARGIN,
+      minZ: minZ - NAV_GRID_MARGIN, maxZ: maxZ + NAV_GRID_MARGIN,
+    };
+  })();
+
+  const navGridCols = Math.ceil((navGridBounds.maxX - navGridBounds.minX) / NAV_GRID_CELL_SIZE);
+  const navGridRows = Math.ceil((navGridBounds.maxZ - navGridBounds.minZ) / NAV_GRID_CELL_SIZE);
+  const navGridIndex = (cx, cz) => cz * navGridCols + cx;
+
+  function navCellCenter(cx, cz) {
+    return {
+      x: navGridBounds.minX + (cx + 0.5) * NAV_GRID_CELL_SIZE,
+      z: navGridBounds.minZ + (cz + 0.5) * NAV_GRID_CELL_SIZE,
+    };
+  }
+  function navWorldToCell(x, z) {
+    return {
+      cx: Math.min(navGridCols - 1, Math.max(0, Math.floor((x - navGridBounds.minX) / NAV_GRID_CELL_SIZE))),
+      cz: Math.min(navGridRows - 1, Math.max(0, Math.floor((z - navGridBounds.minZ) / NAV_GRID_CELL_SIZE))),
+    };
+  }
+
+  // Precomputed once at load (the floor plan is static within a
+  // session) -- 1 means walkable, 0 means a wall/pillar is too close.
+  const navGridWalkable = new Uint8Array(navGridCols * navGridRows);
+  for (let cz = 0; cz < navGridRows; cz++) {
+    for (let cx = 0; cx < navGridCols; cx++) {
+      const center = navCellCenter(cx, cz);
+      let blocked = false;
+      for (const wall of wallColliders) {
+        if (closestPointOnWall(wall, center.x, center.z).distance < wall.halfThickness + NAV_GRID_WALL_CLEARANCE) {
+          blocked = true;
+          break;
+        }
+      }
+      navGridWalkable[navGridIndex(cx, cz)] = blocked ? 0 : 1;
+    }
+  }
+
+  // Reused across every findGridPath call instead of allocating fresh
+  // typed arrays per call -- this runs once per enemy every repath
+  // interval, so avoiding per-call GC churn is worth the reuse.
+  const navGScoreScratch = new Float32Array(navGridWalkable.length);
+  const navCameFromScratch = new Int32Array(navGridWalkable.length);
+  const navVisitedScratch = new Uint8Array(navGridWalkable.length);
+
+  const NAV_NEIGHBOR_OFFSETS = [
+    { dx: 1, dz: 0, cost: 1 }, { dx: -1, dz: 0, cost: 1 },
+    { dx: 0, dz: 1, cost: 1 }, { dx: 0, dz: -1, cost: 1 },
+    { dx: 1, dz: 1, cost: Math.SQRT2 }, { dx: 1, dz: -1, cost: Math.SQRT2 },
+    { dx: -1, dz: 1, cost: Math.SQRT2 }, { dx: -1, dz: -1, cost: Math.SQRT2 },
+  ];
+
+  // Binary min-heap keyed by an external score lookup -- grid sizes here
+  // are small enough that this (rather than a full library) is plenty.
+  function createMinHeap(scoreOf) {
+    const items = [];
+    function siftUp(i) {
+      while (i > 0) {
+        const parent = (i - 1) >> 1;
+        if (scoreOf(items[parent]) <= scoreOf(items[i])) break;
+        [items[parent], items[i]] = [items[i], items[parent]];
+        i = parent;
+      }
+    }
+    function siftDown(i) {
+      for (;;) {
+        const left = i * 2 + 1, right = i * 2 + 2;
+        let smallest = i;
+        if (left < items.length && scoreOf(items[left]) < scoreOf(items[smallest])) smallest = left;
+        if (right < items.length && scoreOf(items[right]) < scoreOf(items[smallest])) smallest = right;
+        if (smallest === i) break;
+        [items[smallest], items[i]] = [items[i], items[smallest]];
+        i = smallest;
+      }
+    }
+    return {
+      push(item) { items.push(item); siftUp(items.length - 1); },
+      pop() {
+        const top = items[0];
+        const last = items.pop();
+        if (items.length > 0) { items[0] = last; siftDown(0); }
+        return top;
+      },
+      get size() { return items.length; },
+    };
+  }
+
+  // Grid A* from (startX, startZ) to (goalX, goalZ) in game space.
+  // Returns an ordered array of {x, z} cell-center waypoints (excluding
+  // the start), or null if the goal is unreachable (or the search
+  // exceeds NAV_ASTAR_MAX_EXPANSIONS). 8-directional with diagonal step
+  // cost sqrt(2); a diagonal move is only allowed when both of the
+  // orthogonal cells it would cut across are themselves walkable, so a
+  // path can never clip the corner of a wall or the interior pillar --
+  // this (plus simplifyGridPath's string-pulling below) is what actually
+  // makes cornering look deliberate instead of grid-snapped.
+  function findGridPath(startX, startZ, goalX, goalZ) {
+    const start = navWorldToCell(startX, startZ);
+    const goal = navWorldToCell(goalX, goalZ);
+    const startIndex = navGridIndex(start.cx, start.cz);
+    const goalIndex = navGridIndex(goal.cx, goal.cz);
+    if (!navGridWalkable[goalIndex] || startIndex === goalIndex) return [];
+
+    const gScore = navGScoreScratch;
+    const cameFrom = navCameFromScratch;
+    const visited = navVisitedScratch;
+    gScore.fill(Infinity);
+    cameFrom.fill(-1);
+    visited.fill(0);
+    gScore[startIndex] = 0;
+
+    const heuristic = (index) => {
+      const cx = index % navGridCols, cz = (index / navGridCols) | 0;
+      return Math.hypot(cx - goal.cx, cz - goal.cz);
+    };
+    const open = createMinHeap((index) => gScore[index] + heuristic(index));
+    open.push(startIndex);
+
+    let expansions = 0;
+    let found = false;
+    while (open.size > 0) {
+      const current = open.pop();
+      if (visited[current]) continue;
+      visited[current] = 1;
+      if (current === goalIndex) { found = true; break; }
+      if (++expansions > NAV_ASTAR_MAX_EXPANSIONS) break;
+
+      const cx = current % navGridCols, cz = (current / navGridCols) | 0;
+      for (const { dx, dz, cost } of NAV_NEIGHBOR_OFFSETS) {
+        const nx = cx + dx, nz = cz + dz;
+        if (nx < 0 || nx >= navGridCols || nz < 0 || nz >= navGridRows) continue;
+        const neighborIndex = navGridIndex(nx, nz);
+        if (!navGridWalkable[neighborIndex]) continue;
+        if (dx !== 0 && dz !== 0) {
+          if (!navGridWalkable[navGridIndex(cx + dx, cz)] || !navGridWalkable[navGridIndex(cx, cz + dz)]) continue;
+        }
+        const tentativeG = gScore[current] + cost;
+        if (tentativeG < gScore[neighborIndex]) {
+          gScore[neighborIndex] = tentativeG;
+          cameFrom[neighborIndex] = current;
+          open.push(neighborIndex);
+        }
+      }
+    }
+    if (!found) return null;
+
+    const path = [];
+    let cursor = goalIndex;
+    while (cursor !== -1 && cursor !== startIndex) {
+      const cx = cursor % navGridCols, cz = (cursor / navGridCols) | 0;
+      path.push(navCellCenter(cx, cz));
+      cursor = cameFrom[cursor];
+    }
+    path.reverse();
+    return path;
+  }
+
+  // True if a straight line from (x1,z1) to (x2,z2) stays at least
+  // `radius` clear of every wall along its length. Used both to
+  // string-pull a grid path (simplifyGridPath) and to let an enemy drop
+  // its cached path early and beeline once nothing is actually in the
+  // way (see updateEnemies).
+  const LINE_OF_SIGHT_STEP = NAV_GRID_CELL_SIZE * 0.5;
+  function hasLineOfSight(x1, z1, x2, z2, radius) {
+    const dx = x2 - x1, dz = z2 - z1;
+    const distance = Math.hypot(dx, dz);
+    const steps = Math.max(1, Math.ceil(distance / LINE_OF_SIGHT_STEP));
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const x = x1 + dx * t, z = z1 + dz * t;
+      for (const wall of wallColliders) {
+        if (closestPointOnWall(wall, x, z).distance < wall.halfThickness + radius) return false;
+      }
+    }
+    return true;
+  }
+
+  // String-pulling: collapses a blocky grid-cell path into a shorter
+  // list of waypoints by greedily keeping each one only as far out as
+  // line-of-sight holds, so an enemy cuts a corner the way a person
+  // would instead of tracing the grid's staircase around it.
+  function simplifyGridPath(fromX, fromZ, points, radius) {
+    if (points.length === 0) return points;
+    const simplified = [];
+    let anchorX = fromX, anchorZ = fromZ;
+    let i = 0;
+    while (i < points.length) {
+      let farthest = i;
+      for (let j = i; j < points.length; j++) {
+        if (hasLineOfSight(anchorX, anchorZ, points[j].x, points[j].z, radius)) {
+          farthest = j;
+        } else {
+          break;
+        }
+      }
+      simplified.push(points[farthest]);
+      anchorX = points[farthest].x;
+      anchorZ = points[farthest].z;
+      i = farthest + 1;
+    }
+    return simplified;
   }
 
   // ------------------------------------------------------------------
@@ -996,14 +1212,11 @@
       sizeScale,
       hitCooldown: 0,
       isGreen: !!isGreen,
-      // Two-state pathfinding (see updateEnemies): starts SEEKING_ENTRANCE
-      // since enemies always spawn outside, heading for whichever entrance
-      // is closest to ITS spawn point -- recomputed here per spawn rather
-      // than assumed from which spawner fired, so it stays correct even if
-      // spawners are added/moved later. Switches to FOLLOWING_PLAYER for
-      // good once the enemy actually reaches the inside zone.
-      mode: "SEEKING_ENTRANCE",
-      targetEntrance: findClosestEntrance(mesh.position),
+      // Nav-grid pathfinding state (see findGridPath/updateEnemies) --
+      // jittered initial timer so a whole wave's worth of enemies
+      // spawning in the same second don't all repath on the same frame.
+      pathWaypoints: [],
+      repathTimer: Math.random() * NAV_REPATH_INTERVAL,
     };
     // Tagged on both the body and the face plane so a raycast hit on
     // either one resolves straight back to this enemy's state, without
@@ -1347,6 +1560,7 @@
     waveTimer = INITIAL_GRACE_PERIOD;
     enemiesRemainingToSpawn = 0;
     waveEnemiesSpawnedSoFar = 0;
+    waveGreenEnemyCount = 0;
     updateWaveHudUI();
 
     updateHealthUI();
@@ -1893,30 +2107,22 @@
   // damage on periodic contact "ticks" while touching.
   // ------------------------------------------------------------------
   const enemyToPlayer = new THREE.Vector3();
-  // Separate from enemyToPlayer: the enemy's actual steering target this
-  // frame, which is the player except while SEEKING_ENTRANCE (see the
-  // mode check in the loop below) -- kept distinct so combat/knockback
-  // (which always cares about the real player, never the entrance) reads
-  // enemyToPlayer unchanged regardless of what the enemy is walking toward.
-  const enemyToTarget = new THREE.Vector3();
-  // Below this, the relevant vector is too close to normalize meaningfully
-  // -- guards the movement/turn step (against enemyToTarget) and the
-  // knockback direction (against enemyToPlayer) below.
+  // Reused for the actual movement/turn direction: enemy-to-player when
+  // there's nothing in the way, or enemy-to-next-nav-waypoint otherwise
+  // -- see the pathfinding comment inside the loop below.
+  const enemyMoveDir = new THREE.Vector3();
+  // Below this, a direction vector is too close to normalize meaningfully
+  // -- guards the movement/turn step, and the knockback direction below.
   const MIN_ENEMY_DISTANCE = 0.0001;
 
   // Drives every live enemy's chase/turn/contact-damage behavior. Each
-  // enemy carries its own yaw/speed/sizeScale/hitCooldown/mode/
-  // targetEntrance (see spawnEnemy above), so this is the same per-enemy
-  // logic the old single-enemy version had, just run once per entry in
-  // `enemies` -- now steering at a per-enemy target position instead of
-  // always the player (see the mode/zone check below), everything else
-  // (contact damage, knockback, turn rate) unchanged.
+  // enemy carries its own yaw/speed/sizeScale/hitCooldown (see spawnEnemy
+  // above), so this is the same per-enemy logic the old single-enemy
+  // version had, just run once per entry in `enemies`.
   function updateEnemies(deltaSeconds) {
     if (isDead) return;
     // Only chase while the player is actually playing.
     if (document.pointerLockElement !== canvas) return;
-
-    const playerIsInside = isInsideBuilding(camera.position.x, camera.position.z);
 
     for (const enemyState of enemies) {
       const mesh = enemyState.mesh;
@@ -1926,67 +2132,70 @@
         0,
         camera.position.z - mesh.position.z
       );
-      const distance = enemyToPlayer.length();
+      const distanceToPlayer = enemyToPlayer.length();
       // A bigger/smaller enemy (see sizeScale, spawnEnemy above) reaches
       // proportionally further/less far, rather than every enemy sharing
       // one fixed contact range regardless of its actual size.
       const contactDistance = ENEMY_CONTACT_DISTANCE * enemyState.sizeScale;
+      const enemyRadius = (ENEMY_SIZE.width / 2) * enemyState.sizeScale;
 
       // Running into an enemy while sliding cancels the slide immediately
       // (and starts its cooldown), independent of the damage-tick timing.
-      if (isSliding && distance < contactDistance) {
+      if (isSliding && distanceToPlayer < contactDistance) {
         endSlide();
       }
 
-      if (distance > MIN_ENEMY_DISTANCE) {
-        enemyToPlayer.normalize();
+      // Pathfinding: recompute this enemy's route to the player on a
+      // jittered timer (not every frame -- see NAV_REPATH_INTERVAL)
+      // rather than cutting straight through whatever's in the way.
+      enemyState.repathTimer -= deltaSeconds;
+      if (enemyState.repathTimer <= 0) {
+        enemyState.repathTimer = NAV_REPATH_INTERVAL + Math.random() * NAV_REPATH_JITTER;
+        const rawPath = findGridPath(mesh.position.x, mesh.position.z, camera.position.x, camera.position.z);
+        enemyState.pathWaypoints = rawPath ? simplifyGridPath(mesh.position.x, mesh.position.z, rawPath, enemyRadius) : [];
+      }
+      // Drop waypoints already reached, and drop the whole cached path
+      // early -- beelining straight for the player instead -- the moment
+      // there's nothing between them (the common case once both are in
+      // the same room), rather than trudging through stale waypoints
+      // until the next repath.
+      while (enemyState.pathWaypoints.length > 0 &&
+        Math.hypot(enemyState.pathWaypoints[0].x - mesh.position.x, enemyState.pathWaypoints[0].z - mesh.position.z) < NAV_WAYPOINT_REACHED_DISTANCE) {
+        enemyState.pathWaypoints.shift();
+      }
+      if (enemyState.pathWaypoints.length > 0 &&
+        hasLineOfSight(mesh.position.x, mesh.position.z, camera.position.x, camera.position.z, enemyRadius)) {
+        enemyState.pathWaypoints = [];
       }
 
-      // Two-state pathfinding: a SEEKING_ENTRANCE enemy that has reached
-      // the inside zone switches to FOLLOWING_PLAYER for good -- re-checked
-      // every frame (not cached) but one-directional, since once an enemy
-      // is inside it never needs to re-run its initial approach again, even
-      // if the player later steps back outside (see class comment above).
-      if (enemyState.mode === "SEEKING_ENTRANCE" && isInsideBuilding(mesh.position.x, mesh.position.z)) {
-        enemyState.mode = "FOLLOWING_PLAYER";
+      if (enemyState.pathWaypoints.length > 0) {
+        const waypoint = enemyState.pathWaypoints[0];
+        enemyMoveDir.set(waypoint.x - mesh.position.x, 0, waypoint.z - mesh.position.z);
+      } else {
+        enemyMoveDir.copy(enemyToPlayer);
       }
-      // Still SEEKING_ENTRANCE and the player is outside -- there's no
-      // doorway to path through to reach someone already outside with the
-      // enemy, so skip the entrance detour and head straight for the
-      // player instead. Every other case (FOLLOWING_PLAYER, or
-      // SEEKING_ENTRANCE with the player inside) steers at the entrance
-      // or the player as normal.
-      const targetingEntrance = enemyState.mode === "SEEKING_ENTRANCE" && playerIsInside;
-      const targetPosition = targetingEntrance ? enemyState.targetEntrance : camera.position;
+      const moveDistance = enemyMoveDir.length();
 
-      enemyToTarget.set(
-        targetPosition.x - mesh.position.x,
-        0,
-        targetPosition.z - mesh.position.z
-      );
-      const targetDistance = enemyToTarget.length();
-
-      if (targetDistance > MIN_ENEMY_DISTANCE) {
-        enemyToTarget.normalize();
+      if (moveDistance > MIN_ENEMY_DISTANCE) {
+        enemyMoveDir.normalize();
         // Same sub-stepped wall collision as the player (see
         // moveWithWallCollision above) -- otherwise enemies chase straight
         // through walls instead of being blocked by them. Radius scales
         // with the enemy's own sizeScale, same as its rendered size.
-        const enemyRadius = (ENEMY_SIZE.width / 2) * enemyState.sizeScale;
         moveWithWallCollision(
           mesh.position,
-          enemyToTarget.x * enemyState.speed * deltaSeconds,
-          enemyToTarget.z * enemyState.speed * deltaSeconds,
+          enemyMoveDir.x * enemyState.speed * deltaSeconds,
+          enemyMoveDir.z * enemyState.speed * deltaSeconds,
           enemyRadius
         );
 
-        // Turn toward the steering target at a limited rate instead of
-        // snapping instantly, so a fast-moving player can outrun the
-        // enemy's aim for a few frames before it locks back on. Local +Z
-        // is "forward" (see the face plane's placement above), so the yaw
-        // that points +Z at enemyToTarget is atan2(x, z) of that
-        // (already-normalized) direction vector.
-        const targetYaw = Math.atan2(enemyToTarget.x, enemyToTarget.z);
+        // Turn toward the current move direction (player or next nav
+        // waypoint) at a limited rate instead of snapping instantly, so
+        // a fast-moving player can outrun the enemy's aim for a few
+        // frames before it locks back on. Local +Z is "forward" (see the face plane's
+        // placement above), so the yaw that points +Z at enemyMoveDir is
+        // atan2(x, z) of that (already-normalized) direction vector.
+        const targetYaw = Math.atan2(enemyMoveDir.x, enemyMoveDir.z);
         let angleDiff = targetYaw - enemyState.yaw;
         // Wrap to [-PI, PI] so it always turns the short way around.
         angleDiff = ((angleDiff + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
@@ -2005,15 +2214,15 @@
         enemyState.hitCooldown -= deltaSeconds;
       }
 
-      if (distance < contactDistance && enemyState.hitCooldown <= 0) {
+      if (distanceToPlayer < contactDistance && enemyState.hitCooldown <= 0) {
         takeDamage(ENEMY_DAMAGE_PER_HIT);
 
         // Knockback: shove the player's velocity directly away from the
-        // enemy (enemyToPlayer already points from enemy -> player). It
-        // feeds into the same physics velocity as movement, so friction
-        // naturally bleeds it off over the next moment.
-        if (distance > MIN_ENEMY_DISTANCE) {
-          velocity.addScaledVector(enemyToPlayer, KNOCKBACK_STRENGTH);
+        // enemy. Always based on the real enemy->player direction (not
+        // enemyMoveDir), so an enemy still working through its nav path
+        // that somehow touches the player knocks them back correctly.
+        if (distanceToPlayer > MIN_ENEMY_DISTANCE) {
+          velocity.addScaledVector(enemyToPlayer.normalize(), KNOCKBACK_STRENGTH);
         }
 
         enemyState.hitCooldown = ENEMY_HIT_INTERVAL;
@@ -2041,7 +2250,8 @@
   let waveState = "grace";
   let waveTimer = INITIAL_GRACE_PERIOD;
   let enemiesRemainingToSpawn = 0;
-  let waveEnemiesSpawnedSoFar = 0; // reset whenever a wave starts spawning; drives which spawn is the green enemy
+  let waveEnemiesSpawnedSoFar = 0; // reset whenever a wave starts spawning; drives which spawns are green
+  let waveGreenEnemyCount = 0; // how many of this wave's enemies are green -- see greenEnemyCountForWave
 
   const waveHudTextEl = document.getElementById("wave-hud-text");
 
@@ -2067,6 +2277,9 @@
         waveState = "spawning";
         enemiesRemainingToSpawn = Math.min(2 * waveNumber, MAX_ENEMIES_PER_WAVE);
         waveEnemiesSpawnedSoFar = 0;
+        // Capped at this wave's actual enemy count so a huge green count
+        // (from the ramp continuing indefinitely) can never exceed it.
+        waveGreenEnemyCount = Math.min(greenEnemyCountForWave(waveNumber), enemiesRemainingToSpawn);
         waveTimer = 0; // spawn the wave's first enemy immediately below
       } else {
         updateWaveHudUI();
@@ -2077,9 +2290,10 @@
     if (waveState === "spawning") {
       waveTimer -= deltaSeconds;
       if (waveTimer <= 0) {
-        // Exactly one green enemy per wave from GREEN_ENEMY_START_WAVE on
-        // -- always the first one spawned that wave, the rest are normal.
-        const isGreenEnemy = waveNumber >= GREEN_ENEMY_START_WAVE && waveEnemiesSpawnedSoFar === 0;
+        // waveGreenEnemyCount green enemies per wave (see
+        // greenEnemyCountForWave) -- always the first ones spawned that
+        // wave, the rest are normal.
+        const isGreenEnemy = waveEnemiesSpawnedSoFar < waveGreenEnemyCount;
         spawnEnemyFromRandomSpawner(isGreenEnemy);
         waveEnemiesSpawnedSoFar += 1;
         enemiesRemainingToSpawn -= 1;

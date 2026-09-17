@@ -74,6 +74,28 @@ enemy that chases you and drains your health.
    Output lands in `src-tauri/target/release/` (the binary) and
    `src-tauri/target/release/bundle/` (MSI/NSIS installers on Windows).
 
+## Enemies
+
+The enemy that chases the player is called **Evan**. Starting at wave 4,
+some of each wave's Evans are green, 330%-speed variants ("fast Evan")
+alongside the normal ones. The fast-Evan count ramps up every two waves:
+1 on waves 4-5, 2 on waves 6-7, 3 on waves 8-9, and so on.
+
+Evans spawn from five points ringing the outside of the building. Each
+one finds a real route to the player with grid-based A* pathfinding
+(see `findGridPath` in `index.html`) rather than walking a straight
+line and relying on wall-sliding to stumble through a gap. The
+walkable grid, and everything routed over it, is derived from the
+floor plan's own wall geometry rather than any hardcoded door/corner
+coordinates, so it keeps working if the floor plan changes (more
+walls, a bigger building, moved spawn points).
+
+## Weapon & ammo
+
+The player starts with a full magazine loaded plus 4 reserve
+magazines' worth of spare ammo. Killing an Evan has a 30% chance to
+drop an ammo pickup.
+
 ## Controls
 
 - **WASD** — move
