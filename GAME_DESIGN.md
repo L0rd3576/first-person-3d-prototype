@@ -160,6 +160,12 @@ Two separate, per-weapon-configurable systems, both firing from the same shot:
   not wave-based scaling).
 - **Fast ("green") variant:** same stats otherwise, but moves at 3.3× the (already-randomized)
   base speed. Visually distinct (green body material vs. red).
+- **Face texture:** every enemy gets a flat face plane glued to the front of its body, picked at
+  spawn from `FACE_TEXTURE_DEFS` — 38 face images embedded as base64 data URIs (from
+  `5 nights at kise/images/`), each with its own aspect ratio. `EVANSFACE_SPAWN_CHANCE` (85%)
+  picks "evanface" (the default/majority face, also what the title screen background uses);
+  the other 15% is a uniform random pick from the remaining 37. Materials/geometries are cached
+  per face key rather than rebuilt per spawn.
 - **Contact damage:** 10 HP per tick, every 0.5s, while within contact range (which scales with
   that enemy's own randomized size).
 - **Knockback:** a fixed velocity impulse pushes the player away from the enemy on each contact tick.
@@ -218,8 +224,7 @@ formula is capped at 50 regardless of difficulty, same as Normal.
 
 ### Score system
 
-- **+10 points** for every fast ("green"/"evan") enemy killed. Normal enemy kills award nothing
-  on their own.
+- **+10 points** for every enemy killed, any variant (`ENEMY_KILL_SCORE` in the code).
 - **A per-difficulty bonus every time a wave is fully cleared:** +100 on Normal, +150 on Hard,
   +200 on Legendary (`DIFFICULTIES[id].roundClearScore` in the code — same data-driven object the
   rest of the difficulty system uses, not a separate hardcoded check).
@@ -307,7 +312,8 @@ formula is capped at 50 regardless of difficulty, same as Normal.
   (see §4's Score system) below the heading.
 - **Pre-game setup screen** (reached via Play): a difficulty selector — **Normal** / **Hard** /
   **Legendary**, single-select, the active one visually highlighted — plus a **Start** button
-  that begins the run on whichever difficulty is currently selected. Hard and Legendary each list
+  that begins the run on whichever difficulty is currently selected, and a **Back** button that
+  returns to the title screen's main panel without starting a run. Hard and Legendary each list
   what's harder about them as bullet points under the option (Hard: "More enemies", "Faster
   enemies"; Legendary: "More enemies", "Fastest enemies", "Enemies have more health"); Normal has
   none. Defaults to Normal the very first time the game is ever run; after that, the
@@ -332,10 +338,11 @@ formula is capped at 50 regardless of difficulty, same as Normal.
   including the score, but returns to the title screen instead of dropping straight back into a
   new round). This menu already existed before the title screen/score work — it wasn't built
   from scratch for this pass, just extended.
-- **Death screen:** full-screen red overlay, "YOU DIED", a single **Restart** button that fully
-  resets run state (health, both inventory slots back to fresh pistol+Glock, position, wave
-  counter back to pre-wave-1, all enemies/pickups/dropped items cleared) and immediately
-  re-requests pointer lock.
+- **Death screen:** full-screen red overlay, "YOU DIED", a **Restart** button that fully resets
+  run state (health, both inventory slots back to fresh pistol+Glock, position, wave counter back
+  to pre-wave-1, all enemies/pickups/dropped items cleared) and immediately re-requests pointer
+  lock, plus a **Main Menu** button doing the same full reset but returning to the title screen's
+  main panel instead (mirrors the pause menu's own Exit to Main Menu button above).
 - No minimap, no objective marker, no settings/options menu (volume, graphics, key rebinding),
   no audio at all (no sound effects, no music — confirmed by explicit comments in the firing/
   reload code noting no audio system exists yet).
@@ -418,3 +425,13 @@ Being direct about the distance between "a collection of working mechanics" and 
 - **2026-09-18 (yet later still)** — Wave spawn-duration multiplier changed from `2` to `0.85`
   seconds per zombie (`WAVE_SPAWN_DURATION_MULTIPLIER` in the code) — waves now finish spawning
   much faster relative to their size (e.g. 100 zombies: 85s instead of 200s).
+- **2026-09-18 (yet later still, once more)** — Added a **Back** button to the difficulty setup
+  screen. Performance pass: enemy raycast target list is now a persistent array instead of a
+  `.map()` allocation per shot/melee swing, the sun shadow map shrank from 2048² `PCFSoftShadowMap`
+  at a ±60 frustum to 1024² `PCFShadowMap` at ±30, enemy line-of-sight checks are throttled
+  instead of running every frame, particle bursts (muzzle flash/blood/death) are pooled instead of
+  created and disposed per spawn, and the wave HUD text element is only touched when its displayed
+  value actually changes. Added a multi-face enemy system: 38 face images embedded as base64 data
+  URIs, picked per spawn (85% evanface / 15% random other face — see §4's Face texture entry).
+  Score now awards +10 for every enemy kill (previously fast/"green" kills only). Death screen
+  gained a **Main Menu** button alongside Restart (see §7's Death screen entry).
