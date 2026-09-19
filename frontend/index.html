@@ -30,6 +30,9 @@
     pointer-events: none;
     z-index: 10;
   }
+  #crosshair.hidden {
+    display: none;
+  }
 
   /* Hit marker: a small red "X" flashed briefly on a confirmed hit */
   #hit-marker {
@@ -107,27 +110,100 @@
     letter-spacing: 2px;
     text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
   }
+  /* Same face-texture backdrop as the title screen (#title-bg-image/
+     #title-bg-tint) -- fixed (not absolute) so it fills the viewport
+     regardless of #overlay-controls itself only being sized to its
+     content. Rendered as the panel's first two children so they paint
+     behind its heading/list/buttons, and only exist in the DOM's
+     rendered layout while .overlay-panel.active makes this panel
+     display:flex -- otherwise display:none on the ancestor hides them
+     too, no extra JS toggling needed. */
+  #controls-bg-image {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: blur(2px) brightness(0.55);
+  }
+  #controls-bg-tint {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.45);
+  }
+  /* The actual visible panel: a big bordered rectangle sitting on top of
+     the full-bleed background above, holding the heading/chart/note/
+     buttons. Its own solid-ish fill is what keeps all of that readable
+     against a busy background image, rather than relying on the fairly
+     thin #controls-bg-tint dimming alone. */
+  #controls-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(15, 15, 15, 0.75);
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    border-radius: 14px;
+    padding: 32px 44px;
+    max-width: min(600px, 90vw);
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+  /* Two-column chart: action name on the left, key on the right. Each
+     <li> is display: contents so its two children (the label span and
+     the kbd/rebind-key button) become direct grid items themselves,
+     rather than the <li> being a grid cell that just contains both. */
   #controls-list {
+    display: grid;
+    grid-template-columns: max-content max-content;
+    column-gap: 28px;
+    row-gap: 9px;
+    align-items: center;
     list-style: none;
     margin: 0 0 16px 0;
     padding: 0;
     font-size: 16px;
     font-weight: normal;
-    line-height: 1.7;
   }
   #controls-list li {
-    opacity: 0.9;
+    display: contents;
   }
-  #controls-list kbd {
+  .controls-row-label {
+    opacity: 0.9;
+    text-align: left;
+  }
+  #controls-list kbd,
+  #controls-list .rebind-key {
     display: inline-block;
     min-width: 20px;
     padding: 1px 7px;
-    margin-right: 8px;
     font-family: inherit;
     font-size: 14px;
     background: rgba(255, 255, 255, 0.15);
     border: 1px solid rgba(255, 255, 255, 0.5);
     border-radius: 4px;
+    justify-self: start;
+  }
+  #controls-list .rebind-key {
+    color: #fff;
+    cursor: pointer;
+    pointer-events: auto;
+    text-align: center;
+  }
+  #controls-list .rebind-key:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+  #controls-list .rebind-key.listening {
+    background: rgba(255, 210, 80, 0.35);
+    border-color: rgba(255, 210, 80, 0.9);
+  }
+  #controls-list .rebind-key.unbound {
+    opacity: 0.6;
+    font-style: italic;
   }
   #overlay-controls .controls-note {
     font-size: 13px;
@@ -225,6 +301,98 @@
   #ammo-hud.hidden {
     display: none;
   }
+
+  /* Item inventory: 2 rows of 4 slots, toggled by the inventory keybind
+     and centered on screen. Unlike the pause/controls overlay this never
+     pauses the game (see animate()'s isWorldPaused) -- it does release
+     pointer lock (see setInventoryOpen), which is what shows the OS
+     cursor and freezes player movement/look for free via their own
+     existing pointer-lock checks.
+     The light gray "dim" tint is scoped to just this panel's own
+     backdrop box and the individual slot cells -- it does NOT cover the
+     canvas/crosshair/HUD behind it. */
+  #inventory-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: Arial, Helvetica, sans-serif;
+    z-index: 18;
+    text-align: center;
+    background: rgba(210, 210, 210, 0.22);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 10px;
+    padding: 16px 20px 20px;
+    pointer-events: none;
+  }
+  #inventory-panel.hidden {
+    display: none;
+  }
+  #inventory-panel-header {
+    color: #fff;
+    font-size: 18px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  }
+  #inventory-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 64px);
+    grid-template-rows: repeat(2, 64px);
+    gap: 8px;
+  }
+  .inventory-slot {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    background: rgba(210, 210, 210, 0.3);
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+  }
+  .inventory-slot.empty {
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+  .inventory-slot:not(.empty) {
+    cursor: grab;
+  }
+  .inventory-slot-icon {
+    font-size: 30px;
+    line-height: 1;
+  }
+  .inventory-slot-qty {
+    position: absolute;
+    right: 4px;
+    bottom: 3px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: bold;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  }
+  /* Follows the cursor while an item is being dragged between slots --
+     see beginSlotDrag/onSlotDragMove. Ignores pointer events itself so
+     document.elementFromPoint() sees the slot underneath it, not the
+     ghost. */
+  .inventory-drag-ghost {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 64px;
+    height: 64px;
+    margin: -32px 0 0 -32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    pointer-events: none;
+    z-index: 25;
+    opacity: 0.85;
+  }
+
   /* Death screen */
   #death-screen {
     position: fixed;
@@ -271,6 +439,18 @@
   }
   .menu-button + .menu-button {
     margin-left: 10px;
+  }
+  /* Title screen's main Play/Controls/Exit buttons, stacked vertically
+     (like #mode-options) instead of the horizontal row .menu-button
+     normally lays out in -- scoped to just this container so the pause
+     menu, death screen, and Controls/setup buttons stay unaffected. */
+  #title-main-buttons {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  #title-main-buttons .menu-button + .menu-button {
+    margin-left: 0;
   }
 
   /* Title screen: shown before any gameplay starts (and again, minus
@@ -332,10 +512,70 @@
     margin: 0 0 28px 0;
     text-shadow: 0 3px 10px rgba(0, 0, 0, 0.9);
   }
-  #title-setup h2 {
+  #title-setup h2,
+  #title-mode h2 {
     font-size: 28px;
     margin: 0 0 20px 0;
     text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
+  }
+  /* Pinned to the top-left corner of whichever .title-panel it's in --
+     relies on .title-panel's own position: relative above. */
+  .corner-back-button {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    padding: 8px 18px;
+    margin: 0;
+    font-size: 15px;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.15);
+    border: 2px solid rgba(255, 255, 255, 0.7);
+    border-radius: 6px;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+  .corner-back-button:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+  #mode-options {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .mode-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 170px;
+    padding: 14px 20px;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    border-radius: 6px;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+  .mode-option:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+  .mode-name {
+    font-size: 16px;
+    font-weight: bold;
+  }
+  /* Co-op/Custom: visible but not selectable yet. */
+  .mode-option.mode-option-disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  .mode-option.mode-option-disabled:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .mode-option.mode-option-disabled .mode-name {
+    text-decoration: line-through;
   }
   #difficulty-options {
     display: flex;
@@ -405,13 +645,29 @@
   <div id="title-main" class="title-panel active">
     <h1 id="title-heading">Escape From Kise.</h1>
     <div id="title-high-score">High Score (this session): <span id="title-high-score-value">0</span></div>
-    <div>
+    <div id="title-main-buttons">
       <button id="title-play-button" class="menu-button">Play</button>
       <button id="title-controls-button" class="menu-button">Controls</button>
       <button id="title-exit-button" class="menu-button">Exit</button>
     </div>
   </div>
+  <div id="title-mode" class="title-panel">
+    <button id="mode-back-button" class="corner-back-button">&larr; Back</button>
+    <h2>Select Mode</h2>
+    <div id="mode-options">
+      <div class="mode-option" data-mode="singleplayer">
+        <div class="mode-name">Singleplayer</div>
+      </div>
+      <div class="mode-option mode-option-disabled" data-mode="coop">
+        <div class="mode-name">Co-op</div>
+      </div>
+      <div class="mode-option mode-option-disabled" data-mode="custom">
+        <div class="mode-name">Custom</div>
+      </div>
+    </div>
+  </div>
   <div id="title-setup" class="title-panel">
+    <button id="setup-back-button" class="corner-back-button">&larr; Back</button>
     <h2>Select Difficulty</h2>
     <div id="difficulty-options">
       <div class="difficulty-option" data-difficulty="normal">
@@ -435,7 +691,6 @@
     </div>
     <div>
       <button id="setup-start-button" class="menu-button">Start</button>
-      <button id="setup-back-button" class="menu-button">Back</button>
     </div>
   </div>
 </div>
@@ -451,25 +706,17 @@
     </div>
   </div>
   <div id="overlay-controls" class="overlay-panel">
-    <h1>Controls</h1>
-    <ul id="controls-list">
-      <li><kbd>W A S D</kbd>Move</li>
-      <li><kbd>Shift</kbd>Sprint</li>
-      <li><kbd>Ctrl</kbd>Crouch / slide</li>
-      <li><kbd>Space</kbd>Jump</li>
-      <li><kbd>Mouse</kbd>Look</li>
-      <li><kbd>LMB</kbd>Fire</li>
-      <li><kbd>RMB</kbd>Aim</li>
-      <li><kbd>R</kbd>Reload</li>
-      <li><kbd>1 2</kbd>Switch weapon</li>
-      <li><kbd>Scroll</kbd>Switch weapon</li>
-      <li><kbd>V</kbd>Melee</li>
-      <li><kbd>G</kbd>Drop item</li>
-      <li><kbd>F</kbd>Pick up item</li>
-      <li><kbd>Esc</kbd>Pause</li>
-    </ul>
-    <div class="controls-note">Rebinding isn't available yet -- this is view-only for now.</div>
-    <button id="controls-back-button" class="menu-button">Back</button>
+    <img id="controls-bg-image" alt="">
+    <div id="controls-bg-tint"></div>
+    <div id="controls-card">
+      <h1>Controls</h1>
+      <ul id="controls-list"></ul>
+      <div class="controls-note">Click a key to rebind it, then press any key. Binding a key already in use unbinds it from its old action. Esc cancels a rebind in progress.</div>
+      <div>
+        <button id="controls-back-button" class="menu-button">Back</button>
+        <button id="controls-reset-button" class="menu-button">Reset to Defaults</button>
+      </div>
+    </div>
   </div>
 </div>
 <div id="crosshair"></div>
@@ -485,6 +732,11 @@
 
 <div id="ammo-hud">
   <div id="ammo-text"><span id="ammo-loaded">13</span> / <span id="ammo-reserve">36</span></div>
+</div>
+
+<div id="inventory-panel" class="hidden">
+  <div id="inventory-panel-header">Inventory</div>
+  <div id="inventory-grid"></div>
 </div>
 
 <div id="death-screen">
@@ -2423,6 +2675,20 @@
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     const material = new THREE.PointsMaterial({ transparent: true, depthWrite: false });
     const points = new THREE.Points(geometry, material);
+    // This same Points object gets reused (via the pool) for many bursts
+    // at completely different world positions over its lifetime, but its
+    // own transform never moves -- only the position attribute's raw
+    // vertex data does. Three.js computes/caches geometry.boundingSphere
+    // for frustum culling from whatever positions happened to be in the
+    // buffer the first time it's needed, then never recomputes it, so
+    // culling decisions were being made against a long-stale location --
+    // e.g. a muzzle flash from several shots (and camera turns) ago.
+    // That's what made it flicker invisible depending on which way the
+    // camera pointed: culled based on where the sphere USED to be, not
+    // where the current burst actually is. These bursts are small and
+    // short-lived, so just skipping frustum culling entirely is simpler
+    // and cheaper than recomputing the bounding sphere on every spawn.
+    points.frustumCulled = false;
     return { points, geometry, material, positions, velocities: new Float32Array(PARTICLE_BURST_MAX_COUNT * 3) };
   }
 
@@ -2621,6 +2887,7 @@
     );
 
     droppedItems.push({
+      kind: "weapon",
       group,
       weaponId,
       loadedAmmo,
@@ -2712,6 +2979,249 @@
     return closest;
   }
 
+  // ------------------------------------------------------------------
+  // ITEM INVENTORY: a separate 8-slot grid for non-weapon items only --
+  // weapons are exclusively handled by inventorySlots/WEAPON_DEFS above
+  // and can never occupy one of these 8 slots. Items are defined
+  // generically the same way weapons are (an id-keyed def table), so
+  // adding a new item later never means special-casing anything below.
+  //
+  // `maxStack: null` means unlimited -- every current item uses this,
+  // but addItemToInventory below already fully honors a finite cap
+  // (splitting overflow into additional slots), so giving any item def
+  // a real number later needs no changes here.
+  // ------------------------------------------------------------------
+  const ITEM_DEFS = {
+    bandages: { id: "bandages", displayName: "Bandages", category: "healing", icon: "\u{1FA79}", maxStack: null },
+    rocks: { id: "rocks", displayName: "Rocks", category: "crafting", icon: "\u{1FAA8}", maxStack: null },
+    planks: { id: "planks", displayName: "Planks", category: "crafting", icon: "\u{1FAB5}", maxStack: null },
+    cloth: { id: "cloth", displayName: "Cloth", category: "misc", icon: "\u{1F9F5}", maxStack: null },
+  };
+
+  // The exact starting kit granted on a fresh game/restart -- see
+  // resetItemInventory below, called from resetGame().
+  const STARTING_ITEMS = [
+    { itemId: "bandages", quantity: 1 },
+    { itemId: "rocks", quantity: 1 },
+    { itemId: "planks", quantity: 1 },
+    { itemId: "cloth", quantity: 1 },
+  ];
+
+  const ITEM_INVENTORY_SLOT_COUNT = 8;
+  // Each slot is either null (empty) or { itemId, quantity }.
+  const itemInventorySlots = new Array(ITEM_INVENTORY_SLOT_COUNT).fill(null);
+
+  // Adds `quantity` of `itemId` to the item inventory: tops up existing
+  // matching stacks first (up to the item's maxStack, if any), then
+  // spills any remainder into empty slots as new stacks. Returns how
+  // much was actually added (0..quantity) -- if the inventory is full
+  // and no matching/under-cap stack exists, some or all of it can't fit
+  // and is left for the caller to decide what to do with (see
+  // tryPickUpNearbyItem's non-weapon branch below: the pickup simply
+  // leaves the leftover on the ground rather than forcing a drop of
+  // something else).
+  function addItemToInventory(itemId, quantity) {
+    const def = ITEM_DEFS[itemId];
+    let remaining = quantity;
+
+    for (let i = 0; i < itemInventorySlots.length && remaining > 0; i++) {
+      const slot = itemInventorySlots[i];
+      if (!slot || slot.itemId !== itemId) continue;
+      const roomInStack = def.maxStack === null ? remaining : def.maxStack - slot.quantity;
+      const amountToAdd = Math.min(roomInStack, remaining);
+      if (amountToAdd <= 0) continue;
+      slot.quantity += amountToAdd;
+      remaining -= amountToAdd;
+    }
+
+    for (let i = 0; i < itemInventorySlots.length && remaining > 0; i++) {
+      if (itemInventorySlots[i]) continue;
+      const amountToAdd = def.maxStack === null ? remaining : Math.min(def.maxStack, remaining);
+      itemInventorySlots[i] = { itemId, quantity: amountToAdd };
+      remaining -= amountToAdd;
+    }
+
+    const amountAdded = quantity - remaining;
+    if (amountAdded > 0) renderInventoryPanel();
+    return amountAdded;
+  }
+
+  // Wipes and re-grants the fixed starting kit -- called once at
+  // startup (below) and again from resetGame() on every restart.
+  function resetItemInventory() {
+    itemInventorySlots.fill(null);
+    for (const starting of STARTING_ITEMS) {
+      addItemToInventory(starting.itemId, starting.quantity);
+    }
+  }
+
+  const inventoryPanelEl = document.getElementById("inventory-panel");
+  const inventoryGridEl = document.getElementById("inventory-grid");
+  let isInventoryOpen = false;
+
+  // Drag-and-drop between slots: mouse-based rather than native HTML5
+  // DnD, since the OS cursor is genuinely visible here (pointer lock is
+  // released while the inventory's open) and a custom ghost icon gives
+  // full control over the drop-target hit test via elementFromPoint.
+  // null when nothing is being dragged; otherwise { sourceIndex, ghostEl }.
+  let slotDragState = null;
+
+  function renderInventoryPanel() {
+    inventoryGridEl.innerHTML = "";
+    for (let i = 0; i < ITEM_INVENTORY_SLOT_COUNT; i++) {
+      const slot = itemInventorySlots[i];
+      // While a slot is being dragged FROM, render it as empty -- the
+      // underlying data isn't touched until the drag resolves, so an
+      // invalid drop (or dropping back on itself) needs no special
+      // "return it" logic: the item was never actually removed.
+      const isBeingDragged = !!slotDragState && slotDragState.sourceIndex === i;
+      const showAsFilled = slot && !isBeingDragged;
+
+      const slotEl = document.createElement("div");
+      slotEl.className = showAsFilled ? "inventory-slot" : "inventory-slot empty";
+
+      if (showAsFilled) {
+        const def = ITEM_DEFS[slot.itemId];
+        const iconEl = document.createElement("div");
+        iconEl.className = "inventory-slot-icon";
+        iconEl.textContent = def.icon;
+        slotEl.appendChild(iconEl);
+
+        if (slot.quantity > 1) {
+          const qtyEl = document.createElement("div");
+          qtyEl.className = "inventory-slot-qty";
+          qtyEl.textContent = slot.quantity;
+          slotEl.appendChild(qtyEl);
+        }
+      }
+
+      slotEl.addEventListener("mousedown", (function (index) {
+        return function (event) {
+          beginSlotDrag(index, event);
+        };
+      })(i));
+
+      inventoryGridEl.appendChild(slotEl);
+    }
+  }
+
+  function beginSlotDrag(index, event) {
+    if (event.button !== 0) return; // left button only
+    if (slotDragState) return; // already dragging something
+    const slot = itemInventorySlots[index];
+    if (!slot) return; // nothing to pick up from an empty slot
+    event.preventDefault();
+    event.stopPropagation();
+
+    const ghostEl = document.createElement("div");
+    ghostEl.className = "inventory-drag-ghost";
+    ghostEl.textContent = ITEM_DEFS[slot.itemId].icon;
+    ghostEl.style.left = event.clientX + "px";
+    ghostEl.style.top = event.clientY + "px";
+    document.body.appendChild(ghostEl);
+
+    slotDragState = { sourceIndex: index, ghostEl };
+    renderInventoryPanel(); // shows the source slot as lifted/empty
+  }
+
+  document.addEventListener("mousemove", function (event) {
+    if (!slotDragState) return;
+    slotDragState.ghostEl.style.left = event.clientX + "px";
+    slotDragState.ghostEl.style.top = event.clientY + "px";
+  });
+
+  document.addEventListener("mouseup", function (event) {
+    if (!slotDragState) return;
+    const { sourceIndex, ghostEl } = slotDragState;
+    ghostEl.remove();
+    slotDragState = null;
+
+    // elementFromPoint (not the mouseup target) so a drop lands correctly
+    // even though the ghost -- pointer-events: none -- was sitting right
+    // under the cursor.
+    const droppedOnEl = document.elementFromPoint(event.clientX, event.clientY);
+    const targetSlotEl = droppedOnEl ? droppedOnEl.closest(".inventory-slot") : null;
+    const targetIndex = targetSlotEl ? Array.prototype.indexOf.call(inventoryGridEl.children, targetSlotEl) : -1;
+
+    if (targetIndex !== -1 && targetIndex !== sourceIndex) {
+      // Empty target: plain move. Occupied target: swap. Both are the
+      // same array-element swap either way (swapping with null is just
+      // a move), so no branch is needed.
+      const temp = itemInventorySlots[targetIndex];
+      itemInventorySlots[targetIndex] = itemInventorySlots[sourceIndex];
+      itemInventorySlots[sourceIndex] = temp;
+    }
+    // else: dropped outside any slot, or back on the source slot itself
+    // -- itemInventorySlots is untouched, so the item is already right
+    // back where it started once this re-renders.
+
+    renderInventoryPanel();
+  });
+
+  // Drops whatever's being dragged back into its source slot instantly
+  // (by simply abandoning the drag -- the source slot's data was never
+  // touched, see beginSlotDrag) -- called when the inventory closes out
+  // from under an in-progress drag, so the ghost icon doesn't keep
+  // following the cursor around the game world afterward.
+  function cancelSlotDrag() {
+    if (!slotDragState) return;
+    slotDragState.ghostEl.remove();
+    slotDragState = null;
+  }
+
+  const crosshairEl = document.getElementById("crosshair");
+
+  // Set right before the deliberate exitPointerLock() call below and
+  // consumed by onPointerLockChange the moment the resulting unlock
+  // event fires, so opening the inventory doesn't pop the pause menu.
+  //
+  // Earlier versions of this also tried to auto-relock pointer lock
+  // after an Escape-driven close (deferred via setTimeout, with a grace
+  // window and a "wait for keyup" guard). That's been removed entirely:
+  // browsers deliberately make it unreliable to re-acquire pointer lock
+  // in anything connected to an Escape-triggered unlock -- it's the
+  // user's guaranteed way out, by spec, and pages aren't supposed to be
+  // able to immediately re-trap them. Retrying past that in this
+  // particular Tauri/WebView2 build didn't just fail quietly, it hung
+  // the whole app. So Escape no longer tries to silently resume play by
+  // itself at all -- see the Escape handling below, which drops straight
+  // into the ordinary pause menu (a real click on Resume is the only
+  // thing proven to reliably re-acquire the lock). The toggle bind (E)
+  // is unaffected -- it was never implicated in the hang, and closing
+  // through it re-locks immediately, same as before.
+  let suppressNextPauseOnUnlock = false;
+
+  // Opening releases pointer lock -- which shows the OS cursor and (via
+  // updateMovement/onMouseMove's own pointer-lock checks) freezes player
+  // movement and camera look for free, with no separate check needed in
+  // either of those.
+  //
+  // The world itself is NOT paused by this -- animate() below only ties
+  // enemies/wave timer/ammo pickups/dropped items to a genuine pause,
+  // not to the inventory being open, so the player stays exposed while
+  // managing items. resetGame()'s own call to setInventoryOpen(false)
+  // deliberately never re-locks here (see toggleInventory) -- it may be
+  // on its way to the title screen instead of back into play.
+  function setInventoryOpen(open) {
+    cancelSlotDrag(); // don't leave a ghost icon following the cursor around the game world after closing mid-drag
+    isInventoryOpen = open;
+    inventoryPanelEl.classList.toggle("hidden", !open);
+    crosshairEl.classList.toggle("hidden", open);
+    if (open) {
+      renderInventoryPanel();
+      suppressNextPauseOnUnlock = true;
+      document.exitPointerLock();
+    }
+  }
+
+  function toggleInventory() {
+    const wasOpen = isInventoryOpen;
+    setInventoryOpen(!wasOpen);
+    if (wasOpen) canvas.requestPointerLock();
+  }
+
+  resetItemInventory();
+
   // Picks up the nearest dropped item in range (F key) -- see the
   // WEAPON DEFINITIONS / INVENTORY comments above for why this reads
   // simplest as: fill an empty slot if there is one, otherwise replace
@@ -2719,9 +3229,29 @@
   // state (setActiveViewModel) when the ACTIVE slot's own contents
   // changed -- picking something into the other slot shouldn't cancel
   // whatever the active gun is doing (mid-reload, mid-ADS, etc.).
+  //
+  // Non-weapon items (item.kind === "item") take a completely separate
+  // path into the 8-slot item inventory instead -- nothing currently
+  // spawns one of these in the world (no resource-drop sources exist
+  // yet), but the type-check is wired up now so a future drop source
+  // just works without touching this function again.
   function tryPickUpNearbyItem() {
     const item = findNearbyDroppedItem();
     if (!item) return;
+
+    if (item.kind === "item") {
+      const amountAdded = addItemToInventory(item.itemId, item.quantity);
+      item.quantity -= amountAdded;
+      if (item.quantity <= 0) {
+        scene.remove(item.group);
+        disposeDroppedItemGeometry(item.group);
+        droppedItems.splice(droppedItems.indexOf(item), 1);
+      }
+      // else: inventory is full with no matching/under-cap stack -- the
+      // pickup partially (or entirely) fails and the rest stays on the
+      // ground rather than bumping something else out to make room.
+      return;
+    }
 
     scene.remove(item.group);
     disposeDroppedItemGeometry(item.group);
@@ -2794,7 +3324,7 @@
   // script startup: player health/ammo/position/pose, all gun sub-systems
   // (reload/ADS/recoil/bob), all live enemies cleared, and the wave
   // manager reset to the pre-wave-1 grace period -- i.e. "as if the game
-  // just launched fresh". Does NOT touch `keys` (the player's physically
+  // just launched fresh". Does NOT touch `heldKeys` (the player's physically
   // held keys are still valid) or in-flight particle bursts (harmless to
   // just let them finish).
   function resetGame() {
@@ -2812,6 +3342,9 @@
     inventorySlots[0] = createWeaponSlotState("pistol");
     inventorySlots[1] = createWeaponSlotState("glock");
     activeSlotIndex = 0;
+
+    resetItemInventory();
+    setInventoryOpen(false);
 
     isSprinting = false;
     gunBobPhase = 0;
@@ -2924,6 +3457,16 @@
       isAimButtonHeld = false;
       isAiming = false;
       isSprinting = false;
+
+      // The inventory panel deliberately releases pointer lock itself
+      // (see setInventoryOpen) so the cursor is visible while it's open
+      // -- that's not a real pause, so skip bringing up the pause menu
+      // for the resulting unlock (see suppressNextPauseOnUnlock above).
+      if (suppressNextPauseOnUnlock) {
+        suppressNextPauseOnUnlock = false;
+        return;
+      }
+
       if (!isDead) {
         // See the comment above overlayPanels -- a loss always means the
         // pause menu, never the initial "click to play" panel.
@@ -3007,6 +3550,10 @@
   const controlsBackButtonEl = document.getElementById("controls-back-button");
   controlsBackButtonEl.addEventListener("click", function (event) {
     event.stopPropagation();
+    if (isRebindListening) {
+      stopListeningForRebind();
+      renderControlsList();
+    }
     if (controlsReturnView === "title") {
       overlay.classList.add("hidden");
       showTitlePanel("main");
@@ -3061,8 +3608,10 @@
   // ------------------------------------------------------------------
   // TITLE SCREEN: shown before any gameplay ever starts, above
   // everything else (#title-screen's z-index is higher than #overlay's
-  // and #death-screen's). Two panels -- the main title (Play/Controls/
-  // Exit) and a difficulty-setup screen reached via Play. Hitting Start
+  // and #death-screen's). Three panels -- the main title (Play/Controls/
+  // Exit), a mode-select screen reached via Play (only Singleplayer is
+  // wired up; Co-op/Custom are shown crossed out as placeholders), and
+  // the difficulty-setup screen reached via Singleplayer. Hitting Start
   // just hides this and reveals the "Click to play" prompt that's been
   // sitting underneath it the whole time -- #overlay's own state
   // machine (see showOverlayView above) doesn't need to know this
@@ -3071,11 +3620,14 @@
   const titleScreenEl = document.getElementById("title-screen");
   // Reuses the exact same image data the 3D enemy face texture is built
   // from (see ENEMY_FACE_IMAGE_DATA_URI above) rather than a second
-  // copy of the asset.
+  // copy of the asset. #controls-bg-image (inside #overlay-controls)
+  // reuses it too, for the same backdrop on the Controls screen.
   document.getElementById("title-bg-image").src = ENEMY_FACE_IMAGE_DATA_URI;
+  document.getElementById("controls-bg-image").src = ENEMY_FACE_IMAGE_DATA_URI;
 
   const titlePanels = {
     main: document.getElementById("title-main"),
+    mode: document.getElementById("title-mode"),
     setup: document.getElementById("title-setup"),
   };
 
@@ -3092,6 +3644,18 @@
   let controlsReturnView = "pause";
 
   document.getElementById("title-play-button").addEventListener("click", function () {
+    showTitlePanel("mode");
+  });
+
+  document.getElementById("mode-back-button").addEventListener("click", function () {
+    showTitlePanel("main");
+  });
+
+  // Only Singleplayer is wired up -- Co-op/Custom are shown crossed out
+  // (see .mode-option-disabled) as a placeholder for modes that don't
+  // exist yet, so clicking them is a deliberate no-op rather than
+  // getting a click handler that goes nowhere.
+  document.querySelector('.mode-option[data-mode="singleplayer"]').addEventListener("click", function () {
     showTitlePanel("setup");
   });
 
@@ -3139,7 +3703,7 @@
   });
 
   document.getElementById("setup-back-button").addEventListener("click", function () {
-    showTitlePanel("main");
+    showTitlePanel("mode");
   });
 
   document.getElementById("setup-start-button").addEventListener("click", function () {
@@ -3153,23 +3717,112 @@
   });
 
   // ------------------------------------------------------------------
-  // WASD MOVEMENT
+  // KEYBINDS: each rebindable action maps to a single KeyboardEvent.code
+  // (or null if the player has explicitly unbound it). Persisted to
+  // localStorage so rebinds survive a reload. Fixed inputs that aren't
+  // rebindable (mouse buttons, scroll, Esc) stay hardcoded below, same
+  // as before.
   // ------------------------------------------------------------------
-  const keys = {
-    KeyW: false,
-    KeyA: false,
-    KeyS: false,
-    KeyD: false,
-    ShiftLeft: false,
-    ShiftRight: false,
-    ControlLeft: false,
-    ControlRight: false,
+  const KEYBIND_ACTIONS = [
+    { id: "moveForward", label: "Move Forward", default: "KeyW" },
+    { id: "moveLeft", label: "Move Left", default: "KeyA" },
+    { id: "moveBack", label: "Move Back", default: "KeyS" },
+    { id: "moveRight", label: "Move Right", default: "KeyD" },
+    { id: "sprint", label: "Sprint", default: "ShiftLeft" },
+    { id: "crouchSlide", label: "Crouch / Slide", default: "ControlLeft" },
+    { id: "jump", label: "Jump", default: "Space" },
+    { id: "reload", label: "Reload", default: "KeyR" },
+    { id: "weaponSlot1", label: "Switch to Weapon 1", default: "Digit1" },
+    { id: "weaponSlot2", label: "Switch to Weapon 2", default: "Digit2" },
+    { id: "melee", label: "Melee", default: "KeyV" },
+    { id: "dropItem", label: "Drop Item", default: "KeyG" },
+    { id: "interact", label: "Pick Up Item", default: "KeyF" },
+    { id: "toggleInventory", label: "Toggle Inventory", default: "KeyE" },
+  ];
+
+  const KEYBIND_STORAGE_KEY = "keybinds";
+
+  function defaultKeybinds() {
+    const binds = {};
+    for (const action of KEYBIND_ACTIONS) binds[action.id] = action.default;
+    return binds;
+  }
+
+  function loadKeybinds() {
+    const binds = defaultKeybinds();
+    try {
+      const saved = JSON.parse(localStorage.getItem(KEYBIND_STORAGE_KEY));
+      if (saved && typeof saved === "object") {
+        for (const action of KEYBIND_ACTIONS) {
+          const value = saved[action.id];
+          if (typeof value === "string" || value === null) {
+            binds[action.id] = value;
+          }
+        }
+      }
+    } catch (e) {
+      // Corrupt/blocked storage -- fall back to defaults silently.
+    }
+    return binds;
+  }
+
+  function saveKeybinds() {
+    try {
+      localStorage.setItem(KEYBIND_STORAGE_KEY, JSON.stringify(keybinds));
+    } catch (e) {
+      // Storage unavailable (private browsing, quota, etc.) -- binds just
+      // won't persist across reloads.
+    }
+  }
+
+  let keybinds = loadKeybinds();
+
+  // Human-readable label for a KeyboardEvent.code, used both in the
+  // controls panel and while a rebind is being captured.
+  function codeToLabel(code) {
+    if (!code) return "Unbound";
+    if (Object.prototype.hasOwnProperty.call(KEY_CODE_LABELS, code)) {
+      return KEY_CODE_LABELS[code];
+    }
+    if (code.startsWith("Key")) return code.slice(3);
+    if (code.startsWith("Digit")) return code.slice(5);
+    return code;
+  }
+
+  const KEY_CODE_LABELS = {
+    Space: "Space",
+    ShiftLeft: "Shift",
+    ShiftRight: "R Shift",
+    ControlLeft: "Ctrl",
+    ControlRight: "R Ctrl",
+    AltLeft: "Alt",
+    AltRight: "R Alt",
+    ArrowUp: "Up",
+    ArrowDown: "Down",
+    ArrowLeft: "Left",
+    ArrowRight: "Right",
+    Backquote: "`",
+    Tab: "Tab",
+    CapsLock: "Caps Lock",
   };
 
+  // ------------------------------------------------------------------
+  // WASD MOVEMENT
+  // ------------------------------------------------------------------
+  const heldKeys = new Set();
+
+  function isActionHeld(actionId) {
+    const code = keybinds[actionId];
+    return !!code && heldKeys.has(code);
+  }
+
   document.addEventListener("keydown", function (event) {
-    if (Object.prototype.hasOwnProperty.call(keys, event.code)) {
-      keys[event.code] = true;
+    if (isRebindListening) {
+      handleRebindKeydown(event);
+      return;
     }
+
+    heldKeys.add(event.code);
 
     if (event.code === "Space") {
       event.preventDefault(); // stop spacebar from scrolling the page
@@ -3186,7 +3839,7 @@
     // Jump: only trigger on the initial keydown (not held-repeat) and only
     // while playing and grounded.
     if (
-      event.code === "Space" &&
+      event.code === keybinds.jump &&
       !event.repeat &&
       document.pointerLockElement === canvas &&
       !isDead &&
@@ -3201,13 +3854,14 @@
       }
     }
 
-    // Slide: tap Ctrl (only trigger on the initial keydown, not held-repeat)
-    // to start one. Tapping it again cancels an active slide early -- since
-    // this only fires on a genuine fresh keydown (event.repeat is false),
-    // the key has to have been released and pressed again to reach this
-    // branch, so holding Ctrl down through the whole slide never cancels it.
+    // Slide: tap the crouch bind (only trigger on the initial keydown, not
+    // held-repeat) to start one. Tapping it again cancels an active slide
+    // early -- since this only fires on a genuine fresh keydown
+    // (event.repeat is false), the key has to have been released and
+    // pressed again to reach this branch, so holding it down through the
+    // whole slide never cancels it.
     if (
-      (event.code === "ControlLeft" || event.code === "ControlRight") &&
+      event.code === keybinds.crouchSlide &&
       !event.repeat &&
       document.pointerLockElement === canvas &&
       !isDead
@@ -3221,7 +3875,7 @@
 
     // Reload: only trigger on the initial keydown (not held-repeat).
     if (
-      event.code === "KeyR" &&
+      event.code === keybinds.reload &&
       !event.repeat &&
       document.pointerLockElement === canvas &&
       !isDead
@@ -3232,17 +3886,17 @@
     // Weapon switching: number keys select a slot directly, regardless of
     // which slot (if any) is currently active.
     if (
-      (event.code === "Digit1" || event.code === "Digit2") &&
+      (event.code === keybinds.weaponSlot1 || event.code === keybinds.weaponSlot2) &&
       !event.repeat &&
       document.pointerLockElement === canvas &&
       !isDead
     ) {
-      switchToSlot(event.code === "Digit1" ? 0 : 1);
+      switchToSlot(event.code === keybinds.weaponSlot1 ? 0 : 1);
     }
 
     // Melee: only trigger on the initial keydown (not held-repeat).
     if (
-      event.code === "KeyV" &&
+      event.code === keybinds.melee &&
       !event.repeat &&
       document.pointerLockElement === canvas &&
       !isDead
@@ -3252,7 +3906,7 @@
 
     // Drop the active slot's item: only trigger on the initial keydown.
     if (
-      event.code === "KeyG" &&
+      event.code === keybinds.dropItem &&
       !event.repeat &&
       document.pointerLockElement === canvas &&
       !isDead
@@ -3262,20 +3916,174 @@
 
     // Interact/pick up: only trigger on the initial keydown.
     if (
-      event.code === "KeyF" &&
+      event.code === keybinds.interact &&
       !event.repeat &&
       document.pointerLockElement === canvas &&
       !isDead
     ) {
       tryPickUpNearbyItem();
     }
+
+    // Toggle the item inventory panel: only trigger on the initial
+    // keydown. Opening only makes sense while actively playing (pointer
+    // locked); closing has to be allowed even though pointer lock is, by
+    // then, already released (that's what having it open means) -- see
+    // toggleInventory for the re-lock-on-close half of this.
+    if (
+      event.code === keybinds.toggleInventory &&
+      !event.repeat &&
+      !isDead &&
+      (document.pointerLockElement === canvas || isInventoryOpen)
+    ) {
+      toggleInventory();
+    }
+
+    // Escape also closes the inventory if it's open -- but unlike the
+    // toggle bind, it doesn't try to silently re-lock and resume play
+    // afterward (see the long comment above suppressNextPauseOnUnlock
+    // for why that's no longer attempted at all). Instead this drops
+    // straight into the ordinary pause menu, whose Resume button is a
+    // real, fresh click and the one thing proven to reliably re-acquire
+    // pointer lock. Not gated behind the toggle bind -- Escape closes
+    // the inventory unconditionally, it's never rebound to something
+    // else.
+    if (event.code === "Escape" && isInventoryOpen) {
+      setInventoryOpen(false);
+      showOverlayView("pause");
+      overlay.classList.remove("hidden");
+    }
   });
 
   document.addEventListener("keyup", function (event) {
-    if (Object.prototype.hasOwnProperty.call(keys, event.code)) {
-      keys[event.code] = false;
-    }
+    heldKeys.delete(event.code);
   });
+
+  // ------------------------------------------------------------------
+  // REBINDING UI: clicking a bound key in the controls panel listens for
+  // the next keydown and rebinds that action to it. If the newly pressed
+  // key was already bound to a different action, that other action is
+  // unbound (set to null) rather than left double-bound.
+  // ------------------------------------------------------------------
+  let isRebindListening = false;
+  let listeningActionId = null;
+  let listeningButtonEl = null;
+
+  const controlsListEl = document.getElementById("controls-list");
+
+  // Fixed (non-rebindable) rows shown alongside the rebindable ones, in
+  // the same relative order as the old static list.
+  const FIXED_CONTROL_ROWS = [
+    { after: "jump", label: "Look", key: "Mouse" },
+    { after: "jump", label: "Fire", key: "LMB" },
+    { after: "jump", label: "Aim", key: "RMB" },
+    { after: "weaponSlot2", label: "Switch weapon", key: "Scroll" },
+    { after: "interact", label: "Pause", key: "Esc" },
+  ];
+
+  function renderControlsList() {
+    controlsListEl.innerHTML = "";
+
+    // Action name (left column) then key (right column) -- each <li> is
+    // display: contents (see #controls-list li), so these two children
+    // land directly in the grid as the row's two cells.
+    function appendRow(labelText, keyEl) {
+      const li = document.createElement("li");
+      const labelEl = document.createElement("span");
+      labelEl.className = "controls-row-label";
+      labelEl.textContent = labelText;
+      li.appendChild(labelEl);
+      li.appendChild(keyEl);
+      controlsListEl.appendChild(li);
+    }
+
+    function appendFixedRow(row) {
+      const kbd = document.createElement("kbd");
+      kbd.textContent = row.key;
+      appendRow(row.label, kbd);
+    }
+
+    for (const action of KEYBIND_ACTIONS) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "rebind-key";
+      button.dataset.action = action.id;
+      const bound = keybinds[action.id];
+      button.textContent = bound ? codeToLabel(bound) : "Unbound";
+      button.classList.toggle("unbound", !bound);
+      button.addEventListener("click", function (event) {
+        event.stopPropagation();
+        beginListeningForRebind(action.id, button);
+      });
+      appendRow(action.label, button);
+
+      for (const row of FIXED_CONTROL_ROWS) {
+        if (row.after === action.id) appendFixedRow(row);
+      }
+    }
+  }
+
+  function stopListeningForRebind() {
+    if (listeningButtonEl) {
+      listeningButtonEl.classList.remove("listening");
+    }
+    isRebindListening = false;
+    listeningActionId = null;
+    listeningButtonEl = null;
+  }
+
+  function beginListeningForRebind(actionId, buttonEl) {
+    // Switching targets while already listening: restore the previous
+    // button's own label in place, without rebuilding the whole list --
+    // a full renderControlsList() here would replace buttonEl itself
+    // (the one just clicked) with a new detached DOM node.
+    if (isRebindListening && listeningButtonEl && listeningButtonEl !== buttonEl) {
+      const previousBound = keybinds[listeningActionId];
+      listeningButtonEl.classList.remove("listening");
+      listeningButtonEl.classList.toggle("unbound", !previousBound);
+      listeningButtonEl.textContent = previousBound ? codeToLabel(previousBound) : "Unbound";
+    }
+    isRebindListening = true;
+    listeningActionId = actionId;
+    listeningButtonEl = buttonEl;
+    buttonEl.classList.add("listening");
+    buttonEl.textContent = "Press any key…";
+  }
+
+  function handleRebindKeydown(event) {
+    event.preventDefault();
+
+    if (event.code === "Escape") {
+      stopListeningForRebind();
+      renderControlsList();
+      return;
+    }
+
+    const newCode = event.code;
+    const actionId = listeningActionId;
+
+    // If another action already uses this key, unbind it -- a key can
+    // only ever drive one action at a time.
+    for (const action of KEYBIND_ACTIONS) {
+      if (action.id !== actionId && keybinds[action.id] === newCode) {
+        keybinds[action.id] = null;
+      }
+    }
+
+    keybinds[actionId] = newCode;
+    saveKeybinds();
+    stopListeningForRebind();
+    renderControlsList();
+  }
+
+  document.getElementById("controls-reset-button").addEventListener("click", function (event) {
+    event.stopPropagation();
+    stopListeningForRebind();
+    keybinds = defaultKeybinds();
+    saveKeybinds();
+    renderControlsList();
+  });
+
+  renderControlsList();
 
   // Scroll wheel cycles the active slot -- scroll up (negative deltaY)
   // moves to the previous slot, scroll down (positive deltaY) to the next.
@@ -3730,14 +4538,14 @@
     // Wish direction = the direction input alone wants to move, normalized
     // so diagonal input isn't faster than straight input.
     wishDirection.set(0, 0, 0);
-    if (keys.KeyW) wishDirection.add(forwardVector);
-    if (keys.KeyS) wishDirection.sub(forwardVector);
-    if (keys.KeyD) wishDirection.add(rightVector);
-    if (keys.KeyA) wishDirection.sub(rightVector);
+    if (isActionHeld("moveForward")) wishDirection.add(forwardVector);
+    if (isActionHeld("moveBack")) wishDirection.sub(forwardVector);
+    if (isActionHeld("moveRight")) wishDirection.add(rightVector);
+    if (isActionHeld("moveLeft")) wishDirection.sub(rightVector);
     if (wishDirection.lengthSq() > 0) wishDirection.normalize();
 
-    const isCrouching = keys.ControlLeft || keys.ControlRight;
-    const isSprintKeyHeld = keys.ShiftLeft || keys.ShiftRight;
+    const isCrouching = isActionHeld("crouchSlide");
+    const isSprintKeyHeld = isActionHeld("sprint");
     // Sprinting is disabled while crouching (and while sliding, below).
     // Assigns the shared isSprinting (declared above with the other aim
     // state) rather than declaring a local -- updateAim reads it to cancel ADS.
@@ -3856,8 +4664,12 @@
   // version had, just run once per entry in `enemies`.
   function updateEnemies(deltaSeconds) {
     if (isDead) return;
-    // Only chase while the player is actually playing.
-    if (document.pointerLockElement !== canvas) return;
+    // Not gated on pointer lock here -- animate() already only calls this
+    // when !isWorldPaused, which deliberately stays false (i.e. enemies
+    // keep chasing) while the inventory panel is open, even though that
+    // releases pointer lock for the visible cursor. A raw pointer-lock
+    // check here would re-freeze enemies during that time regardless of
+    // isWorldPaused, which is exactly the bug this replaced.
 
     for (const enemyState of enemies) {
       const mesh = enemyState.mesh;
@@ -4133,18 +4945,23 @@
 
     const deltaSeconds = Math.min(clock.getDelta(), 0.1); // clamp large gaps (e.g. tab switch)
 
-    // Paused whenever pointer lock isn't held for a reason other than
-    // death -- i.e. the pause menu is up (Esc, alt-tab) or the player
-    // hasn't clicked "Click to play" yet. Freezes everything below (wave
-    // timers/enemy movement/reload/aim/recoil/melee/bob/hit marker/
-    // particles/ammo pickups) rather than just player movement, which
-    // updateMovement already no-ops on its own via the same check.
-    const isPaused = document.pointerLockElement !== canvas && !isDead;
+    // The player is "frozen" (no movement/look/reload/aim/recoil/melee/
+    // bob) whenever pointer lock isn't held for a reason other than
+    // death -- i.e. the pause menu is up (Esc, alt-tab), the player
+    // hasn't clicked "Click to play" yet, or the inventory panel is open
+    // (which releases pointer lock on purpose -- see setInventoryOpen).
+    // updateMovement/onMouseMove already no-op on their own via the same
+    // pointer-lock check, this just skips calling the rest of these too.
+    const isPlayerFrozen = document.pointerLockElement !== canvas && !isDead;
 
-    if (!isPaused) {
+    // The world itself only pauses on a genuine pause (not death, and
+    // not just the inventory being open) -- enemies/wave timer/ammo
+    // pickups/dropped items keep running while the player manages items,
+    // per design: they're still exposed to danger, not given a timeout.
+    const isWorldPaused = isPlayerFrozen && !isInventoryOpen;
+
+    if (!isPlayerFrozen) {
       updateMovement(deltaSeconds);
-      updateEnemies(deltaSeconds);
-      updateWaveManager(deltaSeconds);
       updateReload(deltaSeconds);
       updateAim(deltaSeconds);
       updateRecoil(deltaSeconds);
@@ -4153,6 +4970,11 @@
       updateGunBob(deltaSeconds);
       applyGunTransform();
       updateHitMarker(deltaSeconds);
+    }
+
+    if (!isWorldPaused) {
+      updateEnemies(deltaSeconds);
+      updateWaveManager(deltaSeconds);
       updateParticleBursts(deltaSeconds);
       updateAmmoPickups(deltaSeconds);
       updateDroppedItems(deltaSeconds);
