@@ -76,10 +76,22 @@ transitions, and knockback all blend naturally.
   accumulate — see §7.
 - **Aim down sights also reduces gun bob by 80%** (to 20% of its normal hip-fire amplitude),
   eased in/out over the same transition the ADS pose/FOV already use — see §3.
-- **Mouse look:** sensitivity `0.0022` rad/pixel, pitch clamped to just under straight up/down.
-  Camera rotation is computed once per frame (`applyCameraRotation`), combining the player's
-  own aim with the current recoil offset (see §3) — mouse movement itself only updates the
-  underlying yaw/pitch, never writes to the camera directly.
+- **Mouse look:** base sensitivity `0.0022` rad/pixel (`MOUSE_SENSITIVITY_BASE`), pitch clamped to
+  just under straight up/down. Camera rotation is computed once per frame
+  (`applyCameraRotation`), combining the player's own aim with the current recoil offset (see §3)
+  — mouse movement itself only updates the underlying yaw/pitch, never writes to the camera
+  directly.
+- **Look sensitivity sliders (Controls screen):** one for mouse look, one for the joystick, each
+  0–100%, **default 50%** (= 1× the base values above — `MOUSE_SENSITIVITY_BASE`/
+  `GAMEPAD_LOOK_SENSITIVITY_BASE`, the joystick's own base being `3.0` rad/sec at full
+  deflection), shown at the top of their respective Controls tab. They're independent, not
+  locked together — a keyboard+mouse P1 and a controller P2 in the same co-op match can run
+  different values; only one controller slider exists for now, so two controller players in one
+  match would currently share it. The controller slider's thumb is styled as a plain circle
+  (matching the rebind-chip look) rather than the browser's default; while it's the
+  stick-selected row on that tab, holding the stick left/right adjusts it *continuously* (rate
+  proportional to how far past the deadzone it's pushed, `SLIDER_STICK_RATE_PERCENT_PER_SECOND =
+  30`/sec at full deflection) rather than needing a push/release per nudge.
 - **Map size reference:** the floor plan is scaled so that running its longer bounding-box
   dimension at a fixed reference speed takes ~12.75s ("if there were no walls").
 
@@ -110,17 +122,39 @@ slot isn't a weapon at all — it just means the player holds fists (see §5).
 | Magazine | 8+1 (9 max loaded) | 17+1 (18 max loaded) |
 | Reload draws | 7 rounds from reserve | 17 rounds from reserve |
 | Starting reserve | 35 (5 clips) | 51 (3 magazines — guessed, unspecified) |
-| Reload duration | 2.4s (same for both) | 2.4s |
+| Reload duration | 2.25s (same for both — tuned down from 2.4s) | 2.25s |
 | View-model kick (visual) | pitch 0.09, kickback 0.05, recovers at rate 12 | pitch 0.06, kickback 0.035, recovers at rate 15 |
 | Camera recoil (affects aim) | +0.028 rad pitch/shot, ±0.014 rad random yaw, recovers at rate 7 | +0.018 rad pitch/shot, ±0.009 rad random yaw, recovers at rate 9 |
 | Shot sound | own recorded clip | own recorded clip |
 | Reload sound | shared clip (same recording used by both guns) | shared clip |
 
 The pistol's reload is a partial-clip design on purpose: reloading with a round still chambered
-tops out at 8/9, not a full 9, since the clip itself only ever holds 7.
+tops out at 8/9, not a full 9, since the clip itself only ever holds 7 — but see **Ammo Mode**
+below, which changes this entirely under "Easy."
 
 Both start equipped: slot 1 = pistol, slot 2 = Glock (there's no pickup/unlock gate on the
 Glock — see §9).
+
+### Ammo Mode setting (Realistic / Easy)
+
+A Settings → Game Settings toggle (`ammoMode`, persisted, **defaults to Easy**) that changes how
+reloading itself works, independent of the per-weapon stats above:
+
+- **Realistic** (the original, always-existing behavior described above and in the roster table):
+  a reload is a full magazine swap. It draws `magazineCapacity` rounds from reserve (or whatever's
+  left, if less) and adds a chambered round on top if one was already loaded going in — so the
+  pistol's partial-clip quirk (topping out at 8/9, never a full 9 via reloading) only applies
+  under this mode. Any rounds left in the old magazine are discarded, not banked back.
+- **Easy** (early-Call-of-Duty style, and the default): no chambered-round mechanic at all. A
+  reload just tops the magazine up to its own capacity, drawing only the exact difference between
+  capacity and whatever's currently loaded — nothing is ever wasted, and the practical "full"
+  loadout is `magazineCapacity` (not `maxLoadedAmmo`, which only ever matters under Realistic).
+  Starting/fresh-spawn ammo (`createWeaponSlotState`) also respects whichever mode is active, via
+  a shared `getMaxLoadedAmmo(gunStats)` helper both reload and spawn read.
+
+**Aiming down sights is blocked while the active slot is mid-reload** (recomputed every frame in
+`updateAim`, same as the sprint/no-gun checks already there — holding aim through a reload's end
+resumes ADS automatically the instant it finishes, no extra state needed).
 
 ### Firing
 
@@ -279,6 +313,11 @@ formula is capped at 100 regardless of difficulty, same as Normal.
 ---
 
 ## 5. Items / Inventory
+
+**The non-weapon item inventory panel below is temporarily disabled** (`INVENTORY_SYSTEM_ENABLED =
+false` gates its one open path, `toggleInventory()`) as of 2026-09-19, until further notice --
+pressing its keybind/D-pad-up no longer opens it. Weapon slots are unaffected and still work
+normally; only the section below the "Weapon slots" one describes something currently switched off.
 
 There are now **two separate inventory systems** — weapon slots (unchanged in shape from before)
 and a newer non-weapon item inventory. They're independent: opening the item inventory does not
@@ -500,12 +539,15 @@ Gates three things, all at the moment an enemy dies:
 
 - **Title screen** (`#title-screen`, shown first, above everything else): full-screen background
   is the same enemy face image the 3D face texture uses (stretched via `object-fit: cover`,
-  blurred + darkened for legibility), heading "Escape From Kise.", three buttons: **Play**
-  (opens the mode-select screen below), **Settings** (see below), **Exit** (closes the native
-  window via Tauri's window-close API, exposed through the `window.__TAURI__` global — enabled
-  via `withGlobalTauri` in `tauri.conf.json` plus an explicit `core:window:allow-close`
-  capability, since neither is granted by Tauri's default permission set). Also shows the session
-  high score (see §4's Score system) below the heading.
+  blurred + darkened for legibility), heading **"PROTECT KISE"** (renamed from "Escape From
+  Kise.", now all-caps with no period, set in Impact — a bold condensed display face, web-safe/
+  pre-installed on Windows so there's no font file to bundle or network fetch to depend on —
+  instead of the plain sans-serif every other screen uses), three buttons: **Play** (opens the
+  mode-select screen below), **Settings** (see below), **Exit** (closes the native window via
+  Tauri's window-close API, exposed through the `window.__TAURI__` global — enabled via
+  `withGlobalTauri` in `tauri.conf.json` plus an explicit `core:window:allow-close` capability,
+  since neither is granted by Tauri's default permission set). Also shows the session high score
+  (see §4's Score system) below the heading.
 - **Mode-select screen** (reached via Play): **Singleplayer** (the only wired-up option, proceeds
   to the difficulty screen below), **Co-op** and **Custom** shown as disabled placeholders for
   modes that don't exist yet. A corner **Back** button returns to the title screen's main panel.
@@ -526,12 +568,65 @@ Gates three things, all at the moment an enemy dies:
   (not to title/pause) when backed out of.
   - **Controls:** the key-binding list, now **rebindable** (click a bound key, then press any
     key to reassign it — see §2), plus a **Reset to Defaults** button. Backdrop: "haugensface".
+    Has separate Keyboard + Mouse / Controller tabs — see the Controller navigation entry below
+    for how rebinding a gamepad chip and navigating the whole screen with a controller work.
   - **Audio:** a single Master Volume slider (0–100%, see §7). Backdrop: "austinsface".
-  - **Game Settings:** the Gore toggle (see §7), an on/off slider-style switch, off by default.
-    Backdrop: "chasesface".
+  - **Game Settings:** **Ammo** (Realistic/Easy — see §3), the Gore toggle (see §7, an on/off
+    slider-style switch, off by default), and a Fullscreen toggle (same switch style, reflects/
+    drives the native Tauri window's actual fullscreen state on load and on toggle, falling back
+    to the browser Fullscreen API if opened outside Tauri). Backdrop: "chasesface".
   - The Settings hub screen itself uses "falconsface" as its backdrop. (All four backdrops reuse
     existing enemy face texture data — see §4 — purely as a decorative/self-contained asset
     choice, unrelated to which face an enemy actually spawns with.)
+- **Controller navigation (menus):** a connected controller can now drive almost every menu
+  screen, not just gameplay — built up over several passes this session, **not yet re-verified
+  as a whole by the user after the latest fixes** (see §10's 2026-09-20 entry for the exact bugs
+  found/fixed along the way). Two systems cover it:
+  - **`pollGenericMenuNav`** — a generic up/down-highlight-and-activate system covering every
+    static menu screen that doesn't have its own bespoke flow: the title screen's main panel and
+    mode-select, Settings/Audio/Game Settings, the pause menu, and the death screen. Left stick
+    up/down moves a gold-outlined highlight (`.menu-nav-selected`) through that screen's options,
+    **wrapping around** end-to-end (so a screen whose Back button is drawn at the top but listed
+    last in nav order is still reachable by pressing up from the default selection, not just down
+    past everything else); it plays the same click sound a mouse would when the selection actually
+    moves. Square (`CONTROLS_NAV_REBIND_BUTTON_INDEX`, reused here as the general "confirm/
+    activate" button) does a real `.click()` on whatever's highlighted, so it reuses each button's
+    existing logic/sound exactly rather than duplicating it — this is also how "Exit" on the title
+    screen's main panel actually closes the app via a controller (Tauri's window-close call
+    doesn't care whether the click that triggered it was a real mouse click or a synthetic one).
+    Left/right instead continuously adjusts the current stop if it's a slider (Audio's Master
+    Volume) — see §2's sensitivity-slider entry for the same continuous-hold mechanic.
+  - **Bespoke per-screen flows** (unchanged in kind from the existing setup-screen/Controls-chart
+    navigation, extended this pass): the singleplayer difficulty screen now auto-switches its
+    scheme to Controller the instant *any* controller input is detected (previously required a
+    manual click), same as the Controls screen auto-switching from its Keyboard + Mouse tab to
+    its Controller tab on any stick movement. Co-op's own setup screen gained left-stick
+    difficulty stepping (shares `stepDifficulty`/`currentDifficulty` with singleplayer's own
+    setup screen — there's still only one difficulty setting, not a separate co-op one), which
+    also now plays the same "moved onto" click sound a mouse selection does. On the Controls
+    screen's own chart, Square also now rebinds the Back/Reset to Defaults buttons at the very
+    bottom of the list (previously mouse-only), and holding left/right on the Sensitivity row
+    continuously adjusts it instead of one discrete nudge per push (see §2).
+  - **X = Back everywhere except the title screen's own main panel** (`CONTROLLER_BACK_BUTTON_INDEX
+    = 0`, `pollControllerBackButton`): works on mode-select, both setup screens, the Controls
+    screen (either tab), Settings, Audio, Game Settings, and Pause (maps to Resume there, since
+    Pause has no literal "Back" — resuming closes the menu, which is the equivalent action).
+    Disabled entirely while either rebind flow is actively listening for a key/button, so X can
+    still be bound to something (or read as "X" in the chart) without being hijacked as a menu
+    key.
+  - **Cursor hiding is now generalized past the singleplayer setup screen it started on:** any
+    controller stick/button activity on a menu screen hides the real OS cursor
+    (`setCursorHidden`); any real mouse movement *or click* brings it back
+    (`isAnyMenuScreenVisible`'s two listeners) — this now also covers the co-op setup screen and
+    the Controls screen, which previously had no cursor-hiding at all.
+  - **A specific, now-fixed bug class worth remembering:** switching screens via a Square/X press
+    used to reset the "was this button currently held" edge-detection flag as part of entering
+    the new screen — so the *same still-held* press immediately re-triggered against the new
+    screen's first item (e.g. pressing Square to select Play on the title screen would land on
+    Mode Select and instantly "select" Singleplayer too, before the button was ever released).
+    Fixed by never resetting those flags on a screen change; they now only ever reflect whether
+    the physical button is currently down, checked continuously across every poll regardless of
+    what's on screen.
 - **HUD (during play):**
   - Top-center: current wave number, or a countdown to the next wave during the grace period.
   - Top-right: current score (see §4's Score system).
@@ -577,10 +672,13 @@ Being direct about the distance between "a collection of working mechanics" and 
 - **No health recovery of any kind.** No regen, no health pickups/kits — only ammo drops exist.
   Bandages exist in the item inventory (see §5) with a `healing` category tag but currently do
   nothing when held. Once damaged, the only way to reset health is a full death+restart.
-- **The non-weapon item inventory is inert.** Bandages/Rocks/Planks/Cloth can be carried, picked
-  up, and stacked, but nothing in the game currently consumes, crafts with, or otherwise uses any
-  of them — the system exists (slots, stacking, drop/pickup, its own toggleable panel) but has no
-  gameplay effect yet.
+- **The non-weapon item inventory is temporarily disabled entirely** (`INVENTORY_SYSTEM_ENABLED =
+  false` in `index.html`, set 2026-09-19 by explicit request — see §10) on top of already being
+  inert: even before being switched off, Bandages/Rocks/Planks/Cloth could be carried, picked up,
+  and stacked, but nothing in the game consumed, crafted with, or otherwise used any of them — the
+  system exists (slots, stacking, drop/pickup, its own toggleable panel) but has no gameplay effect
+  and currently can't even be opened. It's also still only ever a single shared, P1-only panel in
+  co-op — P2 has no way to use it even once re-enabled.
 - **Single enemy archetype.** "Fast enemy" is a speed/color/attack-behavior variant of the same
   mesh and AI, not a distinct enemy type — no ranged enemies, no special attacks beyond the one
   explosion behavior, no boss waves.
@@ -595,9 +693,11 @@ Being direct about the distance between "a collection of working mechanics" and 
   ear), the particle-burst/blood-decal pool caps (40 and 20 — generous estimates, not stress-
   tested at a genuinely high wave count), the gore-audio reference/max distances (4 and 25 units),
   and the Glock's starting reserve ammo (51, never specified up front).
-- **No weapon draw/holster sound.** The code path exists (`playWeaponSound(def, "draw")`, wired
-  to weapon-switch and pickup-into-active-slot) but neither the pistol nor the Glock has a `draw`
-  clip assigned, so switching weapons is silent.
+- **No weapon draw/holster sound.** Switching weapons (`switchToSlot`) is deliberately silent as
+  of 2026-09-19 (explicit request — see §10), not just missing a clip. Picking a weapon up into
+  the active slot (`tryPickUpNearbyItem`) still calls `playWeaponSound(def, "draw")`, but neither
+  the pistol nor the Glock has a `draw` clip assigned, so that path is silent too, just not on
+  purpose.
 - **No melee-impact sound.** Gunfire, reload, footsteps, pickups, menu actions, sliding, and
   enemy deaths all have audio; a melee hit landing does not.
 - **Glock has no acquisition gate.** It starts equipped in slot 2 from the very beginning — there's
@@ -626,7 +726,662 @@ Being direct about the distance between "a collection of working mechanics" and 
 > needs to be "finished" or kept in sync with the code the way sections 1–9 are. Add dated
 > entries below as you go.
 
-*(nothing recorded yet)*
+### 2026-09-19 — Split-screen co-op + audio system rework (in progress)
+
+None of §1–9 reflect this work yet except where a progress note below says otherwise — this
+section is the running source of truth for it until it's done, at which point it moves into the
+numbered sections and gets a real changelog entry.
+
+**Progress:**
+- **Part 1 Step 1 (input abstraction) — done, user-verified in a real playtest.**
+  `createKeyboardMouseInputSource`/`createGamepadInputSource` (~line 4610 area) replace the old
+  bare `heldKeys`/`isActionHeld` globals and every raw keydown/mousedown-driven gameplay action
+  (jump, slide-tap, reload, weapon-switch, melee, drop, interact, toggle-inventory, fire, aim).
+  Only the keyboard+mouse instance (`inputSources[0]`) actually drives the (still singular)
+  player; the gamepad implementation is structurally complete against the Standard Gamepad
+  Mapping but wasn't exercised by real hardware in that pass. A full-file sweep found zero
+  remaining references to the old singleton input state outside the new abstraction.
+- **Part 1 Step 2 (co-op setup screen) — built, revised once per feedback, still not yet
+  user-verified.** New `#title-coop-setup` screen, reached directly from the mode-select screen's
+  Co-op option (bypassing `title-setup` entirely -- singleplayer's own difficulty screen is
+  untouched and unchanged). Co-op's difficulty selection instead lives on this same combined
+  screen, below the player-setup row (`#coop-difficulty-options`, sharing `.difficulty-option`/
+  `currentDifficulty`/`updateDifficultyOptionButtons` with `title-setup`'s copy -- mouse-only,
+  same as it always was, no keyboard/gamepad path was ever built for it). A vertical divider
+  splits Player 1 (left) from Player 2 (right) -- fixed, not user-configurable. Background is
+  `landersface` via a per-panel bg-image/tint pair, same pattern the pause-overlay panels use.
+  Player 1 defaults to keyboard+mouse with a Controller switch; Player 2 is always controller (the
+  only two valid configs per spec are one-KB+M-plus-one-controller or both-controller, so P2 never
+  gets a scheme choice of its own). Both sides show a fixed-size (`.coop-setup-box`, width AND
+  min-height locked) icon swapped between the two user-supplied PNGs (keyboard+mouse /
+  controller, embedded as base64 same as every other image asset) via `<img>.src`, never
+  hidden/shown, so switching P1's scheme never resizes the box. Ready-up (Enter for P1 on KB+M,
+  X/button-index-2 on Standard Mapping for controller, toggleable), both-ready triggers a
+  5-second countdown, either un-readying or a mid-setup gamepad disconnect cancels it. This is the
+  *first* real exercise of the Gamepad API in this project (raw polling for connection-detection +
+  the ready button) — genuinely untested against physical hardware so far. Deliberately does NOT
+  create real `createGamepadInputSource()` instances for the players it detects here; it only
+  remembers which raw gamepad index belongs to which player. Countdown completion currently just
+  logs to console and resets both players to
+  unready (`beginCoopMatch`'s stub) rather than starting a real match — that hookup is Step 3/4's
+  job, once real dual-player gameplay state exists to attach it to.
+- **Part 1 Step 3 (singleton audit, first slice: movement + look + health) — built, not yet
+  user-verified.** `createPlayer(cam, input)` (see SCENE / RENDERER / CAMERA SETUP) is the real
+  per-player object the whole step threads through: camera, its own InputSource, velocity/
+  verticalVelocity/isGrounded/jumpOffset/currentEyeHeight/isSliding/slideElapsed/slideCooldown/
+  isSprinting, footstep cadence (footstepDistanceSinceLastStep/steppingFoot), yaw/pitch/camera
+  recoil offsets, health/isDead, and a frozen-state tracker for the slide-loop mute fix. `players[0]`
+  reuses the *same* camera object every other still-singular system (enemies, footsteps'
+  isInsideBuilding check, sunLight, raycasting, HUD) already reads directly, so none of those needed
+  touching this pass. `players[1]` is a genuinely new second camera + player, fully real and
+  independently mutable, but nothing drives it through the per-frame update functions yet — there's
+  no real entry point into dual gameplay until a later step actually starts a co-op match, so it
+  exists and is structurally verified (see below) rather than live-exercised.
+  `updateMovement`/`updateFootsteps`/`playFootstepSound`/`endSlide`/`tryStartSlide`/
+  `applyCameraRotation`/`takeDamage`/`triggerDeath`/`updateHealthUI` are now genuinely
+  player-parameterized (callable for either player); `onMouseMove` stays hardcoded to `players[0]`
+  on purpose (mouse-look was deliberately not unified through the InputSource abstraction in Step 1
+  either — same reasoning, see its own comment). Necessary cross-references this pulled in outside
+  the "movement/look/health" boundary itself: `updateEnemies`' isSliding-cancels-slide check and its
+  two `takeDamage` call sites, the slide-loop mute/resume block in `animate()`, `updateAim`'s
+  isSprinting read, and `updateGunBob`/`applyRecoil`/`updateRecoil`'s reads of velocity/isGrounded/
+  camera-recoil-offsets — all hardcoded to `players[0]` since the functions that *own* them
+  (weapon/melee/gun-bob) aren't parameterized yet. Weapon/inventory/melee/gun-bob/aim-progress/
+  reload-tilt/item-inventory and their HUD (ammo counts, per-player HUD DOM generally) are
+  deliberately **not** part of this slice — still bare globals, implicitly "player 1's" — that's the
+  next slice of this same audit. Full-file sweep of all 17 migrated field names plus a check for
+  leftover bare declarations found and fixed every stray reference (including two the first sweep
+  pass missed: the scroll-wheel weapon-cycle listener and `updateWaveManager`'s death-pause check,
+  both still reading bare `isDead`) before landing on zero remaining.
+- **Part 1 Step 3 (singleton audit, second slice: weapon/inventory/aim/melee/gun-bob) — built, not
+  yet user-verified.** Extends `createPlayer` with a full weapon rig: each player now gets their
+  own real set of view-model meshes (`buildPlayerGunRig`, called once per player, reusing the
+  existing `buildPistolViewModel`/`buildGlockViewModel`/`buildFistsViewModel`/`WEAPON_DEFS` — not
+  redefined) parented under their own `viewModelRoot`/camera, not a shared set — needed so
+  `getActiveMuzzleTip` and `applyGunTransform` have something valid to point at for player 2 too,
+  even though only player 1 is rendered. Also moved: weapon inventory (`inventorySlots`/
+  `activeSlotIndex`), aim/ADS (`isAiming`/`aimProgress`/`activeHipFirePosition` etc./
+  `gunAdsPosition` etc.), the gun-transform layering numbers (reload tilt, gun-side recoil, bob,
+  melee offset), melee state, hit-marker timer, and the non-weapon item inventory's own 8 slots.
+  `getActiveSlot`/`getActiveWeaponDef`/`getActiveMuzzleTip`/`setActiveViewModel`/`switchToSlot`/
+  `cycleActiveSlot`/`fireWeapon`/`applyHipFireSpread`/`tryReload`/`updateReload`/`updateAim`/
+  `applyRecoil`/`updateRecoil`/`performMelee`/`endMeleeSwing`/`updateMelee`/`updateGunBob`/
+  `updateAmmoUI`/`showHitMarker`/`updateHitMarker`/`addItemToInventory`/`resetItemInventory` are
+  all now player-parameterized; every call site (dispatch, `resetGame`, `animate()`, the ammo-pickup
+  and dropped-item-pickup paths) threads `players[0]` through. The item-inventory *panel's*
+  rendering/drag-drop functions (`renderInventoryPanel`/`beginSlotDrag`/its mouseup handler)
+  deliberately stay hardcoded to `players[0]` rather than taking a parameter — there's only one
+  panel DOM element, same "singular HUD until Step 4" reasoning as `updateHealthUI`/`updateAmmoUI`.
+  `isInventoryOpen`/`slotDragState` stay outside the player object entirely for the same reason.
+  Two ordering fixes this slice needed: `resetItemInventory`'s initial starting-kit grant used to
+  run at top-level script load, before `players` existed — moved to the final startup-calls cluster
+  near `animate()`, alongside `updateHealthUI(players[0])`/`setActiveViewModel(players[0])`, which
+  were already there for the identical reason. Full-file sweep of all 22 newly-migrated field/
+  function names (on top of the first slice's 17) plus a check for leftover bare declarations found
+  one more stray the mechanical pass introduced (`onPointerLockChange`'s `isAiming = false`) before
+  landing on zero remaining across all 39 fields total.
+- **Part 1 Step 4, Slice A (live two-player co-op loop, still single-camera) — built, not yet
+  user-verified.** `startCoopMatch()` replaces the old stub: assigns each player a real
+  `InputSource` (P1: `inputSources[0]` if keyboard+mouse, or their own persistent
+  `player1GamepadInputSource` bound to `coopSetup.p1GamepadIndex` if controller; P2: always their
+  own gamepad source, bound to `coopSetup.p2GamepadIndex`), resets both players plus the shared
+  world via two new helpers (`resetPlayerState(player)` and `resetSharedWorldState()`, split out of
+  the old singleplayer-only `resetGame()`, which now calls both), spawns them at a hardcoded
+  ±1-unit offset (arbitrary, not spec'd), and hands off from the title screen. If P1 needs pointer
+  lock, hand-off goes through the same gesture-gated "click to play" overlay singleplayer uses
+  (a countdown finishing isn't a real user gesture, so calling `requestPointerLock()` directly
+  would likely be silently refused by the browser) — otherwise gameplay starts immediately with no
+  overlay. `animate()` now branches on a new `isCoopMatchActive` flag: singleplayer's block is
+  completely unchanged (copy-pasted into an `else`, not rewritten in place, specifically so its
+  already-verified behavior can't regress), and a new `updateCoopMatchFrame()` drives *both*
+  players' full update chain each frame when true. Shared pause: a new `isMatchPaused` flag,
+  settable by either P1 losing pointer lock (generalized `onPointerLockChange`) or any connected
+  gamepad's Start button (button index 9, confirmed earlier) via a new per-frame poll — Start
+  toggles rather than only pausing, since a both-controller match has no mouse to click Resume
+  with. A new `playerNeedsPointerLock(player)` helper (`player.input === inputSources[0]`) lets
+  `updateMovement`/`tryStartSlide`/`processEdgeTriggeredActions` skip their pointer-lock gate
+  entirely for a controller-driven player instead of guessing how it should generalize — always
+  true for singleplayer's players[0], so their behavior is provably unchanged.
+  **Known gaps, explicitly not fixed in this slice:** enemies still only ever target/attack
+  players[0] (`camera`, hardcoded) — player 2 can fully fight back and damage enemies, but enemies
+  never chase or attack them; this is Step 5's "nearest player, re-evaluated on the repath/LOS
+  throttle" work, confirmed already. Dying mid-co-op shows the ordinary singleplayer death screen
+  regardless of whether a teammate is still alive — proper spectator-until-both-dead behavior is
+  also Step 5. The item inventory panel/toggle stays entirely player-1-only and DOM-singular (P2's
+  Y button can only ever affect it if P1 currently holds pointer lock, and a pure both-controller
+  match can never open it at all) — pre-existing Step 3 scope boundary, not revisited here. Mixed
+  P1-keyboard + P2-controller pause/resume has a rough edge: a controller's Start toggling
+  `isMatchPaused` off hides the pause overlay even if P1 hasn't actually re-acquired pointer lock
+  yet, so P1 can still appear stuck. Rendering is still single-camera (`players[0].camera` only) --
+  player 2 is fully live and playable, just not visible yet.
+- **Part 1 Step 4, Slice B1 (dual-viewport 3D rendering, no HUD yet) — built, not yet
+  user-verified.** Confirmed with the user: actual in-game split is top/bottom (P1 top, P2 bottom)
+  -- a separate decision from the co-op *setup screen's* left/right layout, which stays as-is; the
+  two don't need to match. `renderFrame()` (replacing the bare `renderer.render(scene, camera)`
+  call in `animate()`) renders both players' cameras into their own half via
+  `renderer.setViewport`/`setScissor` when `isCoopMatchActive`, singleplayer's single full-canvas
+  render otherwise. `updateCameraAspectsForRenderMode()` keeps each active camera's `aspect`
+  matching its actual render target (full window for singleplayer; full-width/half-height -- a
+  much wider aspect -- per player during co-op) without touching `fov` itself, called from
+  `startCoopMatch` (so the first frame is already correct), the resize handler (replacing its old
+  direct singleplayer-only aspect line), and `resetGame` (restoring players[0]'s aspect back to
+  full-window when a co-op match ends, since nothing else would otherwise undo the half-height
+  aspect it was left at).
+  **Explicitly not done, and known to look broken until the next slice:** the HUD (health, ammo,
+  hit-marker, crosshair) is still one single set of DOM elements positioned against the *whole*
+  viewport -- during co-op it does not move or duplicate, so e.g. the crosshair renders at 50%/50%
+  of the full window, which is now the seam between the two halves, not the center of either
+  player's actual view. Per-half HUD duplication (plus a repositioned shared wave/score HUD, plus
+  a visible divider line between the halves) is Slice B2, immediately next.
+- **Part 1 Step 4, Slice B2 (per-half HUD) — built, not yet user-verified.** Duplicated
+  crosshair/hit-marker/health/ammo as a second set of DOM elements (`*-p1`/`*-p2`), positioned via
+  `vh`/`calc()` scoped to each player's own half (P1: 0-50vh, P2: 50-100vh) so they stay correctly
+  placed across window resizes with no JS recalculation needed -- only the actual 3D viewport/
+  camera aspect needs that (Slice B1's `updateCameraAspectsForRenderMode`). A new `hudRefsFor(player)`
+  picks the right DOM ref set (singleplayer's original elements, or `hudRefsP1`/`hudRefsP2`) for
+  `updateHealthUI`/`updateAmmoUI`/`showHitMarker`/`updateHitMarker` to write to; all four now go
+  through it instead of the bare singular consts. A `body.coop-mode` class (toggled in
+  `startCoopMatch`/`resetGame`) switches which set is visible via CSS -- the singleplayer elements
+  and the co-op ones are never shown together. Added a visible divider line between the halves.
+  Wave/score stay singular (shared match state, not per-player) but recenter on the seam via a
+  `body.coop-mode` CSS override rather than being duplicated.
+  **Known gap, not fixed here:** `setInventoryOpen`'s crosshair-hide-while-browsing-items only
+  ever touches the singleplayer `#crosshair` element, not the co-op ones -- consistent with the
+  item inventory's existing not-co-op-aware boundary (see Slice A's own notes), not a new gap.
+- **Gamepad look/aim fix (unblocks real-controller testing) — built, not yet user-verified (I
+  cannot test real gamepad input myself).** `createGamepadInputSource()`'s `poll()` method existed
+  since Step 1 but was never actually called anywhere, which meant `wasActionJustPressed` never
+  fired for a gamepad player -- not just look, but fire/reload/melee/jump/weapon-switch/drop/
+  interact/toggleInventory were all silently broken for any real controller, only masked because
+  `isActionHeld` (used for movement) reads live gamepad state directly rather than through
+  `poll()`'s cache. Fixed by calling `player.input.poll()` once per player per frame in
+  `updateCoopMatchFrame`'s per-player loop (guarded by `typeof ... === "function"` so it's a no-op
+  for the KB+M source). Added right-stick look: `GAMEPAD_AXIS_LOOK_X/Y` (axes 2/3, Standard
+  Mapping), a `GAMEPAD_LOOK_SENSITIVITY` constant (3.0 rad/s at full deflection -- hardcoded
+  placeholder, no sensitivity setting exists yet, tune by feel), and a `pollLookDelta(deltaSeconds)`
+  method returning `{ dYaw, dPitch }` already in radians with the same sign convention as mouse
+  `movementX`/`movementY`, so the call site applies it identically:
+  `player.yaw -= dYaw; player.pitch -= dPitch;` (pitch clamped to `PITCH_LIMIT`, same as
+  `onMouseMove`). Applied in the same per-player loop, gated on the input source actually having a
+  `pollLookDelta` method (so it's a no-op for KB+M, whose look still comes from `onMouseMove`).
+- **Player body mesh (co-op only) — built, not yet user-verified.** Reuses `enemyGeometry`/
+  `enemyBodyMaterial` exactly (same box, same red material), with no face plane, per the request
+  that it look "the same as the enemy without a face." One `THREE.Mesh` per player, created once
+  alongside the `players` array and stored as `player.bodyMesh`. Own-camera invisibility uses
+  Three.js Layers rather than any per-frame visibility toggling: each body mesh lives only on its
+  own dedicated layer (`PLAYER_BODY_LAYER = [1, 2]`, deliberately not layer 0, so it's also
+  excluded from any raycast that doesn't explicitly opt in, e.g. hitscan/melee), and each camera
+  enables the *other* player's layer on top of its default layer 0. A new `updatePlayerBodyMeshes()`
+  (called from `animate()` right before `renderFrame()`, unconditionally every frame) keeps each
+  mesh's position/yaw following its player (feet-anchored at `ENEMY_SIZE.height / 2`, not
+  eye-anchored like the camera) and sets `visible = isCoopMatchActive && !player.isDead` --
+  self-gating, so no extra wiring was needed in `startCoopMatch`/`resetGame` to hide it outside a
+  match.
+- **Nearest-player enemy targeting — built, not yet user-verified.** Per the long-confirmed Step 5
+  spec (nearest player, re-evaluated on the existing repath throttle, not sticky aggro). Every
+  enemy now tracks its own `targetPlayer` (set on `spawnEnemy`'s state, starts `null`). A new
+  `pickNearestActivePlayer(x, z)` helper picks the closest non-dead player, collapsing to
+  "`players[0]` or null" outside co-op so singleplayer behavior is unchanged. Selection happens in
+  two places: (1) forced immediately if the current target is null or has died, so an enemy
+  doesn't spend up to a full `NAV_REPATH_INTERVAL` camped on a now-dead, unmoving player; (2)
+  otherwise reselected on the same throttled cadence as pathfinding (inside the existing
+  `repathTimer` block), not every frame. Every `camera.position`/`players[0]` reference inside
+  `updateEnemies` (line-of-sight check, path target, slide-cancel-on-contact, knockback,
+  `takeDamage` call sites) now goes through the per-enemy `targetPlayer` instead. Also loosened
+  `updateEnemies`'s own top-level gate from "return if `players[0]` is dead" to "return only if
+  *every* player is dead" while a co-op match is active -- otherwise enemies would freeze solid
+  the instant one of two players died, which would have made nearest-player targeting moot.
+  **Known gap, not fixed here:** the actual "both players dead -> end the run" transition and
+  proper spectator-mode UI are still Step 5's death/game-over work, not started.
+- **PlayStation-labeled default controller scheme — built, not yet user-verified.** Re-pointed
+  `GAMEPAD_BUTTON` per the user's explicit PS button-name request: Cross(0)=jump,
+  Circle(1)=crouch/slide, Square(2)=reload, Triangle(3)=`switchWeapon` (new action, cycles the
+  active weapon slot via the existing `cycleActiveSlot` helper -- previously KB+M-scroll-only),
+  D-pad up(12)=toggleInventory (moved off Triangle), L3(10)=sprint and Options(9)=pause were
+  already correct and untouched, L1/R1/L2/R2 (melee/interact/aim/fire) untouched per "shooting and
+  aiming are already right." `weaponSlot1`/`weaponSlot2` (direct-select) stay bound for KB+M
+  (Digit1/Digit2) but are no longer in `GAMEPAD_BUTTON` at all, so a controller now only cycles,
+  never jumps straight to slot 2 -- gamepad-only, no KB+M behavior changed. Standard Gamepad
+  Mapping button *indices* are hardware-layout-agnostic (an Xbox pad reports the same index 0-3
+  for its ABXY as a PlayStation pad does for Cross/Circle/Square/Triangle), so this is purely a
+  relabeling/reassignment, not new platform-detection logic.
+- **Ready-up button fix.** `COOP_READY_BUTTON_INDEX` was set to 2 (Square) but the prompt text
+  read "Press X to Ready Up" -- mismatched once the controller scheme got PS labels. Both now
+  agree: button 3 (Triangle), text updated to match, in both the static HTML and the
+  ready/cancel-toggle JS.
+- **Co-op death bug fix (user-reported: "resets the game and teleports you to the spawn point and
+  freezes if I go to menu then unpause").** Root cause found: `triggerDeath()` showed the
+  singleplayer-shaped death screen (Restart/Main Menu buttons) and called
+  `document.exitPointerLock()` the instant ANY co-op player died, even with their teammate still
+  alive and the round still running -- exactly the "Known gap, not fixed here" already flagged in
+  an earlier pass. In practice: P2 (controller) dies mid-round -> death screen pops up over the
+  still-live game and yanks P1's pointer lock -> P1, still trying to play, lands a stray click on
+  one of the death screen's buttons -> silent `resetGame()` fires underneath them, which reads
+  exactly as "teleported to spawn, movement locked, click-to-play out of nowhere." A subsequent
+  Escape+Resume on top of that already-broken state is what tipped into the harder full-app freeze
+  (the previously-documented WebView2 pointer-lock-reacquisition hang, see
+  `onPointerLockChange`'s own comment) -- fixing the root cause removes the broken state that led
+  there, rather than patching the freeze itself. Fix: `triggerDeath` now early-returns (still
+  marks that player `isDead`, just skips the death screen/unlock) unless every player is dead,
+  actually implementing the already-confirmed spec ("solo-dead player spectates until BOTH players
+  are dead, no revive"). `updateWaveManager` had the exact same hardcoded-to-`players[0]` freeze
+  bug already fixed in `updateEnemies` last pass -- given the same co-op-aware gate here too, so
+  the wave/spawn timer doesn't also halt the moment one of two players dies.
+- **Co-op spectator death screen + fullscreen-survivor mode — built, not yet user-verified.** The
+  earlier fix (triggerDeath early-returning silently on a solo death) turned out to be incomplete:
+  the user reported the dead player's teammate was still being bounced to "click to play"
+  sometimes. Rather than keep chasing that indirectly, built the actual requested UX, which
+  removes the ambiguous silent-early-return state entirely: a solo death now shows a small
+  death-screen-styled prompt ("YOU DIED" + a "△ Player N Full Screen" button) confined to just the
+  DEAD player's own half (`.coop-spectator-screen`, `coop-p1`/`coop-p2`-scoped like the rest of the
+  per-half HUD) -- their still-alive teammate's half keeps rendering and playing normally
+  underneath, untouched. Clicking that button (`enterCoopSpectatorFullscreen(survivorIndex)`) sets
+  a new `coopFullscreenSurvivorIndex` (null normally; the survivor's player index once set) that
+  `renderFrame`/`updateCameraAspectsForRenderMode` both check to switch from dual-viewport to a
+  plain single full-canvas render of just the survivor's camera (same code path singleplayer
+  already uses, just pointed at whichever camera), with matching CSS
+  (`body.coop-spectator-fullscreen[-p1|-p2]`) that hides the divider and the dead player's HUD and
+  stretches the survivor's own HUD to fill the whole viewport instead of their half. World
+  state/wave/enemies keep running exactly as before (already coop-aware from the last two passes).
+  When the survivor ALSO dies, `triggerDeath` now finds every player dead and falls through to the
+  same singleplayer-shaped `#death-screen` as always -- no special-casing needed there, it already
+  worked once the "everyone dead" condition was reachable. `resetGame()` clears
+  `coopFullscreenSurvivorIndex` and the new body classes/screens so a fresh run never inherits
+  stale fullscreen-spectator state.
+- **Ammo/item pickup bug fix (user-reported: "player2 cant pick up ammo drops").** Root cause:
+  `updateAmmoPickups` was hardcoded to bare `camera`/`players[0]` for both the proximity check and
+  which inventory got the ammo -- P2 physically could not collect a pickup no matter how close they
+  stood to it, and pointer-lock gating (`document.pointerLockElement === canvas`) meant even P1
+  couldn't if they were controller-driven. Fixed to check every live player in co-op (falling back
+  to just `players[0]` outside it, identical to the old behavior), first eligible player in range
+  gets it, pointer-lock gating now only applied via `playerNeedsPointerLock` (skipped for
+  controller players, same reasoning as elsewhere). Found and fixed the identical bug one function
+  over: `findNearbyDroppedItem()` (used by the interact/pickup key for dropped weapons/items, not
+  just ammo) took no player argument at all and also silently checked distance from bare `camera`
+  -- now takes the acting player and checks their own position, so P2 can pick up dropped
+  weapons/items too, not just ammo.
+- **Inventory-while-jumping freeze bug fix (user-reported).** `updateMovement` had a single
+  pointer-lock-gated early return covering the WHOLE function, including gravity -- opening the
+  inventory (which releases pointer lock on purpose) mid-jump froze the player floating in place,
+  gravity and all, until they closed it again. Split into a `hasControl` flag: horizontal
+  movement/wall collision/footsteps still require it (unchanged), but gravity/landing now run
+  unconditionally every frame, same as the world already staying "live" while the inventory's
+  open. `isCrouching` hoisted above the split since the (now-unconditional) landing-footstep sound
+  needs it too.
+- **Co-op round start "click to play" removed, + Triangle/Enter-confirmed spectator prompt
+  (user-reported the click-to-play was still appearing, plus explicit UX requests).**
+  `startCoopMatch` no longer shows the gesture-gated overlay before a keyboard+mouse P1 can play --
+  it now calls `canvas.requestPointerLock()` directly the moment the match starts, relying on the
+  still-live transient-activation window from whichever real gesture (Enter/click) last readied P1
+  up. A new `pointerlockerror` listener is the safety net if a browser ever refuses that: only then
+  does the old "click to play" panel appear, rather than always gating on it up front. Also made
+  the solo-death "Full Screen" prompt (last pass's button) actually reachable by more than a mouse:
+  a dead controller-driven player's own Triangle press now confirms it too (reuses the
+  `switchWeapon` action id -- safe, since `processEdgeTriggeredActions` already skips dead players
+  entirely, so there's no double-fire risk with the normal in-combat weapon-cycle use of the same
+  button), and a dead keyboard+mouse P1 confirms via Enter instead (a separate keydown listener,
+  since `switchWeapon` isn't bound to any KB+M key at all). The icon shown next to "Player N Full
+  Screen" -- and next to "Ready Up"/"Cancel" on the co-op setup screen itself, moved to the same
+  icon+verb format for consistency -- now matches whichever of those two a given prompt actually
+  needs: a real Enter-key icon image (new asset, `ENTER_KEY_ICON_DATA_URI`, embedded the same way
+  as the other two setup-screen icons) for anything keyboard+mouse-confirmed, a plain Unicode
+  triangle glyph (no image asset needed) for anything Triangle-confirmed. P1's own icon is picked
+  per-match from `coopSetup.p1Scheme` (set once in `startCoopMatch`, since it can't change mid-
+  match); P2's is always the triangle glyph, since P2 is never keyboard+mouse.
+- **Controller-triggered pause left P1's cursor invisible (user-reported).** `setMatchPaused(true)`
+  showed the pause overlay but never released pointer lock -- fine for an Escape-triggered pause
+  (losing pointer lock is what triggers that path in the first place), but a controller's Start
+  pausing the match left a keyboard+mouse P1's mouse still captured, so the pause menu was up but
+  unusable (no visible cursor to click Resume/Settings with). Fixed: `setMatchPaused(true)` now
+  releases pointer lock itself whenever P1 had it, regardless of what triggered the pause. This
+  exposed a second, previously-latent gap on the resume side: a controller toggling the pause back
+  OFF can't itself reacquire pointer lock for P1 (Gamepad API polling isn't a browser user
+  gesture), which would have hidden the overlay to a dead end with no click target left anywhere
+  to get back in. `setMatchPaused` now takes an options bag
+  (`{ reacquiringPointerLock: true }`, only ever passed by resumeButtonEl's own click handler,
+  which follows up with a real `requestPointerLock()` call) to tell the two cases apart -- resuming
+  any other way falls back to the gesture-gated "click to play" panel instead of hiding to nothing.
+- **Enter-key icon size + weapon-switch sound (user-reported/requested).** The new Enter icon
+  (ready-up prompts, P1's solo-death "Full Screen" prompt) was too small -- bumped
+  `.coop-setup-ready-icon` from 14px to 26px tall, and scaled the Triangle glyph up to match
+  (`1.4em`) so the two stay visually consistent. Also removed the "draw" sound `switchToSlot` used
+  to play on every weapon switch (scroll wheel, number keys, gamepad Triangle) -- switching is now
+  silent. Left `tryPickUpNearbyItem`'s own "draw" sound alone -- that one plays on actually
+  *picking up* a new weapon, a different action from switching to one already held.
+- **Root cause found and fixed for the "game randomly restarts to round 1 a round or so in"
+  bug (user-reported).** `startCoopMatch()` hid the outer `#title-screen` when a match began, but
+  never actually cleared `titlePanels["coop-setup"]`'s own "active" CSS class -- only
+  `showTitlePanel(view)` does that, and nothing called it on this transition. `animate()` gates
+  `pollCoopSetupGamepads`/`updateCoopCountdown` purely on that class still being "active", so both
+  kept running every single frame throughout live gameplay, for the rest of the session. Every
+  Triangle press during a real match (switching weapons -- see `GAMEPAD_BUTTON.switchWeapon`, the
+  exact same physical button as `COOP_READY_BUTTON_INDEX`) also got silently read by
+  `checkCoopReadyButton` as a "ready up" toggle, because `coopSetup.p1GamepadIndex`/
+  `p2GamepadIndex` were still set to the real, live gamepad indices from setup. Two players
+  happening to switch weapons within the same few seconds readied both of them back up, which
+  started a real (just invisible, since the setup screen itself was hidden) 5-second countdown --
+  and once it hit zero, `startCoopMatch()` ran again on top of the still-live match, wiping health/
+  inventory/position and the entire shared world (wave back to 1, enemies cleared, score reset).
+  Root fix: `startCoopMatch()` now calls `showTitlePanel(null)` to actually clear every title
+  panel's "active" state (including coop-setup's) the moment a match goes live, so both polling
+  functions stop running entirely instead of silently ticking away in the background. Also added
+  `if (isCoopMatchActive) return;` as a second line of defense at the top of `startCoopMatch()`
+  itself, directly per the user's own request ("lock the game from starting/restarting unless
+  coming from the co-op screen") -- it can no longer fire at all while a match is already live,
+  regardless of what triggers it.
+- **Inventory system temporarily disabled (explicit request).** A single flag,
+  `INVENTORY_SYSTEM_ENABLED = false`, gates `toggleInventory()` -- the one choke point every open
+  path (keybind, gamepad D-pad up) already routed through, so nothing else needed touching. The
+  panel simply won't open until this is flipped back on; `setInventoryOpen(false)` elsewhere
+  (`resetGame` etc.) is untouched, since staying closed is always safe regardless of the flag.
+- **Player body mesh color + jump-sync fix (user-reported).** Was reusing `enemyBodyMaterial`
+  (enemy red) -- now has its own black `playerBodyMaterial`, shared across both players' meshes, so
+  a player doesn't read as an enemy to their teammate at a glance. Also fixed
+  `updatePlayerBodyMeshes` never actually leaving the ground: its Y position was hardcoded to
+  `ENEMY_SIZE.height / 2` with no reference to `player.jumpOffset` at all, so the mesh stayed glued
+  to the floor while its own player jumped right through/above it. Now adds `player.jumpOffset` on
+  top of that base height every frame.
+- **Controller drop/pickup binds swapped (explicit request).** `dropItem` and `interact` traded
+  gamepad button indices (R1 <-> R3) in `GAMEPAD_BUTTON` -- everything else about them (edge-
+  detection, the functions they call) is unchanged, this only moved which physical button triggers
+  which action.
+- **Controller melee/drop binds swapped (explicit request).** `melee` and `dropItem` traded gamepad
+  button indices (L1 <-> R1) in `GAMEPAD_BUTTON` -- aim/fire on the actual L2/R2 triggers are
+  untouched (the request's "L2"/"R2" wording is read as the bumpers, since aim/fire were already
+  explicitly confirmed correct earlier and touching them wasn't asked for).
+- **Fist melee buffed over gun-bash melee (explicit request).** Previously both used the same
+  `MELEE_DAMAGE`(25)/`MELEE_RANGE`(2.2) regardless of whether a weapon was equipped. Split into two
+  pairs: gun-bash keeps those exact values (still driven by each weapon def's own `melee` stats, so
+  a future weapon could still tune its own bash separately), bare fists (empty active slot) now use
+  new `FIST_MELEE_DAMAGE` (55) / `FIST_MELEE_RANGE` (2.8) instead -- unarmed hits harder and reaches
+  further than swinging a gun.
+- **Interact/pickup moved to D-pad right (explicit request).** `interact` in `GAMEPAD_BUTTON` moved
+  from R3 (right stick click) to button 15 (D-pad right), freeing R3 up (currently unbound).
+- **Singleplayer controller support (explicit request) — built, not yet user-verified (I have no
+  controller to test with myself).** Previously singleplayer was unconditionally keyboard+mouse;
+  the difficulty-select screen now has its own scheme box (`#setup-scheme-box`), visually identical
+  to co-op's P1 box (same `.coop-setup-box`/`.coop-setup-scheme-icon` CSS, same Keyboard+Mouse /
+  Controller buttons) but without a ready-up mechanic -- there's no second player to wait on, so
+  "ready" (light green box, full-opacity icon) just means "this scheme's input is actually usable
+  right now": keyboard+mouse always is, controller only once a gamepad's sent input (reset back to
+  not-ready on every scheme switch, exactly like co-op's own detection). The Start button shows the
+  same Enter/Triangle icon+verb co-op's ready-up prompts use (`readyIconHTML`, reused directly) and
+  can be triggered by a click, Enter, OR (once a controller's detected) that gamepad's own Triangle
+  press. The left stick left/right steps `currentDifficulty` through the 3 tiers while this screen
+  is active, edge-triggered so holding it over doesn't rapid-fire through every option.
+  Gameplay-side wiring, since "turn on controller support" meant it needed to actually work, not
+  just show a UI: `startSingleplayerGame()` (replacing the old plain click handler) assigns
+  `players[0].input` to `player1GamepadInputSource` (the same persistent source co-op's P1-
+  controller case already uses -- singleplayer and co-op are never live at the same time, so
+  sharing it is safe) or back to `inputSources[0]`, per the chosen scheme. `updateMovement`/
+  `processEdgeTriggeredActions`/etc. already transparently support this with no changes at all --
+  they're the exact same player-parameterized functions co-op's controller-driven P2 already
+  exercises, gated by the existing `playerNeedsPointerLock` check. What genuinely needed adding to
+  animate()'s singleplayer branch: (1) `poll()`/`pollLookDelta()` calls for `players[0].input`,
+  previously only ever called from co-op's per-player loop; (2) `isPlayerFrozen` generalized from a
+  bare pointer-lock check to `(p1NeedsClick || isSingleplayerPaused) && !isDead`, since a
+  controller player has no pointer-lock concept to freeze on; (3) a new `isSingleplayerPaused`
+  flag + `pollSingleplayerPauseGamepad()` (Start button, mirroring co-op's own pause polling) since
+  losing pointer lock -- keyboard+mouse singleplayer's only pause trigger -- can never happen for a
+  controller player; (4) `resumeButtonEl`/`restartButtonEl` made scheme-aware so neither tries to
+  `requestPointerLock()` for a controller-driven run.
+- **Controller controls tab (explicit request) — built, not yet user-verified (no controller to
+  test with myself).** The Controls screen now has two browser-tab-style buttons at the top
+  ("Keyboard + Mouse", default-active, and "Controller"), each showing its own chart in the same
+  two-column grid/chip visual language. Gamepad bindings are genuinely rebindable now, not
+  hardcoded: `GAMEPAD_BUTTON` (a plain constant) became `GAMEPAD_BIND_ACTIONS` (id/label/default
+  entries) + `gamepadBinds` (the live, mutable, localStorage-persisted map `createGamepadInputSource`'s
+  `poll()`/`isActionHeld()` actually read -- same pattern as `keybinds` for KB+M). Also folded
+  Pause into this same rebindable map (`gamepadBinds.pause`, previously a separate hardcoded
+  `GAMEPAD_PAUSE_BUTTON_INDEX` constant) so the chart isn't missing an entire button, updating both
+  `pollCoopMatchPauseGamepads` and `pollSingleplayerPauseGamepad` to read it. Move/Look show as
+  fixed, non-rebindable rows ("Left Stick"/"Right Stick") -- same idea as the KB+M chart's own
+  "Look: Mouse" row -- since they're stick axes, not buttons. Rebinding a gamepad chip works exactly
+  like the KB+M flow (click it, "Press any button…", capture and save, auto-unbinding any other
+  action that already used that button) via a new `pollGamepadRebindCapture`, polled once per
+  animate() frame while the Controls overlay is open; the two listening flows are mutually
+  exclusive (starting one cancels the other). Per explicit spec, the controller itself can only
+  navigate this screen, not edit it yet: while the Controller tab is showing, connecting a gamepad
+  auto-highlights the top row's key chip with a blue hue (`controller-selected`), and the left
+  stick up/down (edge-triggered, one step per push) moves that highlight through the chart --
+  actually changing a bind, and leaving via Back, both still require the mouse, unchanged.
+- **Not started:** the rest of Part 1 Step 5 (shared win/loss condition), the per-player inventory
+  UI (moot for now while the system's disabled entirely -- see above), and all of Part 2 (audio
+  rework).
+
+#### Session handoff (2026-09-19, end of session) — development continuing in a new session
+
+Everything above this point in today's dated entry was built and, per each entry's own note,
+either user-verified after a launch or still awaiting the user's own test pass (I have no
+physical controller and cannot test any gamepad-driven behavior myself — every claim above of
+"not yet user-verified" is a real, open item, not a formality). Picking this project up in a fresh
+session should start by reading this whole 2026-09-19 dated entry (the split-screen co-op build
+end to end) plus the TODO list below, since none of that context carries over automatically.
+
+**TODO, roughly in priority order:**
+
+1. **Get user confirmation on everything still marked "not yet user-verified" above**, especially:
+   the Controller controls tab (rebinding + stick-highlight navigation), singleplayer controller
+   support (setup screen AND actual gameplay), the co-op death/spectator/fullscreen flow, and the
+   most recent controller bind swaps (melee/drop, interact-to-D-pad-right). A real controller and a
+   second person for co-op testing are required for most of this -- none of it can be verified from
+   the code alone.
+2. **Re-enable the item inventory system** (`INVENTORY_SYSTEM_ENABLED` in `index.html`, currently
+   `false`) once the user asks for it back, and only then resume the already-flagged "make it
+   co-op-aware" work (P2 currently has no usable inventory panel even when the flag is on -- it's
+   a single shared, P1-only panel).
+3. **Part 1 Step 5, the remaining piece**: co-op's actual win/loss framing. The "both players dead
+   -> real death screen" transition already works (see the solo-death spectator system above), but
+   there's still no win condition in the game at all, co-op or singleplayer (see §9's "No win
+   condition") -- worth deciding with the user whether co-op needs one before calling this step done,
+   or whether "survive as long as possible, together" without an explicit end state is the intended
+   design.
+4. **Part 2: the audio system rework has not been started at all** -- see this section's own
+   "Part 2: Audio system rework" spec further below (AudioManager, category volumes, 3D positional
+   audio, multi-listener split-screen handling, owner-priority boost, voice limiting) and the
+   "Planned build order" note beneath it. This is a large, separate body of work.
+5. **Smaller known gaps, not blocking, worth remembering:** mixed-scheme co-op resume (a
+   controller un-pausing on a keyboard+mouse P1's behalf can't reacquire pointer lock for them --
+   `setMatchPaused` already falls back to a "click to play" panel rather than a dead end, but it's
+   still not a fully seamless resume); `setInventoryOpen`'s crosshair-hide only touches the
+   singleplayer `#crosshair` element, not the co-op ones (moot while the system's disabled, but
+   will resurface once it's back); no weapon draw sound, no melee-impact sound (see §9).
+
+**Status:** a technical-challenges/questions/approach reply was given for both parts below;
+several clarifying questions are still open and implementation has not started pending answers.
+
+#### Part 1: Split-screen input & menu flow
+
+- Two players, local split-screen. Input configs: one KB+M + one controller, **or** both
+  controller (never two simultaneous KB+M, since Pointer Lock is document-global and can only
+  ever serve one mouse-look player at a time — this resolves what would otherwise be an API
+  blocker).
+- **Menus:** only mouse navigates any menu (main/pause/co-op setup) — controller input does not
+  navigate. Exception: either controller can pause from gameplay. Pausing pauses for **both**
+  players.
+- **Controller bindings:** hardcoded default scheme for now (not rebindable), functionally
+  matching the existing singleplayer keybind actions (§2).
+- **Singleplayer pre-game menu:** defaults to KB+M with an option to switch to controller, before
+  pressing Start. Not exposed in the in-game pause menu — pre-game-only choice.
+- **Co-op setup screen:** vertical divider, Player 1 top / Player 2 bottom (fixed, not
+  configurable). Each half has a labeled dark-gray semi-transparent box holding that player's
+  input selection + ready state.
+  - P1 defaults to KB+M with a controller-switch option, same as singleplayer's pre-game menu.
+  - P2 shows a grayed-out/"disconnected" controller icon that un-grays the instant controller
+    input is detected for that slot.
+  - Ready-up prompt: "Press Enter to Ready Up" (KB+M) / "Press X to Ready Up" (controller).
+    Readying flips the box to light green and the prompt to "...to Cancel" (toggles back on a
+    second press).
+  - Once **both** players are readied: an on-screen countdown ("Starting in 5..." → 0), start of
+    the game presentation is open (get creative). Either player cancelling before it finishes
+    stops the countdown and the game does not start.
+- **Rendering approach (mine, not detailed by the original ask):** two cameras rendered via
+  `renderer.setViewport`/`setScissor` into top/bottom halves, each camera's `aspect` recomputed
+  against half-height; per-half HUD DOM; Gamepad API polling for controller input; doubled player
+  state (health/ammo/inventory/position) per §1's "doubled state" scope, world/enemies/wave/score
+  assumed shared (pending confirmation — see open questions).
+
+#### Part 2: Audio system rework
+
+Reworking/expanding the existing system (§7), not a from-scratch rebuild — existing clips,
+tuning, and call sites migrate in, not get re-recorded or re-triggered.
+
+- **Central `AudioManager` module** — owns loading, playing, stopping, and controlling all game
+  sounds; gameplay code calls into it (`playSound(sound, position)`,
+  `playSound(sound, position, { volume, priority })`, `playUI(sound)`, styled idiomatically to
+  the rest of the codebase rather than forced to match this shape literally).
+- **Category volume controls**, at minimum: Music, Player, Weapons/attacks, UI, and a
+  general/future catch-all — each an independent `GainNode` feeding the existing single
+  `masterGainNode` (Master Volume keeps multiplying everything exactly as it does today).
+- **3D positional audio**: position, base volume, max hearing distance, min/full-volume distance,
+  optional loop, optional pitch variation, distance-based falloff — generalized from the gore
+  clip's existing distance-only falloff (§7/§9), which is the one sound in the game that already
+  does most of this.
+- **Split-screen listener handling**: Web Audio has exactly one `AudioListener` per
+  `AudioContext`, no native multi-listener support. Approach: skip `PannerNode`/`AudioListener`
+  entirely (as gore already does) and manually compute each positional sound's relevance
+  (distance-based volume + owner bonus, see below) against **each** player's camera, then take
+  whichever player scores higher as both the final volume **and** the stereo-pan reference —
+  never blended/averaged, so a sound never gets a contradictory pan. A sound most relevant to P1
+  plays loud overall even if far from P2, per spec's explosion example.
+- **Stereo panning**: computed against whichever listener "won" the relevance comparison above,
+  via `StereoPannerNode`.
+- **Player-specific sound priority**: sounds tagged with an owning player (`ownerId`) — own
+  gunshots/footsteps/melee — get a volume boost for that player's own relevance score, so each
+  player clearly hears their own actions.
+- **Priority/voice limiting**: a registry of currently-active voices with priority tiers and a
+  hard concurrent-voice cap (proposed ~24–32, tunable by ear); once at cap, lower-priority new
+  requests are dropped in favor of player actions/explosions/major events/UI over ambient/distant
+  sounds. Looping sounds (slide loop, future ambience) need to be exempt or last-resort-only
+  candidates for stealing.
+- **Performance**: decoded `AudioBuffer`s are already cached/reused (§7) — that doesn't change.
+  `AudioBufferSourceNode`s are single-use by spec (`start()` can only ever be called once), so
+  "reuse" in practice means the voice-cap/registry above bounding total concurrent node creation,
+  not literally recycling source nodes.
+- **Migration**: every existing call site (gunshots, reload, dry-fire, pickups, menu clicks,
+  footsteps' surface/state volume table, the slide loop's bespoke gain-ramp start/stop, gore's
+  distance math) routes through the new manager preserving its current tuned numbers — planned in
+  small verifiable batches (UI sounds first) rather than one rewrite pass.
+
+#### Open questions (blocking implementation start)
+
+Part 1: co-op death/game-over condition; confirm world/enemies/wave/score stay single shared
+instances while only health/ammo/inventory/position double; enemy targeting rule when both
+players are alive (nearest vs. sticky-aggro); co-op starting loadout; controller pause-button
+mapping (proposed Standard Mapping button 9 / Start); ready-up screen behavior on a controller
+disconnecting after being detected; per-half FOV/aspect correction vs. flat crop; whether the
+existing difficulty screen still gates co-op; whether "singleton-audit work done earlier" refers
+to a refactor that's actually landed yet (not found in the current code — state is still bare
+module-level `let`s) or is implied as part of this work; whether the single-file `index.html`
+approach (kept for `file://` portability, see §1) should be revisited given how much larger this
+feature will make it, now that Tauri serves the app rather than requiring raw `file://` opening.
+
+Part 2: whether category volumes get real UI sliders now or stay code-level only (Master Volume
+remains the only exposed control); whether an actual Music track is coming or Music stays an
+empty reserved category; concurrent voice cap preference; which existing sounds should be
+treated as positional-in-spirit (gore already is) vs. intentionally flat/global (menu sounds
+already are) — specifically the green-enemy explosion, weapon/ammo pickup clips, and the slide
+loop, which could reasonably go either way.
+
+#### Planned build order (subject to change once answers come in)
+
+1. Part 1: extract the input layer alone (`InputSource` abstraction for KB+M and gamepad),
+   verify singleplayer is behaviorally unchanged before anything else.
+2. Part 1: co-op setup screen UI + ready-up state machine, verified in isolation (no real
+   split-screen gameplay started yet).
+3. Part 1: thread a player parameter through movement/weapon/melee/HUD (two parallel state
+   objects), still rendered from one camera as an intermediate step; verify no cross-player state
+   leakage before touching rendering.
+4. Part 1: actual split-screen render path (dual viewport/scissor, per-half HUD, aspect
+   correction) — last, once dual gameplay state is already verified independently.
+5. Part 1: enemy targeting + shared pause + controller-pause-from-gameplay + win/loss condition,
+   then a full end-to-end playtest.
+6. Part 2 (interleaved once Part 1 has two real camera positions to test against): AudioManager
+   skeleton + category gains with zero behavior change → voice registry/priority cap → generalize
+   gore's falloff into the shared positional path, migrate footsteps/gore onto it → extend to
+   multi-listener scoring → owner-priority boost + stereo pan last.
+
+### 2026-09-20 — Ammo Mode, look-sensitivity settings, controller menu navigation overhaul
+
+Separate from the split-screen co-op/audio-rework initiative above (Part 2 of that plan still
+hasn't been started) — this was a series of smaller, independently-requested features and fixes
+in one continuous session. Unlike the 2026-09-19 co-op work, most of the controller-facing items
+below **were exercised against real hardware this session** (the bug reports that drove each fix
+were specific enough to have come from actual play, e.g. the exact "held Square instantly
+re-selects the next screen's first item" bug) — but the *latest* round of fixes (back/reset
+highlighting, wrap-around, the held-button double-activation fix) has not yet been re-confirmed
+by the user in a fresh pass, so still treat those as open until they say otherwise.
+
+**Ammo Mode setting** (§3) — new Game Settings toggle, Realistic (the original full-magazine-swap
+behavior, now named/exposed as an option rather than the only behavior) vs. Easy (early-CoD-style
+top-off, no chambered round, **new default**). Both read through one new `getMaxLoadedAmmo(gunStats)`
+helper so reload and fresh-spawn ammo agree on what "full" means under whichever mode is active.
+Landed alongside two small, unrelated combat tweaks bundled into the same pass: reload duration
+2.4s → 2.25s for both guns, and aiming down sights is now blocked while the active slot is
+mid-reload (§3).
+
+**Look-sensitivity settings** (§2) — two new sliders on the Controls screen (one per tab), each
+0–100%, default 50% (=1×). Persisted independently, not linked. The controller slider is itself
+controller-navigable (see below) and got its own circle-thumb styling to match the rest of the
+chart's chip look instead of the browser's default.
+
+**Controller-driven rebinding** (Controls screen, Controller tab) — previously the controller
+could only *navigate* this chart, not edit it (a spec'd limitation from the 2026-09-19 work).
+Square now starts a rebind on whichever row is stick-selected (shows `<Press Button>`, same as a
+mouse click would), and the next fresh button press on any pad completes it, auto-unbinding any
+other action that already used that button — reuses the existing
+`beginListeningForGamepadRebind`/`pollGamepadRebindCapture`/`applyGamepadRebind` flow the mouse
+click already went through, no new rebind logic needed. Back and Reset to Defaults, at the very
+bottom of the same chart, are now reachable and Square-activatable too (previously mouse-only).
+
+**Controller menu navigation, built out from nothing to covering nearly every screen** — see §8's
+new "Controller navigation (menus)" entry for the full description (`pollGenericMenuNav`,
+wraparound, the shared gold `.menu-nav-selected` highlight, Square-to-activate, X-to-back
+everywhere except the title's main panel, generalized cursor hiding, and the held-button
+double-activation bug that was found and fixed along the way). Also unified every remaining blue
+"selected" highlight in the UI (the Controls chart's stick-selected chip, the singleplayer
+scheme buttons) to the same gold `#ffdc64` the difficulty picker already used, so "selected" reads
+as one consistent color everywhere rather than blue in some places and gold in others.
+
+**Bug fixes found via real controller testing this session** (each already folded into the
+relevant section above/below, listed here as a flat record of what broke and why):
+- Starting a singleplayer round on Controller left the "Click to play" overlay stuck up for the
+  entire match — `startSingleplayerGame` only ever hid it as a side effect of
+  `canvas.requestPointerLock()` succeeding, which a controller player never calls. Now hidden
+  explicitly for that branch, mirroring what `startCoopMatch` already did correctly for a
+  controller P1.
+- The same missing hide meant the mouse cursor was never hidden at all under controller control,
+  in gameplay or on the setup screens — this is what the new `setCursorHidden`/cursor-hiding work
+  (§8) was actually built to fix, not just a menu-navigation nicety.
+- A stale `titlePanels["setup"]` "active" class (never cleared on match start, only the outer
+  `#title-screen` was hidden) meant `pollSingleplayerSetupGamepad` kept polling straight through
+  live gameplay — every Triangle press (`switchWeapon`) was also read as "confirm/restart,"
+  silently resetting the run. Same bug class, and same fix (`showTitlePanel(null)`), as an
+  already-documented 2026-09-19 co-op bug.
+- Settings' own controller highlight silently failed to appear when reached from the title
+  screen specifically (not from pause) — `titleSettingsButtonEl`'s click handler hides
+  `#title-screen` directly without clearing `titlePanels.main`'s own "active" class, so
+  `pollGenericMenuNav` kept matching the title's main panel underneath and highlighted/polled
+  buttons that weren't even visible anymore. Fixed by also requiring `#title-screen` itself to be
+  visible in that screen's `isActive()` check (same fix applied defensively to mode-select too).
+- Back/Reset's `.controller-selected` class was being toggled correctly but had no matching CSS
+  outside `#controller-controls-list` (they live in `#controls-card` directly, not inside that
+  list) — added the missing rule rather than moving the elements.
+- Several Audio/General/Mode-select screens list their Back button *last* (it's actually drawn at
+  the *top* of the screen, a `.corner-back-button`), so reaching it meant scrolling all the way
+  down past everything else — fixed by making `pollGenericMenuNav`'s up/down wrap around instead
+  of clamping, which makes pressing up from the default first item reach it directly.
+
+**TODO, this thread specifically:**
+1. Get a full fresh-launch confirmation pass on everything in this entry, especially the latest
+   fixes (back/reset highlighting, wraparound, the held-button fix) which haven't been re-tested
+   since landing.
+2. Two controller players in the same co-op match still share one controller-sensitivity value
+   (explicit, acknowledged limitation, not a bug) — revisit if/when that's actually requested.
+3. The Controls screen's own tab buttons and the co-op setup screen's own scheme/ready-up
+   controls are still mouse-only for anything beyond what's described above (e.g. no
+   controller-driven way to switch co-op setup's P1 scheme) — not asked for yet, just noting the
+   boundary.
 
 ---
 
@@ -694,3 +1449,41 @@ Being direct about the distance between "a collection of working mechanics" and 
     weapons' reload duration 1.5s → 2.4s; aiming down sights now cuts gun bob by 80%.
   - Session high score label simplified (dropped the "(this session)" qualifier from the
     displayed text only; underlying non-persistence is unchanged).
+- **2026-09-19 (later still, split-screen co-op)** — Local 2-player split-screen co-op (Part 1 of
+  the plan further above), built incrementally across the day and covered in full, dated detail by
+  this same day's earlier §10 entry (the one this Changelog line summarizes) — see that entry for
+  the complete build order, every bugfix, and everything still flagged "not yet user-verified."
+  Headline additions: an `InputSource` abstraction (keyboard+mouse and gamepad) with real gamepad
+  look/aim support; a co-op setup screen (scheme choice, ready-up, countdown) that also gave
+  singleplayer its own controller-support setup screen and real gamepad-driven gameplay, not just
+  co-op; dual-viewport split-screen rendering with correct per-half aspect/FOV and per-half HUD; a
+  visible, color-coded player body mesh in co-op; nearest-living-player enemy targeting; a co-op
+  death/spectator system (a solo death shows a small per-half prompt instead of ending the round,
+  with a controller-or-Enter-confirmed "Full Screen" toggle for the survivor); a fully rebindable
+  Controller tab alongside the existing keyboard+mouse one on the Controls screen, including
+  left-stick navigation of the chart once a controller's connected. Also fixed several real bugs
+  surfaced along the way (most notably: a stale co-op-setup screen state that silently restarted
+  a live match to round 1 whenever both players happened to switch weapons within a few seconds of
+  each other; the inventory panel freezing a mid-air jump entirely instead of just its horizontal
+  control; a controller-triggered pause leaving a keyboard+mouse player's cursor invisible). The
+  non-weapon item inventory was temporarily disabled by explicit request partway through (see §5/§9)
+  and remains off. See the session handoff note at the end of this day's §10 entry for the current
+  TODO list.
+- **2026-09-20** — Ammo Mode setting (Realistic/Easy, defaults to Easy — §3), two new look-
+  sensitivity sliders on the Controls screen (§2), and a broad controller menu-navigation
+  overhaul, covered in full by this same day's §10 entry. Headline additions: the Controls
+  screen's Controller tab can now actually rebind a gamepad chip (previously navigation-only),
+  reaching all the way down to Back/Reset to Defaults; a generic `pollGenericMenuNav` system
+  drives up/down-highlight-and-Square-to-activate navigation (with wraparound) across nearly
+  every remaining menu screen — title main/mode-select, Settings/Audio/Game Settings, Pause, and
+  the death screen; X now acts as Back everywhere except the title's own main panel; real
+  controller stick/button activity hides the mouse cursor on every menu screen (previously only
+  the singleplayer setup screen did this, and even that had a bug leaving the cursor visible the
+  whole match); every remaining blue "selected" highlight in the UI was unified to the same gold
+  the difficulty picker uses. Also: reload duration 2.4s → 2.25s for both guns, and aiming down
+  sights is now blocked while mid-reload. Fixed several real bugs surfaced along the way (most
+  notably: a "Click to play" overlay left permanently stuck up for an entire controller-driven
+  singleplayer match; a stale `titlePanels["setup"]` state that let Triangle silently restart a
+  live singleplayer run, the same bug class as an already-fixed 2026-09-19 co-op one; and a
+  held-button double-activation bug where switching screens via Square/X while still holding the
+  button immediately "activated" the new screen's first item too before it was ever released).
