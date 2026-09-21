@@ -224,10 +224,10 @@ Two separate, per-weapon-configurable systems, both firing from the same shot:
   effect, played unconditionally (**not** gated by the Gore setting — that setting only affects
   the gore/blood system described in §7).
 - **Face texture:** every enemy gets a flat face plane glued to the front of its body, picked at
-  spawn from `FACE_TEXTURE_DEFS` — 38 face images embedded as base64 data URIs (from
+  spawn from `FACE_TEXTURE_DEFS` — 44 face images embedded as base64 data URIs (from
   `5 nights at kise/images/`), each with its own aspect ratio. `EVANSFACE_SPAWN_CHANCE` (85%)
   picks "evanface" (the default/majority face); the other 15% is a uniform random pick from the
-  remaining 37. Several of these face images are also reused as backdrops for various UI screens
+  remaining 43. Several of these face images are also reused as backdrops for various UI screens
   (see §8) — that's purely a "we already have the asset decoded" convenience, unrelated to
   enemy spawning. Materials/geometries are cached per face key rather than rebuilt per spawn.
 - **Contact damage:** normal variant deals 10 HP per tick, every 0.5s, while within contact range
@@ -314,14 +314,17 @@ formula is capped at 100 regardless of difficulty, same as Normal.
 
 ## 5. Items / Inventory
 
-**The non-weapon item inventory panel below is temporarily disabled** (`INVENTORY_SYSTEM_ENABLED =
-false` gates its one open path, `toggleInventory()`) as of 2026-09-19, until further notice --
-pressing its keybind/D-pad-up no longer opens it. Weapon slots are unaffected and still work
-normally; only the section below the "Weapon slots" one describes something currently switched off.
+There are **two separate inventory systems** — weapon slots (unchanged in shape from before) and a
+non-weapon item inventory. They're independent: opening the item inventory does not affect the
+equipped weapon, and vice versa.
 
-There are now **two separate inventory systems** — weapon slots (unchanged in shape from before)
-and a newer non-weapon item inventory. They're independent: opening the item inventory does not
-affect the equipped weapon, and vice versa.
+The non-weapon item inventory (`INVENTORY_SYSTEM_ENABLED = true`, gating its one open path,
+`toggleInventory()`) is fully live again as of 2026-09-21, including in co-op: each player now has
+their own fully separate item inventory — own 8 slots, own panel (positioned on their own half of
+the split screen), own cursor (real mouse for a keyboard+mouse player, left-stick-driven for a
+controller player, Right Trigger to click/drag), and own drag state. A drag/drop can never cross
+into the other player's grid or panel, and one player's inventory being open no longer freezes the
+other player or affects their gameplay.
 
 ### Weapon slots
 
@@ -595,7 +598,12 @@ Gates three things, all at the moment an enemy dies:
     screen's main panel actually closes the app via a controller (Tauri's window-close call
     doesn't care whether the click that triggered it was a real mouse click or a synthetic one).
     Left/right instead continuously adjusts the current stop if it's a slider (Audio's Master
-    Volume) — see §2's sensitivity-slider entry for the same continuous-hold mechanic.
+    Volume) — see §2's sensitivity-slider entry for the same continuous-hold mechanic. Game
+    Settings' Ammo Mode toggle is a discrete left/right **stepper** instead, not a slider: its two
+    options (Realistic/Easy) share one highlight stop (`.ammo-mode-options`, the wrapping element,
+    not the individual option chips) and a single left/right push steps between them and clicks
+    the target option, same edge-triggered feel as the difficulty screens' own stepping rather than
+    the slider's continuously-driven value.
   - **Bespoke per-screen flows** (unchanged in kind from the existing setup-screen/Controls-chart
     navigation, extended this pass): the singleplayer difficulty screen now auto-switches its
     scheme to Controller the instant *any* controller input is detected (previously required a
@@ -660,9 +668,11 @@ Gates three things, all at the moment an enemy dies:
 
 Being direct about the distance between "a collection of working mechanics" and "a complete game":
 
-- **No win condition.** Waves escalate forever (`8 + 4N` zombies, capped at 100; `N - 1` fast
-  enemies from wave 5 on, uncapped wave number) with no ending, no boss, no "you survived" state
-  — the only way a run ends is death.
+- **No win condition — confirmed as the intended design, not an open gap.** Waves escalate forever
+  (`8 + 4N` zombies, capped at 100; `N - 1` fast enemies from wave 5 on, uncapped wave number) with
+  no ending, no boss, no "you survived" state; the only way a run ends is death. "Survive as long
+  as possible, together" (co-op) or solo is the design, per explicit user decision — not something
+  to revisit unless asked.
 - **Score exists, but no run summary and no cross-launch persistence.** There's a live score
   (see §4) and a session high score shown on the title screen, but there's still no death-screen
   recap ("you scored 340, reached wave 7"), no leaderboard, and — deliberately, per how it was
@@ -1160,32 +1170,35 @@ end to end) plus the TODO list below, since none of that context carries over au
 
 **TODO, roughly in priority order:**
 
-1. **Get user confirmation on everything still marked "not yet user-verified" above**, especially:
-   the Controller controls tab (rebinding + stick-highlight navigation), singleplayer controller
-   support (setup screen AND actual gameplay), the co-op death/spectator/fullscreen flow, and the
-   most recent controller bind swaps (melee/drop, interact-to-D-pad-right). A real controller and a
-   second person for co-op testing are required for most of this -- none of it can be verified from
-   the code alone.
-2. **Re-enable the item inventory system** (`INVENTORY_SYSTEM_ENABLED` in `index.html`, currently
-   `false`) once the user asks for it back, and only then resume the already-flagged "make it
-   co-op-aware" work (P2 currently has no usable inventory panel even when the flag is on -- it's
-   a single shared, P1-only panel).
-3. **Part 1 Step 5, the remaining piece**: co-op's actual win/loss framing. The "both players dead
-   -> real death screen" transition already works (see the solo-death spectator system above), but
-   there's still no win condition in the game at all, co-op or singleplayer (see §9's "No win
-   condition") -- worth deciding with the user whether co-op needs one before calling this step done,
-   or whether "survive as long as possible, together" without an explicit end state is the intended
-   design.
-4. **Part 2: the audio system rework has not been started at all** -- see this section's own
-   "Part 2: Audio system rework" spec further below (AudioManager, category volumes, 3D positional
-   audio, multi-listener split-screen handling, owner-priority boost, voice limiting) and the
-   "Planned build order" note beneath it. This is a large, separate body of work.
-5. **Smaller known gaps, not blocking, worth remembering:** mixed-scheme co-op resume (a
-   controller un-pausing on a keyboard+mouse P1's behalf can't reacquire pointer lock for them --
-   `setMatchPaused` already falls back to a "click to play" panel rather than a dead end, but it's
-   still not a fully seamless resume); `setInventoryOpen`'s crosshair-hide only touches the
-   singleplayer `#crosshair` element, not the co-op ones (moot while the system's disabled, but
-   will resurface once it's back); no weapon draw sound, no melee-impact sound (see §9).
+1. ~~Get user confirmation on everything still marked "not yet user-verified" above.~~ **Done —
+   user-confirmed.**
+2. ~~Re-enable the item inventory system and make it co-op-aware.~~ **Done — see this session's own
+   "Inventory system: fully separated per-player" entry below for the full build. `INVENTORY_SYSTEM_ENABLED`
+   is back to `true`.**
+3. ~~Part 1 Step 5, the remaining piece: co-op's actual win/loss framing.~~ **Resolved as a design
+   decision, not a gap: "survive as long as possible, together," no explicit win condition, for
+   co-op or singleplayer.** §9's "No win condition" entry describes the intended design now, not an
+   open question.
+4. **Part 2: the audio system rework — on hold, explicitly, for now.** Still not started; see this
+   section's own "Part 2: Audio system rework" spec further below (AudioManager, category volumes,
+   3D positional audio, multi-listener split-screen handling, owner-priority boost, voice limiting)
+   whenever it's picked back up.
+5. **Smaller known gaps** (being worked through now):
+   - ~~Mixed-scheme co-op resume wasn't fully seamless~~ **fixed** — a controller un-pausing on a
+     keyboard+mouse P1's behalf used to fall back to a "click to play" gate; now hides the overlay
+     immediately (gameplay's playable via keyboard right away) and silently retries
+     `requestPointerLock()` on P1's very next real click/keypress instead, same pattern as the
+     co-op match-start fix (`retryCoopPointerLockOnce`, now shared by both call sites).
+   - ~~`setInventoryOpen`'s crosshair-hide only touched the singleplayer `#crosshair`~~ **fixed** —
+     also hides `#crosshair-p1` now (needed its own `body.coop-mode .coop-crosshair.hidden` CSS
+     rule too, since nothing matched that combination before). Still only P1's — the inventory
+     system itself is still P1-only/shared (see item 2), so P2 has no crosshair-hiding trigger to
+     wire up yet either.
+   - **No weapon draw sound, no melee-impact sound — blocked on audio assets, not code.** Neither
+     effect has a clip anywhere in the embedded audio library (`WEAPON_DEFS`' own `sounds` only
+     define `shot`/`reload` for either gun; `performMelee` calls no sound at all). Per this
+     project's own audio convention, these need to come from the user as real files, not
+     synthesized/guessed here.
 
 **Status:** a technical-challenges/questions/approach reply was given for both parts below;
 several clarifying questions are still open and implementation has not started pending answers.
@@ -1343,6 +1356,368 @@ double-activation bug that was found and fixed along the way). Also unified ever
 scheme buttons) to the same gold `#ffdc64` the difficulty picker already used, so "selected" reads
 as one consistent color everywhere rather than blue in some places and gold in others.
 
+**Enemy face pool grew from 38 to 44** — six new face images (`aidansface`, `aureksface`,
+`austinweitesface`, `gradysface`, `manjotsface`, `noahsface`, sourced from the matching new PNGs
+under `5 nights at kise/images/`) added as `FACE_TEXTURE_DEFS` entries in alphabetical order, each
+with its `aspect` read from the actual PNG dimensions (`width / height`) rather than guessed.
+Needed no other code changes: `FACE_KEYS`/`OTHER_FACE_KEYS` are derived from
+`Object.keys(FACE_TEXTURE_DEFS)`, so the new keys are automatically in `pickRandomFaceKey`'s pool
+(still 85% evanface / 15% uniform over the other 43) the moment they're in the defs object.
+
+**Enter-key ready-up icon (`gamenterkeyuiicon.png`) fixed and enlarged, Enter now starts
+singleplayer too:**
+- The source PNG had a white background instead of transparency (visible as a white box around
+  the icon in-game); fixed with a Pillow-based script (connected-component labeling on a
+  white-ish mask, alpha zeroed only on the border-connected "outside" component, so the
+  interior white of the key face/text was untouched) and overwritten in place. Rewriting the
+  file alone wasn't enough, though — the game never reads it from disk, it inlines a base64
+  copy at build/edit time (`ENTER_KEY_ICON_DATA_URI`, same self-contained-file approach as
+  `FACE_TEXTURE_DEFS`), so that constant had to be regenerated from the new PNG too or the game
+  keeps showing the stale white-background copy forever.
+- `.coop-setup-ready-icon`/`.coop-setup-ready-icon-glyph` (the Enter image and the Triangle glyph
+  respectively — see `readyIconHTML`) both grew 26px → 32px and switched from a hand-tuned
+  `vertical-align: -7px` hack to `vertical-align: middle`, so they stay properly centered against
+  the button text at this (or any future) size instead of needing another magic offset retuned by
+  eye.
+- Enter previously only readied-up on the co-op setup screen; it now also clicks the singleplayer
+  setup screen's Start button for a keyboard+mouse P1 (`setupStartButtonEl.click()`), gated on
+  `titlePanels["setup"]` still being `"active"` exactly like the co-op handler is gated on
+  `titlePanels["coop-setup"]`. That gate matters for a specific reason: `startSingleplayerGame`
+  clearing `titlePanels["setup"]`'s "active" class via `showTitlePanel(null)` is *the* fix for a
+  previously-documented bug (Triangle re-starting a live controller run — see the bug list right
+  below) — reusing the same gate here means Enter can't re-trigger `startSingleplayerGame` mid-run
+  either, rather than reintroducing that bug class through a new input path.
+
+**Controller tab: Back moved to the corner, Circle/Square/Triangle binds show as symbols
+(explicit request):**
+- Back (`#controls-back-button`) now pins to `#controls-card`'s top-left corner — same idea as
+  every other screen's own `.corner-back-button`, applied here via a `controller-tab-active` class
+  toggled on `#controls-card` in the tab-switch handler, so the Keyboard + Mouse tab's own
+  Back/Reset row is untouched. It's purely a CSS reposition, not a markup move: Back is still a DOM
+  child of the bottom button row, just taken out of flow — which meant Reset's sibling-combinator
+  `margin-left` (from `.menu-button + .menu-button`) needed clearing too, or it'd sit off-center by
+  that same amount with Back no longer actually there to justify it. Reset ends up centered for
+  free once that's cleared, since `#controls-card` already centers its (now single-button) row.
+- Back also moved in `controllerControlsRowEls`' nav order — from last (after Reset, reachable only
+  by scrolling all the way down) to index 0, immediately above the Sensitivity slider, which stays
+  the tab's default selection (`controllerControlsSelectedIndex` starts at 1, not 0, both where
+  it's declared and where `pollControllerControlsNav` re-arms it). One stick-up press from the
+  default selection now reaches Back directly, matching how the wraparound fix made Back reachable
+  from the top on every `pollGenericMenuNav` screen (§8) — this chart has its own bespoke nav
+  system instead of that shared one, so it needed the equivalent fix applied by hand here.
+- `GAMEPAD_BUTTON_INDEX_LABELS`' Circle/Square/Triangle entries (index 1/2/3) changed from spelled-
+  out words to their actual symbols (○/□/△) — the same outline-triangle glyph the co-op ready-up
+  prompt already uses elsewhere (`&#9651;`/`△`) for consistency, plus the matching outline
+  circle/square. X and everything else (L1/R1/Share/D-Pad/etc.) are unchanged.
+
+**Co-op setup screen polish (explicit request), and co-op's own "Click to play" removed:**
+- P1's keyboard+mouse icon (639x360) rendered visibly smaller than the controller icon (290x245)
+  despite sharing the same fixed 150x100 box — `object-fit: contain` scales each to fit without
+  distorting it, but the keyboard art's wider aspect meant it was constrained by the box's width
+  (rendering ~84.5px tall) while the controller art was constrained by height (a full 100px tall).
+  Rather than widen the shared box (which would break `.coop-setup-box`'s fixed size across P1's
+  swap between the two — see that rule's own comment), a `scheme-keyboard` class (toggled in
+  `updateCoopSetupUI`) applies `transform: scale(1.18)` to just the keyboard art, bringing its
+  rendered height in line with the controller art's.
+- P1's ready-up text lost its underline (`.coop-setup-ready-prompt.clickable`) — cosmetic-only,
+  cursor:pointer still marks it clickable.
+- P1 and P2's ready-up prompts sat at different Y positions, because P1's box has an extra
+  scheme-switch button row above its icon that P2's box never had, and both boxes vertically
+  center their contents (`.coop-setup-box`'s `justify-content: center`) — fewer stacked children
+  in P2's box meant its icon/prompt centered higher. Fixed with an invisible clone of that same
+  row (`.coop-setup-scheme.spacer` — `visibility: hidden`, inert, sized identically via the same
+  classes so it can't drift out of sync) added to P2's box purely to occupy the same height. Its
+  buttons carry no `data-scheme` and are excluded from every `.coop-scheme-button` selector
+  (rescoped to `#coop-setup-p1 .coop-scheme-button`) so they can never accidentally get wired up.
+- Both prompts' ready-up symbols (the Enter image and the Triangle glyph) grew to 150% of their
+  shared 32px/1.7em base (48px/2.55em) — scoped by ID to just these two prompts, not the shared
+  `.coop-setup-ready-icon`/`-icon-glyph` classes, so the singleplayer Start button and the co-op
+  solo-death "Full Screen" buttons (which also use `readyIconHTML`) stay at their current size.
+- **The "Click to play" overlay at co-op match start, removed (explicit bug report — it was
+  showing up consistently, not just as a rare edge case).** `startCoopMatch` requests pointer lock
+  directly (see its own comment) rather than gating on a click, relying on the browser's
+  transient-activation window from whichever real gesture most recently readied P1 up still
+  covering the moment the 5-second countdown reaches zero — evidently that window doesn't reliably
+  last the full 5 seconds. The old fallback (`pointerlockerror` handler) put up the "click to
+  play" panel when that request was refused; now it instead silently attaches a one-time
+  click/keydown listener and retries `requestPointerLock()` on P1's very next real input — gameplay
+  is already on screen, so from the player's side the first thing they do to actually play (move,
+  shoot, anything) doubles as the retry, invisibly. Re-checks its own conditions before retrying,
+  since real gameplay time (P1 dying, the match ending) may have passed since the original refusal.
+  Scoped to co-op's own match-start path only — the mid-match "controller resumed pause, P1 has no
+  way to reacquire lock" fallback (§8) and the post-match reset's overlay-view default are separate,
+  legitimate uses of the same panel and were left alone.
+
+**Co-op player body mesh didn't compress on crouch/slide (user-reported)** — `updatePlayerBodyMeshes`
+(§4's own entry) kept every body mesh at its full `ENEMY_SIZE.height` regardless of pose, so a
+crouching or sliding teammate's camera/gun dropped (see the eye-height lerp in `updatePlayer`) while
+their visible body stayed standing-height to the other player. Fixed by deriving a height ratio
+straight from `player.currentEyeHeight / EYE_HEIGHT` — already smoothly lerped toward
+`CROUCH_EYE_HEIGHT` for the camera itself, covering both crouch and slide the same way that lerp
+already does — and applying it as `mesh.scale.y`, with `position.y` adjusted so the box stays
+feet-anchored (compresses from the top down) instead of shrinking around its own center. No new
+lerp state needed; it can't drift out of sync with the camera since it reads the same value.
+
+**Circle/Square rebind-chart symbols enlarged again (explicit follow-up)** — the first pass (22px)
+still read as too small; bumped to 30px. Triangle's own 16px was left as-is (not flagged again).
+
+**Dead player's gun floated in place instead of dropping (explicit bug report, co-op)** —
+`viewModelRoot` (the gun/fists view model) is parented to the player's own camera (see
+`buildPlayerGunRig`) and sits on the default render layer like everything else, not one of the
+per-player `PLAYER_BODY_LAYER`-restricted meshes — nothing ever excluded it from the OTHER
+player's camera, and nothing moved or hid it once its owner died and their camera stopped moving,
+so it just hung frozen exactly where they'd last aimed, visible to their still-alive teammate.
+Fixed in `triggerDeath` by reusing `dropActiveSlotItem` — the exact toss-and-tumble-to-rest
+physics the G-key manual drop already uses — so the gun actually falls and settles on the ground
+instead of vanishing in place (no-ops harmlessly if fists were already equipped), then hiding
+`viewModelRoot` entirely so an empty-handed fists pose can't take over as the new floating thing.
+`resetPlayerState` un-hides it again on respawn/restart.
+
+**Weapon ammo confirmed/hardened as tied to the gun instance, not the player (explicit request,
+co-op)** — ammo was already carried on the dropped/picked-up item itself (`spawnDroppedWeapon`'s
+`loadedAmmo`/`reserveAmmo` params, read straight from whichever slot dropped it, and copied
+straight into `pickedSlotState` on pickup) rather than tracked anywhere per-player, so a teammate
+picking up your dropped gun already got exactly that gun's own ammo. What wasn't right: picking up
+a weapon you're already carrying, with both slots full, replaced whatever slot was *active* —
+meaning picking up a teammate's dropped Glock while your Glock sat in your inactive slot evicted
+your unrelated Pistol instead, leaving you holding two Glocks (the swap never actually reached your
+existing one). Fixed by checking for a slot that already holds the SAME `weaponId` first and
+targeting that one specifically (dropping what was in it, in your place, exactly like a manual
+G-press) before falling back to "replace whichever's active" for two genuinely different weapons.
+`dropActiveSlotItem` split into a general `dropSlotItem(player, slotIndex)` to support dropping an
+arbitrary (not-necessarily-active) slot for this.
+
+**Co-op setup screen: character/face picker (large explicit feature request)** — both sides now
+show a small, independently-rendered, continuously-rotating turntable preview of that player's
+actual in-game body + face, with left/right arrow "buttons" flanking it to cycle the face:
+- **Faces now exist on the player body at all, in-game** — `player.bodyMesh` (§4) was a plain
+  black box with no face at all before this; it now gets a `facePlane` child (same
+  `getFaceAssets`-cached geometry/material/position an enemy's own face plane uses), set to
+  whichever face each player actually picked via `setPlayerFace(player, faceKey)`, called once at
+  startup with a random key (so there's always something valid to look at) and again by
+  `startCoopMatch` with the real, chosen key. Crouch/slide compression (this same session, earlier
+  entry) scales `bodyMesh` on Y only, which `facePlane` would inherit as a child — countered with
+  `facePlane.scale.y = 1 / heightScale` each frame so the face image itself never stretches, only
+  rides down with the compressed body (its parent-relative offset shrinks along with the parent's
+  scale, which is correct/desired here — that's the face moving down with a real crouch).
+- **The preview itself** (`createSetupModelPreview`) is a genuinely separate small
+  scene/camera/`WebGLRenderer` per side, targeting its own `<canvas>` — reuses the exact same
+  `enemyGeometry`/`playerBodyMaterial`/`getFaceAssets` the real body does (so the preview always
+  looks identical to what actually shows up in-game), just spinning continuously
+  (`SETUP_MODEL_ROTATION_SPEED`, 0.4 rad/sec) rather than tracking any real player position/crouch.
+  Two extra WebGL contexts is negligible next to the one already driving the real game; both only
+  ever render while the co-op setup screen (and that side's own model) is visible.
+- **Reveal timing**: P1's model is up immediately (keyboard needs no detection; controller needs a
+  gamepad assigned, same "connected" condition its own icon already used). P2's only appears the
+  instant a gamepad's actually claimed for them — same moment their icon/model-row would otherwise
+  first read as "connected" — and disappears again if that controller disconnects
+  (`coopSetup.p2GamepadIndex` resets to null on `"gamepaddisconnected"`, same as always). Each
+  side's face KEY, once assigned, is never cleared by a disconnect — only `resetCoopSetup` (a fresh
+  visit to this screen from mode-select) resets it to null — so reconnecting shows the same face
+  rather than re-rolling it.
+- **Random default, alphabetical cycling, wraps at the ends**: the moment either side's model first
+  reveals itself with no face key yet, `pickRandomPlayerFaceKey()` assigns one. A new
+  `SORTED_FACE_KEYS` (true alphabetical order, unlike `FACE_KEYS` itself, which deliberately puts
+  `evanface` first for the enemy-spawn weighting — unrelated to this) backs
+  `cyclePlayerFaceKey(currentKey, direction)`, wrapping at either end.
+- **Input**: a keyboard+mouse side's arrows are left-click-only (`.coop-setup-face-arrow`'s own
+  click handler checks that side's scheme is `"keyboard"` before doing anything — P2 is always
+  controller, no mouse to click with). A controller side instead cycles with the RIGHT stick
+  (`GAMEPAD_AXIS_LOOK_X` — explicit request: "the joystick that currently moves the camera angle",
+  i.e. LOOK, not MOVE) via `checkCoopFaceStep`, edge-triggered per side exactly like
+  `checkCoopDifficultyStep`'s own left-stick handling, just on the other axis so the two don't
+  fight. Both paths funnel through one shared `cycleSetupFace(side, direction)`, which also plays
+  the same `menu_click_01` stepper sound `stepDifficulty` already uses for its own stick path.
+- `.coop-setup-box` widened 220px → 260px to fit the new preview row (canvas + two arrow buttons)
+  without overflowing; P2's invisible scheme-button spacer (previous entry, this session) still
+  keeps both sides' rows at the same Y position with the new row added above the connection icon.
+
+**Character preview follow-up (explicit correction pass) — layout moved out of the box, rotation
+reworked, and a real in-game orientation bug fixed:**
+- **Faces were rendering on the back of the head, in the real game** — `player.bodyMesh`'s
+  `rotation.y` was set to `player.yaw` directly, but that's the *camera's* yaw convention
+  (local forward = -Z at yaw 0, see `applyCameraRotation`), not the *enemy mesh* convention
+  `getFaceAssets`' own face-plane placement assumes (local forward = +Z, see its "Local +Z is the
+  enemy's forward side" comment, written for `atan2(x, z)`-style enemy facing). Using `player.yaw`
+  unmodified pointed the box's +Z side — and the face mounted on it — at camera-*backward*, i.e.
+  directly away from wherever the player was actually looking. Fixed with `player.yaw + Math.PI`.
+- **The preview moved out of `.coop-setup-box` entirely (explicit follow-up)** — the boxes are back
+  to their original contents/220px width, exactly as before this feature existed. Each side's
+  `#coop-setup-p1-model-row`/`#coop-setup-p2-model-row` is now a sibling of `.title-panel-content`
+  pinned to the screen's outer edge (`left`/`right: 30px`) via `position: absolute` on `.title-panel`
+  itself, at a much bigger 240x340 canvas (up from 100x140). Vertical alignment can't come from
+  flex/gap anymore since the row lives in a completely different part of the layout than the box it
+  needs to match — `alignCoopSetupModelRows` (called every frame alongside the render/rotation
+  update) reads each box's real `getBoundingClientRect()` and sets the row's `top` to that box's
+  measured vertical center, so it can't drift out of sync with the box even across a window resize.
+- **Rotation changed from a continuous spin to a 90-degree-either-way oscillation (explicit
+  request)**: `advanceSetupModelRotation` now clamps at `+/-SETUP_MODEL_MAX_YAW` (`Math.PI / 2`) and
+  flips `rotationDirection` there instead of letting `rotation.y` wrap freely, so the model swings
+  face-toward-camera → +90° → face-toward-camera → -90° → repeat, rather than spinning through the
+  back of the model on every lap.
+
+**Character preview: second tuning pass (explicit follow-up)**
+- Swing narrowed from +/-90 to +/-75 degrees (`SETUP_MODEL_MAX_YAW`).
+- Moved further from the midline: `left`/`right` 30px → 15px.
+- **Arrows now sit at a fixed height matching where a face typically is, not the box/canvas's own
+  center, and don't move between different faces** — previously part of the same flex row as the
+  canvas (vertically centered as a unit, same as the canvas itself); now independently
+  `position: absolute` within the row (which is already an absolute-positioned element itself, so
+  it's their containing block for free) at a flat `top: 23%` of the canvas's own height. Explicitly
+  NOT read from `getFaceAssets`' real per-face position/height, which varies slightly with each
+  face's own source aspect ratio — the whole point was for the arrows to hold still regardless of
+  which face is currently showing.
+- Moved in closer to the canvas: the old flex `gap` (14px) is now an 8px `calc(100% + 8px)` offset
+  on each arrow specifically.
+- **Registering a face change now flashes that arrow gold for a third of a second** — the same
+  `rgba(255, 220, 100, ...)` / `#ffdc64` `.difficulty-option.active` already uses, via a `.flash`
+  class added in `cycleSetupFace` and removed by a `setTimeout(333)`, tracked per-button in a
+  `WeakMap` so a rapid repeat resets/extends the flash instead of an earlier timeout cutting a
+  newer one short. Fires for both the click and the stick-driven path (both funnel through
+  `cycleSetupFace`).
+- **This one clip is now half volume** — `cycleSetupFace`'s own `playClip("menu_click_01", ...)`
+  call passes `{ volume: 0.5 }`; every other `menu_click_01` call site (`stepDifficulty`'s own
+  click/stick paths included) is untouched, per explicit request.
+
+**Character preview: third tuning pass (explicit follow-up)**
+- Swing narrowed again, +/-75 → +/-65 degrees.
+- Moved back toward the midline slightly: `left`/`right` 15px → 18px.
+- **Arrows were leaking off the actual screen edge (user-reported)** — sitting just *outside* the
+  canvas (even at the reduced 8px gap from the previous pass) meant the outer arrow (P1's left,
+  P2's right) extended past the true viewport edge, since the model itself already sits close to
+  it. Fixed by anchoring both arrows *inside* the canvas's own footprint instead — `left: 8px`/
+  `right: 8px` (was `right`/`left: calc(100% + 8px)`, i.e. outside it) — overlapping the model a
+  little near its edges rather than sitting beside it, same idea as a media carousel's own
+  overlaid prev/next arrows. This keeps both arrows structurally on-screen regardless of how close
+  to the true edge the model itself ever sits, rather than depending on getting the model's own
+  offset and the gap both numerically right together.
+- Flash duration shortened, a third of a second → a sixth (`setTimeout(333)` → `setTimeout(167)`).
+
+**Character preview: fourth pass — real position/size tracking (explicit follow-up, found by
+testing in actual fullscreen)** — every previous pass's px offsets were tuned windowed; going
+fullscreen put the models flush against the true screen edge, since a fixed px offset from the
+edge has no relationship to how much space fullscreen actually has to work with:
+- **Horizontal position is now the real midpoint between the screen edge and that side's own
+  `.coop-setup-box` border**, not a fixed px offset — `alignCoopSetupModelRows` measures both via
+  `getBoundingClientRect` every frame (same function already handling vertical centering) and sets
+  `left`/`right` to half that measured gap, so it's correct at any window size including
+  fullscreen, not just whatever size it happened to be tuned at.
+- **The model's actual SIZE now scales with the window too (explicit request)**, not just its
+  position — `updateCoopSetupModelScale` computes `scale = window.innerHeight /
+  SETUP_MODEL_SCALE_REFERENCE_HEIGHT` (1080, treated as the real fullscreen height the current
+  240x340 look was tuned against) and resizes each preview's actual canvas + `WebGLRenderer` to
+  match — deliberately a real resize, not a CSS `transform: scale()` on the canvas, which would
+  just blur a WebGL surface whose internal drawing buffer never actually changed resolution.
+- **The arrows scale right along with it** — their own `transform: translateY(-50%) scale(scale)`
+  and their `left`/`right` overlap offset (`SETUP_MODEL_ARROW_EDGE_OFFSET`, 8px at scale 1) are set
+  by the same function. Their `top: 23%` positioning already tracked the canvas's height for free
+  (the row's own height comes from the canvas, its only in-flow child) and needed no change.
+- Flash duration shortened again, a sixth of a second → a seventh (`setTimeout(167)` →
+  `setTimeout(143)`).
+
+**Character preview: fifth pass — arrow spacing (explicit follow-up)** — `SETUP_MODEL_ARROW_EDGE_OFFSET`
+8px → 3px, nudging the arrows toward the canvas's true edge and further from the model itself
+(they still sit inside the canvas's own footprint, per the earlier "leaking off-screen" fix — this
+only reduces how far into it they sit).
+
+**Controls screen: Back now pins to the corner on both tabs (explicit follow-up)** — previously
+only the Controller tab got `.corner-back-button`-style placement (see this session's earlier
+entry); Keyboard + Mouse still shared the bottom row with Reset. Since both tabs now want the same
+placement, the tab-switch handler's whole conditional relocate-on-switch dance was removed —
+`controlsBackButtonEl` moves out to `#overlay-controls` exactly once, at setup, permanently, rather
+than shuffling between `#overlay-controls` and `#controls-buttons-row` on every tab click. Renamed
+`.controller-tab-corner` → `.controls-back-corner` since it's no longer tab-specific. Reset, now
+always alone in `#controls-buttons-row` on both tabs, centers there the same way it already did for
+the Controller tab.
+
+**Inventory system: fully separated per-player, re-enabled, custom cursor + controller support
+(large explicit feature request)** — the item inventory (8-slot, drag-to-rearrange) was built
+P1-only/shared and left disabled (`INVENTORY_SYSTEM_ENABLED = false`) since a real co-op session
+couldn't use it properly (P2 pressing D-pad Up literally couldn't open it at all -- see the bug
+below). Now fully separate:
+- **Per-player state**: `isInventoryOpen`, `cursor` ({x, y}, the custom pointer's own position),
+  `slotDragState`, and `cursorClickWasPressed` all moved onto the player object itself (next to the
+  already-per-player `itemInventorySlots`) instead of being module-level globals shared by
+  whichever player last touched them.
+- **Per-player DOM**: a second panel/grid (`#inventory-panel-p2`/`#inventory-grid-p2`, mirroring
+  the original P1 elements) plus two cursor dots (`#inventory-cursor-p1`/`-p2`).
+  `inventoryElsFor(player)` resolves the right set via `players.indexOf`, same parallel-pair
+  pattern `hudRefsP1`/`hudRefsP2` already uses. Every function that used to assume `players[0]`
+  (`renderInventoryPanel`, `beginSlotDrag`, `finishSlotDrag` — the old inline mouseup logic,
+  factored out so the controller path could call it too — `cancelSlotDrag`, `setInventoryOpen`,
+  `toggleInventory`) now takes a `player` parameter and reads/writes through it.
+- **Each panel centers on its own half of the split screen** (`body.coop-mode #inventory-panel` at
+  `top: 25%`, `#inventory-panel-p2` at `75%`) instead of both potentially centering on the whole
+  screen — expands back to `top: 50%` for a fullscreen spectator survivor, whose own view covers
+  the whole screen again (`body.coop-spectator-fullscreen-p1/-p2`).
+- **Custom cursor (explicit request): a small white circle, black outline, replacing the real OS
+  cursor entirely** — `.inventory-cursor`, positioned via `updateInventoryCursorEl`. The real OS
+  cursor is hidden globally the instant either player's inventory is open
+  (`body.inventory-cursor-active`, toggled by `updateGlobalCursorHiding`) — `.inventory-slot`'s own
+  `cursor: grab` needed an explicit override too, or it would've won over the inherited `none` by
+  specificity.
+- **A keyboard+mouse player's own experience is the same as before, just with the retextured
+  cursor** — real `mousemove`/`mousedown`/`mouseup` still drive everything, just resolved to
+  *whichever* player is actually on keyboard+mouse (`playerNeedsPointerLock`, at most one, ever)
+  instead of assuming `players[0]`. **Can't cross the split-screen border**: the real mouse position
+  gets clamped to that player's own half (`clampCursorToPlayerHalf`) before being stored as
+  `player.cursor`, and drops resolve against that clamped position (`elementFromPoint`), not the
+  raw mouse position — so even if the physical cursor strays into the other half, the drop can't
+  land there. `finishSlotDrag` also double-checks the hit slot's `parentElement` is actually that
+  player's own grid, belt-and-suspenders against the border ever actually being crossed.
+- **A controller player's left stick drives the same cursor, Right Trigger clicks
+  (explicit request)** — `updateInventoryCursorForController`, polled once per frame while that
+  player's inventory is open. Left stick (`GAMEPAD_AXIS_MOVE_X/Y` — explicit request: "movement
+  joystick", not look) moves `player.cursor` directly (not through the rebindable action layer);
+  Right Trigger is hardcoded to physical button index 7 (same reasoning as every other
+  menu-specific hardcoded button in this file — Square/Triangle for nav, etc. — not the rebindable
+  "fire" action that just happens to default there too), edge-detected press/release into the exact
+  same `beginSlotDrag`/`finishSlotDrag` the mouse path uses, so both inputs stay in lockstep.
+  Required exposing a new `getRawGamepad` method on `createGamepadInputSource`'s returned object
+  (previously fully private) to read the stick/trigger directly.
+- **Each player's own inventory now actually freezes only THAT player**, in both modes — previously
+  P1 opening the (only) inventory froze **both** co-op players (via the shared `isFrozen`/pointer-lock
+  reasoning), and a controller-driven player's inventory opening didn't freeze anyone at all in
+  either mode (nothing checked `isInventoryOpen` for them) — their stick kept moving their character
+  underneath their own open panel. Fixed by pulling `player.isInventoryOpen` out of the shared
+  co-op `isFrozen` calculation and checking it per-player in the loop instead (co-op), and adding it
+  as an explicit second freeze trigger alongside `isSingleplayerPaused` (singleplayer, for a
+  controller-driven run). The world itself is still never paused by inventory being open, in
+  either mode, per the existing "exposed to danger while managing items" design.
+- **Stale-input guard**: a gamepad source's own `poll()` never runs at all while that player's
+  inventory is open, so its edge-detection snapshot goes stale — closing the inventory while still
+  physically holding Right Trigger would otherwise read as a brand-new "fire" press the instant
+  gameplay resumes. `setInventoryOpen` resyncs it (`poll()` then `endFrame()`, discarding that
+  resync's own edge) on every close.
+- Escape (keyboard-only, by definition) now resolves to whichever player is actually on
+  keyboard+mouse before closing their inventory, instead of the old single shared flag.
+  `resetGame()` and `triggerDeath` both close out any player's still-open inventory defensively (a
+  dead player's panel/cursor no longer sits uselessly on top of the death/spectator screen; leaving
+  the title screen no longer leaves a stray panel stuck open behind it).
+
+**Inventory follow-up: a controller player genuinely couldn't open their inventory at all
+(user-reported) — a poll-ordering bug in the previous entry's own new code.** Both
+`updateCoopMatchFrame`'s per-player loop and the singleplayer frame both called
+`processToggleInventoryAction(player)` *before* that frame's own `player.input.poll()` -- moved
+there deliberately so the toggle check could run even while the rest of the per-player loop was
+being skipped for other reasons. But `wasActionJustPressed` only ever reflects whatever `poll()`
+populated *this* frame, and `endFrame()` (called unconditionally every frame regardless of any
+freeze) wipes that clean before the next frame's poll ever runs -- so checking the toggle before
+poll() meant it was always reading an already-cleared snapshot from the frame before, permanently:
+a controller's D-pad Up press could never be seen at all. A keyboard's own toggle key worked fine
+throughout, since `wasActionJustPressed` for it is fed by real, async keydown events, not a poll.
+Fixed by moving `poll()` back to run first, before the toggle check, in both call sites -- it's a
+plain snapshot with no side effects on its own, so running it unconditionally (same as the toggle
+check itself) is safe regardless of what happens after it.
+
+**Controller controls chart: Circle/Square chips were visibly bigger boxes than every other row
+(user-reported)** — the previous session's `font-size: 30px`/`16px` fix for these being too small
+also grew the chip's own line-height/box right along with the glyph (nothing constrained the two
+independently). Switched to `transform: scale(2.14)`/`scale(1.14)` instead — the same ratios those
+font-sizes had to the base 14px, so the glyph ends up the identical visual size as before, but
+`transform` is pure paint, not layout, so the chip itself now stays exactly the same size as every
+other row's.
+
 **Bug fixes found via real controller testing this session** (each already folded into the
 relevant section above/below, listed here as a flat record of what broke and why):
 - Starting a singleplayer round on Controller left the "Click to play" overlay stuck up for the
@@ -1371,8 +1746,14 @@ relevant section above/below, listed here as a flat record of what broke and why
   the *top* of the screen, a `.corner-back-button`), so reaching it meant scrolling all the way
   down past everything else — fixed by making `pollGenericMenuNav`'s up/down wrap around instead
   of clamping, which makes pressing up from the default first item reach it directly.
+- Game Settings' Ammo Mode toggle was exposed to `pollGenericMenuNav` as two separate up/down
+  stops (one per `.ammo-mode-option`), inconsistent with every other binary control on that screen
+  and unable to express "these two are one segmented control" the way the difficulty screens do —
+  fixed by making the wrapping `.ammo-mode-options` div the single nav stop and driving it with a
+  left/right stepper instead (see §8's "Controller navigation" entry above).
 
-**TODO, this thread specifically:**
+**TODO, this thread specifically (held off for now, per explicit user instruction — not being
+worked on):**
 1. Get a full fresh-launch confirmation pass on everything in this entry, especially the latest
    fixes (back/reset highlighting, wraparound, the held-button fix) which haven't been re-tested
    since landing.
@@ -1469,7 +1850,9 @@ relevant section above/below, listed here as a flat record of what broke and why
   non-weapon item inventory was temporarily disabled by explicit request partway through (see §5/§9)
   and remains off. See the session handoff note at the end of this day's §10 entry for the current
   TODO list.
-- **2026-09-20** — Ammo Mode setting (Realistic/Easy, defaults to Easy — §3), two new look-
+- **2026-09-20** — Six new enemy faces added to `FACE_TEXTURE_DEFS` (38 → 44 — §4's Face texture
+  entry), no other code changes needed since the spawn pool is derived from the defs object's own
+  keys. Ammo Mode setting (Realistic/Easy, defaults to Easy — §3), two new look-
   sensitivity sliders on the Controls screen (§2), and a broad controller menu-navigation
   overhaul, covered in full by this same day's §10 entry. Headline additions: the Controls
   screen's Controller tab can now actually rebind a gamepad chip (previously navigation-only),
