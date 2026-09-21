@@ -226,19 +226,22 @@
      -webkit-/-moz- variants set since input range thumbs aren't
      themeable through a single standard pseudo-element. */
   #mouse-sensitivity-slider,
-  #controller-sensitivity-slider {
+  #controller-sensitivity-slider,
+  #aim-assist-slider {
     -webkit-appearance: none;
     appearance: none;
     background: transparent;
   }
   #mouse-sensitivity-slider::-webkit-slider-runnable-track,
-  #controller-sensitivity-slider::-webkit-slider-runnable-track {
+  #controller-sensitivity-slider::-webkit-slider-runnable-track,
+  #aim-assist-slider::-webkit-slider-runnable-track {
     height: 4px;
     background: rgba(255, 255, 255, 0.3);
     border-radius: 2px;
   }
   #mouse-sensitivity-slider::-webkit-slider-thumb,
-  #controller-sensitivity-slider::-webkit-slider-thumb {
+  #controller-sensitivity-slider::-webkit-slider-thumb,
+  #aim-assist-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     width: 18px;
     height: 18px;
@@ -249,13 +252,15 @@
     cursor: pointer;
   }
   #mouse-sensitivity-slider::-moz-range-track,
-  #controller-sensitivity-slider::-moz-range-track {
+  #controller-sensitivity-slider::-moz-range-track,
+  #aim-assist-slider::-moz-range-track {
     height: 4px;
     background: rgba(255, 255, 255, 0.3);
     border-radius: 2px;
   }
   #mouse-sensitivity-slider::-moz-range-thumb,
-  #controller-sensitivity-slider::-moz-range-thumb {
+  #controller-sensitivity-slider::-moz-range-thumb,
+  #aim-assist-slider::-moz-range-thumb {
     width: 18px;
     height: 18px;
     border-radius: 50%;
@@ -1327,6 +1332,20 @@
     box-shadow: 0 0 8px rgba(255, 220, 100, 0.6);
   }
 
+  /* Aim Assist row: a range input + percent label, same flex-row shape as
+     the Controls screen's own .sensitivity-row / Audio's #audio-settings-row,
+     just under its own class since it sits in #game-settings-list's grid
+     instead of those screens' own layouts. */
+  .game-settings-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    justify-self: start;
+  }
+  .game-settings-slider-row input[type="range"] {
+    width: 160px;
+  }
+
   /* Title screen: shown before any gameplay starts (and again, minus
      the setup panel, if Controls is opened from it). Sits above
      #overlay/#death-screen (z-index 20/30) since it covers the whole
@@ -2065,6 +2084,13 @@
             <input type="checkbox" id="fullscreen-toggle">
             <span class="toggle-slider"></span>
           </label>
+        </li>
+        <li>
+          <label for="aim-assist-slider" class="controls-row-label">Aim Assist</label>
+          <div class="game-settings-slider-row">
+            <input type="range" id="aim-assist-slider" min="0" max="100" value="0" />
+            <span id="aim-assist-value">0%</span>
+          </div>
         </li>
       </ul>
     </div>
@@ -6857,6 +6883,55 @@
     }
   });
 
+  // Aim Assist slider: a 0-100 integer percent, persisted the same way as
+  // master volume (0-100 storage, /100 scale -- unlike the two Controls
+  // screen sensitivity sliders, which store 0-100 but scale by /50 around
+  // a 50%-is-1x default). 0% is default -- an opt-in, off until the player
+  // turns it on, same posture as goreEnabled's own default-OFF. Read
+  // directly by createGamepadInputSource's pollLookDelta every frame it
+  // runs, same pattern as goreEnabled/ammoMode elsewhere. Single global
+  // value regardless of co-op (see its own comment further up, near
+  // GAMEPAD_LOOK_SENSITIVITY_BASE/AIM_ASSIST_* consts) -- if co-op ever has
+  // two controller-driven players, both would currently share this one
+  // slider, matching controllerSensitivityScale's own existing limitation.
+  const AIM_ASSIST_STORAGE_KEY = "escapeFromKise.aimAssist";
+
+  function loadStoredAimAssistPercent() {
+    try {
+      const raw = localStorage.getItem(AIM_ASSIST_STORAGE_KEY);
+      if (raw === null) return 0; // default OFF -- opt-in only
+      const stored = Number(raw);
+      if (Number.isFinite(stored) && stored >= 0 && stored <= 100) return stored;
+    } catch (e) {
+      // Fall through to the default below.
+    }
+    return 0;
+  }
+
+  function storeAimAssistPercent(percent) {
+    try {
+      localStorage.setItem(AIM_ASSIST_STORAGE_KEY, String(percent));
+    } catch (e) {
+      // Non-fatal -- the setting just won't persist this session.
+    }
+  }
+
+  let aimAssistScale = loadStoredAimAssistPercent() / 100;
+
+  const aimAssistSliderEl = document.getElementById("aim-assist-slider");
+  const aimAssistValueEl = document.getElementById("aim-assist-value");
+  aimAssistSliderEl.value = String(loadStoredAimAssistPercent());
+  aimAssistValueEl.textContent = `${loadStoredAimAssistPercent()}%`;
+  aimAssistSliderEl.addEventListener("input", function () {
+    const percent = Number(aimAssistSliderEl.value);
+    aimAssistScale = percent / 100;
+    aimAssistValueEl.textContent = `${percent}%`;
+    storeAimAssistPercent(percent);
+  });
+  aimAssistSliderEl.addEventListener("change", function () {
+    playClip("menu_confirm_01", { volume: 0.7 });
+  });
+
   // Exit to Main Menu (from the pause menu, i.e. mid-round): ends the
   // current run exactly like a restart would (resetGame() also updates
   // sessionHighScore's display implicitly via addScore, so nothing about
@@ -8247,6 +8322,74 @@
   // (1x scale -- see controllerSensitivityScale, further below).
   const GAMEPAD_LOOK_SENSITIVITY_BASE = 3.0;
 
+  // ------------------------------------------------------------------
+  // AIM ASSIST (controller only -- see aimAssistScale/AIM_ASSIST_STORAGE_KEY
+  // further below, and the General settings screen's own Aim Assist
+  // slider). Lives entirely inside createGamepadInputSource's pollLookDelta
+  // below, not in applyCameraRotation or any other shared camera code --
+  // KB+M has no equivalent path through here at all, so it's structurally
+  // impossible for mouse look to be affected regardless of the slider's
+  // value (per spec).
+  //
+  // Two effects, both scaled linearly by the same 0-100% slider
+  // (aimAssistScale, 0 = off, 1 = strongest) and both keyed off the same
+  // "nearest enemy to dead-center" target (findAimAssistTarget below):
+  //   1. Slowdown: multiplies this frame's raw stick-derived look delta
+  //      down, smoothly by angle off dead-center, anywhere inside the wider
+  //      cone/range below.
+  //   2. Magnetism: adds a small extra pull toward that same target, but
+  //      only once its angle is inside the tighter cone below, and capped
+  //      well under GAMEPAD_LOOK_SENSITIVITY_BASE's full-stick rate so it
+  //      reads as noticeably weaker than the slowdown effect at the same
+  //      slider value, per spec.
+  // Cone angles/range/max strengths are flagged defaults -- nothing here
+  // was specified, just picked to feel reasonable for this game's combat
+  // range and flagged in the implementation summary.
+  // ------------------------------------------------------------------
+  const AIM_ASSIST_SLOWDOWN_CONE_ANGLE = THREE.MathUtils.degToRad(15); // half-angle off dead-center
+  const AIM_ASSIST_SLOWDOWN_RANGE = 20; // world units/meters -- beyond this, no assist at all regardless of angle
+  const AIM_ASSIST_MAX_SLOWDOWN = 0.7; // at slider 100% + dead-on target, look speed multiplies down to (1 - this) = 30%
+  const AIM_ASSIST_MAGNETISM_CONE_ANGLE = THREE.MathUtils.degToRad(5); // half-angle -- tighter than slowdown's, per spec
+  const AIM_ASSIST_MAGNETISM_MAX_RATE = 1.0; // radians/second pull at slider 100% + dead-on target (vs. GAMEPAD_LOOK_SENSITIVITY_BASE's 3.0 full-stick rate)
+
+  // Nearest-to-crosshair living enemy within AIM_ASSIST_SLOWDOWN_RANGE and
+  // its cone, or null. Reuses `enemies` (the same array fireWeapon's own
+  // hitscan raycasts against via enemyMeshes) directly instead of building
+  // a separate targeting query -- dead enemies are spliced out of it
+  // immediately on death (see removeEnemy), so every entry here is already
+  // guaranteed living. Also reuses hasLineOfSight (the nav-grid wall check
+  // enemy pathing already uses) so assist never pulls/slows toward a
+  // target that's actually behind a wall from the player's position.
+  const aimAssistForwardScratch = new THREE.Vector3();
+  const aimAssistToEnemyScratch = new THREE.Vector3();
+  function findAimAssistTarget(player) {
+    const origin = player.camera.position;
+    player.camera.getWorldDirection(aimAssistForwardScratch);
+    let best = null;
+    let bestAngle = AIM_ASSIST_SLOWDOWN_CONE_ANGLE;
+    for (const enemyState of enemies) {
+      aimAssistToEnemyScratch.copy(enemyState.mesh.position).sub(origin);
+      const distance = aimAssistToEnemyScratch.length();
+      if (distance < 0.001 || distance > AIM_ASSIST_SLOWDOWN_RANGE) continue;
+      aimAssistToEnemyScratch.divideScalar(distance); // normalize
+      const angle = aimAssistForwardScratch.angleTo(aimAssistToEnemyScratch);
+      if (angle >= bestAngle) continue;
+      if (!hasLineOfSight(origin.x, origin.z, enemyState.mesh.position.x, enemyState.mesh.position.z, 0.15)) continue;
+      best = enemyState;
+      bestAngle = angle;
+    }
+    return best ? { enemyState: best, angle: bestAngle } : null;
+  }
+
+  // Normalizes an angle difference (to - from) into (-PI, PI] so magnetism's
+  // yaw pull always turns the short way around a wrap point.
+  function shortestAngleDelta(from, to) {
+    let delta = (to - from) % (Math.PI * 2);
+    if (delta > Math.PI) delta -= Math.PI * 2;
+    else if (delta < -Math.PI) delta += Math.PI * 2;
+    return delta;
+  }
+
   function createGamepadInputSource() {
     let gamepadIndex = null; // assigned externally once this source is matched to a specific connected gamepad (Step 2's setup-screen detection) -- poll()/reads are harmless no-ops until then
     const previousPressed = {}; // action id -> was its button pressed last poll(), for edge detection
@@ -8290,22 +8433,69 @@
     // Right-stick look, already converted to radians for this frame so
     // the caller just does `player.yaw -= dYaw; player.pitch -= dPitch;`
     // uniformly regardless of input source, matching how mouse deltas
-    // are consumed.
-    function pollLookDelta(deltaSeconds) {
+    // are consumed. `player` (this source's own driven player -- passed by
+    // the caller, see its two call sites) is only used for aim assist
+    // below; every other InputSource method here stays player-agnostic.
+    function pollLookDelta(deltaSeconds, player) {
       const pad = getPad();
       if (!pad) return { dYaw: 0, dPitch: 0 };
       let lookX = pad.axes[GAMEPAD_AXIS_LOOK_X] || 0;
       let lookY = pad.axes[GAMEPAD_AXIS_LOOK_Y] || 0;
       if (Math.abs(lookX) < GAMEPAD_STICK_DEADZONE) lookX = 0;
       if (Math.abs(lookY) < GAMEPAD_STICK_DEADZONE) lookY = 0;
-      if (lookX === 0 && lookY === 0) return { dYaw: 0, dPitch: 0 };
       // Same sign convention as mouse movementX/movementY, so the caller
       // applies it identically: `player.yaw -= dYaw; player.pitch -= dPitch;`
       const sensitivity = GAMEPAD_LOOK_SENSITIVITY_BASE * controllerSensitivityScale;
-      return {
-        dYaw: lookX * sensitivity * deltaSeconds,
-        dPitch: lookY * sensitivity * deltaSeconds,
-      };
+      let dYaw = lookX * sensitivity * deltaSeconds;
+      let dPitch = lookY * sensitivity * deltaSeconds;
+
+      // Aim assist (see AIM_ASSIST_* consts/findAimAssistTarget above,
+      // and aimAssistScale further below -- 0 when the General settings
+      // slider is at 0%, so this whole block is a no-op and look is
+      // byte-for-byte identical to pre-aim-assist behavior). Deliberately
+      // NOT gated on lookX/lookY being non-zero -- magnetism is an
+      // automatic pull that has to work even with the stick centered, so
+      // a target sitting still in the crosshair keeps getting pulled onto
+      // it without requiring the player to nudge the stick first.
+      if (aimAssistScale > 0 && player) {
+        const target = findAimAssistTarget(player);
+        if (target) {
+          // Slowdown: scales this frame's raw stick-derived delta down,
+          // smoothly from no reduction at the cone's edge to
+          // AIM_ASSIST_MAX_SLOWDOWN (at slider 100%) dead-on.
+          const slowdownT = 1 - target.angle / AIM_ASSIST_SLOWDOWN_CONE_ANGLE; // 1 = dead-on, 0 = cone edge
+          const slowdownMultiplier = 1 - AIM_ASSIST_MAX_SLOWDOWN * aimAssistScale * slowdownT;
+          dYaw *= slowdownMultiplier;
+          dPitch *= slowdownMultiplier;
+
+          // Magnetism: only once the SAME nearest target is also inside
+          // the tighter magnetism cone (a subset of the slowdown cone
+          // above) -- a small extra pull toward it, rate-limited per
+          // frame (maxStep) so it steps toward the target instead of
+          // snapping past it once already close.
+          if (target.angle < AIM_ASSIST_MAGNETISM_CONE_ANGLE) {
+            const magnetismT = 1 - target.angle / AIM_ASSIST_MAGNETISM_CONE_ANGLE;
+            const maxStep = AIM_ASSIST_MAGNETISM_MAX_RATE * aimAssistScale * magnetismT * deltaSeconds;
+            const targetPos = target.enemyState.mesh.position;
+            const dx = targetPos.x - player.camera.position.x;
+            const dz = targetPos.z - player.camera.position.z;
+            const horizDist = Math.hypot(dx, dz);
+            const targetYaw = Math.atan2(-dx, -dz); // matches camera.getWorldDirection's own -Z-forward convention
+            const targetPitch = Math.atan2(targetPos.y - player.camera.position.y, horizDist);
+            const yawDelta = Math.max(-maxStep, Math.min(maxStep, shortestAngleDelta(player.yaw, targetYaw)));
+            const pitchDelta = Math.max(-maxStep, Math.min(maxStep, shortestAngleDelta(player.pitch, targetPitch)));
+            // Subtracted, not added -- same inverted sign convention as
+            // dYaw/dPitch above (`player.yaw -= dYaw`), so a positive
+            // yawDelta (target is to the right) still turns the camera
+            // right once the caller applies it.
+            dYaw -= yawDelta;
+            dPitch -= pitchDelta;
+          }
+        }
+      }
+
+      if (dYaw === 0 && dPitch === 0) return { dYaw: 0, dPitch: 0 };
+      return { dYaw, dPitch };
     }
 
     function isActionHeld(actionId) {
@@ -10599,7 +10789,7 @@
         // pattern as mouse movementX/movementY -- see pollLookDelta's
         // own comment.
         if (typeof player.input.pollLookDelta === "function") {
-          const lookDelta = player.input.pollLookDelta(deltaSeconds);
+          const lookDelta = player.input.pollLookDelta(deltaSeconds, player);
           if (lookDelta.dYaw !== 0 || lookDelta.dPitch !== 0) {
             player.yaw -= lookDelta.dYaw;
             player.pitch -= lookDelta.dPitch;
@@ -10734,6 +10924,7 @@
         document.querySelector(".ammo-mode-options"),
         goreToggleEl.closest("label"),
         fullscreenToggleEl.closest("label"),
+        aimAssistSliderEl,
         gameSettingsBackButtonEl,
       ],
     },
@@ -11091,7 +11282,7 @@
         // processToggleInventoryAction) -- just the look/action/movement
         // calls left here, all still gated on actually being unfrozen.
         if (typeof players[0].input.pollLookDelta === "function") {
-          const lookDelta = players[0].input.pollLookDelta(deltaSeconds);
+          const lookDelta = players[0].input.pollLookDelta(deltaSeconds, players[0]);
           if (lookDelta.dYaw !== 0 || lookDelta.dPitch !== 0) {
             players[0].yaw -= lookDelta.dYaw;
             players[0].pitch -= lookDelta.dPitch;
