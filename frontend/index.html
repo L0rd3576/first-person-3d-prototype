@@ -2523,8 +2523,49 @@
     return times.sort((a, b) => a - b);
   }
 
+  // Brute ("blue") enemies: a big, slow-to-kill heavy hitter that shows
+  // up on every even wave from 4 onward, on its own spawn schedule
+  // alongside the zombie stagger loop (same idea as the green schedule
+  // above -- see computeBruteEnemySpawnTimes and its call site in
+  // updateWaveManager).
+  const BRUTE_ENEMY_SIZE_MULTIPLIER = 1.8;    // 180% of a normal enemy's size
+  const BRUTE_ENEMY_BASE_HEALTH = 170;        // before currentDifficulty.enemyHealthMultiplier (1.2x on Legendary)
+  const BRUTE_ENEMY_SPEED_MULTIPLIER = 1.05;  // 5% faster than a normal enemy
+  const BRUTE_ENEMY_DAMAGE = 35;
+  // Long enough that one contact can never register twice -- by the time
+  // it's over, the knockback below has already thrown the player well
+  // clear of the brute's reach.
+  const BRUTE_ENEMY_HIT_INTERVAL = 1.5;       // seconds
+  // Player knockback on a brute hit: an initial horizontal speed that
+  // decays exponentially (see updateMovement), so total distance
+  // travelled is SPEED / DECAY_RATE = ~6.7 units, spread over ~0.8s
+  // instead of a teleport. Plus a small upward pop so it reads as a launch.
+  const BRUTE_KNOCKBACK_SPEED = 30;           // units/second, initial
+  const BRUTE_KNOCKBACK_DECAY_RATE = 4.5;     // 1/second
+  const BRUTE_KNOCKBACK_UPWARD_SPEED = 4;     // units/second (JUMP_SPEED is 7)
+  const BRUTE_SCRAP_DROP_COUNT = 2;           // always dropped on death
+  const BRUTE_AMMO_DROP_CHANCE = 0.5;
+  const BRUTE_SPAWN_PERIOD_FRACTION = 0.8;    // brutes spawn within the first 80% of the wave's spawning period
+
+  // Wave 4 gets currentDifficulty.bruteEnemyStartCount brutes, and every
+  // even wave after that gets one more (Normal: 1, 2, 3... on waves 4,
+  // 6, 8...; Hard/Legendary: 2, 3, 4...). Odd waves and waves below 4 get none.
+  function computeBruteEnemyCount(wave) {
+    if (wave < 4 || wave % 2 !== 0) return 0;
+    return currentDifficulty.bruteEnemyStartCount + (wave - 4) / 2;
+  }
+
+  function computeBruteEnemySpawnTimes(wave, spawnPeriodDuration) {
+    const count = computeBruteEnemyCount(wave);
+    const times = [];
+    for (let i = 0; i < count; i++) {
+      times.push(Math.random() * spawnPeriodDuration * BRUTE_SPAWN_PERIOD_FRACTION);
+    }
+    return times.sort((a, b) => a - b);
+  }
+
   // ------------------------------------------------------------------
-  // DIFFICULTY: a per-difficulty config/multiplier object that the
+  // DIFFICULTY:a per-difficulty config/multiplier object that the
   // enemy/wave logic above reads from (see spawnEnemy and
   // updateWaveManager's call sites) rather than scattering
   // if-difficulty checks through that code. Normal is the untouched
@@ -2544,6 +2585,7 @@
       enemySpeedMultiplier: 1.0,
       enemyHealthMultiplier: 1.0,
       greenEnemyWaveShift: 0,
+      bruteEnemyStartCount: 1, // brutes on wave 4 -- see computeBruteEnemyCount
       enemyCountFormula: (wave) => 8 + 4 * wave,
       roundClearScore: 100,
     },
@@ -2553,6 +2595,7 @@
       enemySpeedMultiplier: 1.15,
       enemyHealthMultiplier: 1.0,
       greenEnemyWaveShift: 1,
+      bruteEnemyStartCount: 2,
       enemyCountFormula: (wave) => 10 + 5 * wave,
       roundClearScore: 150,
     },
@@ -2562,6 +2605,7 @@
       enemySpeedMultiplier: 1.30, // relative to Normal directly -- NOT stacked on top of Hard's 1.15
       enemyHealthMultiplier: 1.2,
       greenEnemyWaveShift: 1, // same fast-enemy timing as Hard
+      bruteEnemyStartCount: 2, // same as Hard
       enemyCountFormula: (wave) => 10 + 5 * wave, // same count formula as Hard
       roundClearScore: 200,
     },
@@ -2989,6 +3033,9 @@
 
       // Movement -- see updateMovement.
       velocity: new THREE.Vector3(),
+      // Separate from velocity so the player's own input/friction can't
+      // cancel it -- see BRUTE_KNOCKBACK_* and updateMovement.
+      bruteKnockbackVelocity: new THREE.Vector3(),
       verticalVelocity: 0,
       isGrounded: true,
       jumpOffset: 0,
@@ -4407,6 +4454,12 @@
     color: 0x228b22,
     roughness: 0.7,
   });
+  // Blue variant for the brute enemy (see BRUTE_ENEMY_* and spawnEnemy
+  // below) -- same geometry/face, scaled up via sizeScale.
+  const bruteEnemyBodyMaterial = new THREE.MeshStandardMaterial({
+    color: 0x1f4fbf,
+    roughness: 0.7,
+  });
 
   // Placeholder face: rather than texturing a BoxGeometry face slot
   // (unreliable to get facing the right way once the box is rotated),
@@ -4966,8 +5019,12 @@
     return sign * magnitude;
   }
 
-  function spawnEnemy(position, isGreen) {
-    const mesh = new THREE.Mesh(enemyGeometry, isGreen ? greenEnemyBodyMaterial : enemyBodyMaterial);
+  // variant: "normal", "green" (fast/explodes), or "brute" (big/blue).
+  function spawnEnemy(position, variant) {
+    const isGreen = variant === "green";
+    const isBrute = variant === "brute";
+    const bodyMaterial = isGreen ? greenEnemyBodyMaterial : isBrute ? bruteEnemyBodyMaterial : enemyBodyMaterial;
+    const mesh = new THREE.Mesh(enemyGeometry, bodyMaterial);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
@@ -4982,8 +5039,10 @@
     // multiplier, so a fast enemy on Hard/Legendary is faster by both
     // factors together (multiplicative), not just the green one alone.
     const baseSpeed = ENEMY_SPEED * (1 + randomStatVariance()) * currentDifficulty.enemySpeedMultiplier;
-    const speed = isGreen ? baseSpeed * GREEN_ENEMY_SPEED_MULTIPLIER : baseSpeed;
-    const sizeScale = 1 + randomStatVariance();
+    const speed = isGreen
+      ? baseSpeed * GREEN_ENEMY_SPEED_MULTIPLIER
+      : isBrute ? baseSpeed * BRUTE_ENEMY_SPEED_MULTIPLIER : baseSpeed;
+    const sizeScale = (1 + randomStatVariance()) * (isBrute ? BRUTE_ENEMY_SIZE_MULTIPLIER : 1);
 
     mesh.scale.setScalar(sizeScale);
     mesh.position.set(position.x, (ENEMY_SIZE.height / 2) * sizeScale, position.z);
@@ -4992,11 +5051,12 @@
     const enemyState = {
       mesh,
       yaw: 0,
-      health: ENEMY_MAX_HEALTH * currentDifficulty.enemyHealthMultiplier,
+      health: (isBrute ? BRUTE_ENEMY_BASE_HEALTH : ENEMY_MAX_HEALTH) * currentDifficulty.enemyHealthMultiplier,
       speed,
       sizeScale,
       hitCooldown: 0,
-      isGreen: !!isGreen,
+      isGreen,
+      isBrute,
       // Footsteps (explicit request, green/fast enemies only -- see
       // updateEnemyFootsteps/playEnemyFootstepSound): same
       // distance-accumulated left/right alternation as the player's own
@@ -5041,7 +5101,7 @@
   // spawn is never silently skipped over it.
   const SPAWNER_PLAYER_EXCLUSION_RADIUS = 10; // game units, horizontal distance
 
-  function spawnEnemyFromRandomSpawner(isGreen) {
+  function spawnEnemyFromRandomSpawner(variant) {
     const eligibleSpawners = enemySpawners.filter((spawner) => {
       const dx = spawner.position.x - camera.position.x;
       const dz = spawner.position.z - camera.position.z;
@@ -5049,7 +5109,7 @@
     });
     const pool = eligibleSpawners.length > 0 ? eligibleSpawners : enemySpawners;
     const spawner = pool[Math.floor(Math.random() * pool.length)];
-    spawnEnemy(spawner.position, isGreen);
+    spawnEnemy(spawner.position, variant);
   }
 
   function removeEnemy(enemyState) {
@@ -5286,12 +5346,23 @@
       playGoreAudioAt(enemyState.mesh.position);
       // Every kill awards points, any variant -- see the SCORE comment above.
       addScore(ENEMY_KILL_SCORE);
-      if (Math.random() < AMMO_DROP_CHANCE) {
-        spawnAmmoPickup(enemyState.mesh.position);
-      }
-      for (const [itemId, dropChance] of Object.entries(RESOURCE_DROP_CHANCES)) {
-        if (Math.random() < dropChance) {
-          spawnResourceDrop(itemId, enemyState.mesh.position);
+      if (enemyState.isBrute) {
+        // Brutes skip the usual per-resource rolls: always BRUTE_SCRAP_DROP_COUNT
+        // scrap, plus their own (higher) ammo chance.
+        if (Math.random() < BRUTE_AMMO_DROP_CHANCE) {
+          spawnAmmoPickup(enemyState.mesh.position);
+        }
+        for (let i = 0; i < BRUTE_SCRAP_DROP_COUNT; i++) {
+          spawnResourceDrop("scrap", enemyState.mesh.position);
+        }
+      } else {
+        if (Math.random() < AMMO_DROP_CHANCE) {
+          spawnAmmoPickup(enemyState.mesh.position);
+        }
+        for (const [itemId, dropChance] of Object.entries(RESOURCE_DROP_CHANCES)) {
+          if (Math.random() < dropChance) {
+            spawnResourceDrop(itemId, enemyState.mesh.position);
+          }
         }
       }
       removeEnemy(enemyState);
@@ -7863,6 +7934,7 @@
     player.jumpOffset = 0;
     player.currentEyeHeight = EYE_HEIGHT;
     player.velocity.set(0, 0, 0);
+    player.bruteKnockbackVelocity.set(0, 0, 0);
     player.footstepDistanceSinceLastStep = 0;
     player.steppingFoot = "left";
 
@@ -7931,6 +8003,8 @@
     waveGreenSpawnTimes = [];
     waveGreenSpawnedCount = 0;
     waveSpawningElapsed = 0;
+    waveBruteSpawnTimes = [];
+    waveBruteSpawnedCount = 0;
     updateWaveHudUI();
   }
 
@@ -12151,6 +12225,21 @@
     updateFootsteps(player, Math.hypot(player.camera.position.x - preMoveX, player.camera.position.z - preMoveZ), isCrouching);
     } // end hasControl/inventory-open -- gravity below runs regardless
 
+    // Brute-hit knockback: applied outside hasControl so it still carries
+    // the player even with the inventory open. Exponential decay
+    // (frame-rate independent) gives a smooth ease-out shove.
+    if (player.bruteKnockbackVelocity.lengthSq() > KNOCKBACK_STOP_THRESHOLD_SQ) {
+      moveWithWallCollision(
+        player.camera.position,
+        player.bruteKnockbackVelocity.x * deltaSeconds,
+        player.bruteKnockbackVelocity.z * deltaSeconds,
+        PLAYER_RADIUS
+      );
+      player.bruteKnockbackVelocity.multiplyScalar(Math.exp(-BRUTE_KNOCKBACK_DECAY_RATE * deltaSeconds));
+    } else {
+      player.bruteKnockbackVelocity.set(0, 0, 0);
+    }
+
     // Gravity / jumping: integrate a vertical offset above the current
     // stand/crouch eye height and clamp it back to the ground. Runs
     // unconditionally (see hasControl's own comment) -- a player who
@@ -12420,6 +12509,24 @@
           continue; // enemyState/mesh are gone -- removeEnemy() already ran
         }
 
+        if (enemyState.isBrute) {
+          // One heavy hit that launches the player away along the
+          // brute->player direction; the smooth decay is applied in
+          // updateMovement. BRUTE_ENEMY_HIT_INTERVAL keeps a single
+          // contact from ever registering twice.
+          playRandomClip(["bat_hit_01", "bat_hit_02"], { volume: 1.5 });
+          takeDamage(targetPlayer, BRUTE_ENEMY_DAMAGE);
+          if (distanceToPlayer > MIN_ENEMY_DISTANCE) {
+            enemyToPlayer.normalize();
+            targetPlayer.bruteKnockbackVelocity.set(
+              enemyToPlayer.x * BRUTE_KNOCKBACK_SPEED, 0, enemyToPlayer.z * BRUTE_KNOCKBACK_SPEED
+            );
+            targetPlayer.verticalVelocity = Math.max(targetPlayer.verticalVelocity, BRUTE_KNOCKBACK_UPWARD_SPEED);
+          }
+          enemyState.hitCooldown = BRUTE_ENEMY_HIT_INTERVAL;
+          continue;
+        }
+
         takeDamage(targetPlayer, ENEMY_DAMAGE_PER_HIT);
 
         // Knockback: shove the player's velocity directly away from the
@@ -12468,6 +12575,10 @@
   let waveGreenSpawnTimes = [];
   let waveGreenSpawnedCount = 0;
   let waveSpawningElapsed = 0;
+  // Brute enemy schedule for the current wave -- see
+  // computeBruteEnemySpawnTimes. Same pattern as the green one above.
+  let waveBruteSpawnTimes = [];
+  let waveBruteSpawnedCount = 0;
 
   const waveHudTextEl = document.getElementById("wave-hud-text");
   // Called every unpaused frame from updateWaveManager below, but the
@@ -12499,14 +12610,21 @@
     // frame regardless of waveState (not just "spawning"), so a scheduled
     // time landing right as -- or a hair after -- the zombie loop
     // finishes still fires instead of being skipped.
-    if (waveGreenSpawnedCount < waveGreenSpawnTimes.length) {
+    if (waveGreenSpawnedCount < waveGreenSpawnTimes.length || waveBruteSpawnedCount < waveBruteSpawnTimes.length) {
       waveSpawningElapsed += deltaSeconds;
       while (
         waveGreenSpawnedCount < waveGreenSpawnTimes.length &&
         waveSpawningElapsed >= waveGreenSpawnTimes[waveGreenSpawnedCount]
       ) {
-        spawnEnemyFromRandomSpawner(true);
+        spawnEnemyFromRandomSpawner("green");
         waveGreenSpawnedCount += 1;
+      }
+      while (
+        waveBruteSpawnedCount < waveBruteSpawnTimes.length &&
+        waveSpawningElapsed >= waveBruteSpawnTimes[waveBruteSpawnedCount]
+      ) {
+        spawnEnemyFromRandomSpawner("brute");
+        waveBruteSpawnedCount += 1;
       }
     }
 
@@ -12531,6 +12649,10 @@
           spawnPeriodDuration
         );
         waveGreenSpawnedCount = 0;
+        // Brutes use the real wave number (no difficulty shift) -- the
+        // per-difficulty difference is bruteEnemyStartCount instead.
+        waveBruteSpawnTimes = computeBruteEnemySpawnTimes(waveNumber, spawnPeriodDuration);
+        waveBruteSpawnedCount = 0;
         waveSpawningElapsed = 0;
 
         waveTimer = 0; // spawn the wave's first enemy immediately below
@@ -12543,7 +12665,7 @@
     if (waveState === "spawning") {
       waveTimer -= deltaSeconds;
       if (waveTimer <= 0) {
-        spawnEnemyFromRandomSpawner(false);
+        spawnEnemyFromRandomSpawner("normal");
         waveEnemiesSpawnedSoFar += 1;
         enemiesRemainingToSpawn -= 1;
         if (enemiesRemainingToSpawn <= 0) {
@@ -12564,7 +12686,9 @@
     // isn't reached again until the following wave finishes spawning),
     // so it's also exactly where the per-difficulty round-clear score
     // bonus belongs -- see the SCORE comment above.
-    if (enemies.length === 0) {
+    // Also wait on any brutes still scheduled, so the wave can't be
+    // declared clear in the gap before one spawns.
+    if (enemies.length === 0 && waveBruteSpawnedCount >= waveBruteSpawnTimes.length) {
       addScore(currentDifficulty.roundClearScore);
       for (const p of isCoopMatchActive ? players : [players[0]]) grantSkillPoint(p);
       waveState = "grace";
