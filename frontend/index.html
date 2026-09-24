@@ -973,6 +973,14 @@
     font-size: 30px;
     line-height: 1;
   }
+  /* Picture icons (ITEM_DEFS iconImage) -- sized to match the 30px
+     emoji icons. pointer-events off so drag/hover still target the slot. */
+  .item-icon-image {
+    display: block;
+    width: 38px;
+    height: 38px;
+    pointer-events: none;
+  }
   .inventory-slot-qty {
     position: absolute;
     right: 4px;
@@ -1162,16 +1170,25 @@
     border-color: rgba(255, 255, 255, 0.85);
   }
   .skill-tree-node.unlocked {
-    background: rgba(40, 110, 50, 0.9);
-    border-color: #3ddc3d;
+    background: rgba(120, 100, 40, 0.9);
+    border-color: #ffdc64;
+    box-shadow: 0 0 8px rgba(255, 220, 100, 0.6);
   }
   .skill-tree-node.locked {
     opacity: 0.5;
   }
-  .skill-tree-node.selected {
-    background: rgba(120, 100, 40, 0.9);
-    border-color: #ffdc64;
-    box-shadow: 0 0 8px rgba(255, 220, 100, 0.6);
+  /* Clicked without a skill point or before its prerequisite is
+     unlocked -- see onSkillNodeClick. */
+  .skill-tree-node.denied {
+    animation: skill-node-denied 0.45s ease-out;
+  }
+  @keyframes skill-node-denied {
+    0%, 40% {
+      background: rgba(150, 30, 30, 0.95);
+      border-color: #ff4a4a;
+      box-shadow: 0 0 8px rgba(255, 60, 60, 0.7);
+      opacity: 1;
+    }
   }
 
   /* Custom inventory cursor (explicit request): a small white circle with
@@ -2214,7 +2231,7 @@
 
 <div id="health-hud">
   <div class="stamina-bar-outer"><div id="stamina-bar-fill" class="stamina-bar-fill"></div></div>
-  <div id="health-label">Health: <span id="health-text">100</span> / 100</div>
+  <div id="health-label">Health: <span id="health-text">100</span> / <span id="health-max-text">100</span></div>
   <div id="health-bar-outer"><div id="health-bar-fill"></div></div>
 </div>
 
@@ -2234,12 +2251,12 @@
 
 <div id="health-hud-p1" class="coop-health-hud coop-p1">
   <div class="stamina-bar-outer"><div id="stamina-bar-fill-p1" class="stamina-bar-fill"></div></div>
-  <div class="coop-health-label">Health: <span id="health-text-p1">100</span> / 100</div>
+  <div class="coop-health-label">Health: <span id="health-text-p1">100</span> / <span id="health-max-text-p1">100</span></div>
   <div class="coop-health-bar-outer"><div id="health-bar-fill-p1" class="coop-health-bar-fill"></div></div>
 </div>
 <div id="health-hud-p2" class="coop-health-hud coop-p2">
   <div class="stamina-bar-outer"><div id="stamina-bar-fill-p2" class="stamina-bar-fill"></div></div>
-  <div class="coop-health-label">Health: <span id="health-text-p2">100</span> / 100</div>
+  <div class="coop-health-label">Health: <span id="health-text-p2">100</span> / <span id="health-max-text-p2">100</span></div>
   <div class="coop-health-bar-outer"><div id="health-bar-fill-p2" class="coop-health-bar-fill"></div></div>
 </div>
 
@@ -2637,6 +2654,24 @@
   const AMMO_PICKUP_HOVER_HEIGHT = 0.5;      // height above the ground the pickup floats at
   const AMMO_PICKUP_SIZE = 0.35;             // pickup cube's side length
 
+  // Resource drops (cloth/planks/scrap): each id in RESOURCE_DROP_CHANCES
+  // rolls its own chance per kill, so one enemy can drop
+  // none, one, or several. Unlike ammo they don't float -- they're
+  // tossed out of the enemy, tumble to the floor using the dropped-weapon
+  // physics (see updateDroppedItems), freeze once still, and are picked
+  // up automatically by walking over them (see updateResourcePickups).
+  // No despawn timer.
+  const RESOURCE_DROP_CHANCES = {                  // chance per kill, rolled separately for each
+    cloth: 0.08,
+    planks: 0.10,
+    scrap: 0.05,
+  };
+  const RESOURCE_DROP_TOSS_SPEED = 1.8;           // max initial horizontal speed, random direction
+  const RESOURCE_DROP_TOSS_UPWARD_SPEED = 2.5;    // initial upward pop out of the enemy
+  const RESOURCE_DROP_MAX_SPIN_SPEED = 5;         // radians/sec, per axis, while airborne
+  const RESOURCE_DROP_LEVEL_RATE = 10;            // how fast a grounded pile rolls back to lying flat (1/sec)
+  const RESOURCE_PICKUP_COLLECT_DISTANCE = 0.8;   // horizontal distance that counts as "walked over"
+
   // Dropped weapons (G to drop, F to pick up): a dropped gun re-uses its
   // own WEAPON_DEFS buildModel() to get a world-space copy of its view
   // model, tosses it out in front of the player, then tumbles it under
@@ -2653,6 +2688,7 @@
   const DROPPED_ITEM_GROUND_Y = 0.05;              // resting height above the floor (keeps it from clipping through)
   const DROPPED_ITEM_BOUNCE_RESTITUTION = 0.35;    // fraction of vertical speed kept after bouncing off the ground
   const DROPPED_ITEM_GROUND_FRICTION = 0.55;       // fraction of horizontal/spin speed kept per ground contact
+  const DROPPED_ITEM_MIN_BOUNCE_SPEED = 0.5;       // a ground bounce slower than this just stops instead
   const DROPPED_ITEM_SETTLE_SPEED_THRESHOLD = 0.05; // below this linear speed counts as "not moving"
   const DROPPED_ITEM_SETTLE_SPIN_THRESHOLD = 0.3;   // below this angular speed counts as "not spinning"
   const DROPPED_ITEM_SETTLE_DELAY = 1.5;           // seconds of stillness before locking in place permanently
@@ -2985,10 +3021,9 @@
       wasFrozenLastFrame: false,
 
       // Weapon inventory -- see getActiveSlot/getActiveWeaponDef/
-      // getActiveMuzzleTip/switchToSlot/cycleActiveSlot. Slot 2 is
-      // temporarily the bat instead of the Glock (explicit request, in
-      // progress) -- see WEAPON_DEFS.bat's own comment.
-      inventorySlots: [createWeaponSlotState("pistol"), createWeaponSlotState("bat")],
+      // getActiveMuzzleTip/switchToSlot/cycleActiveSlot. Slot 2 starts
+      // empty -- the bat and Glock are crafted (see CRAFTING_RECIPES).
+      inventorySlots: [createWeaponSlotState("pistol"), null],
       activeSlotIndex: 0,
 
       // View models -- see setActiveViewModel/applyGunTransform.
@@ -3071,17 +3106,15 @@
       // every time the panel opens (see setInventoryOpen).
       inventoryActiveTab: "inventory",
       craftingSelectedRecipeId: null,
-      // Skills tab (see renderSkillsTab). skillPoints is a placeholder --
-      // nothing earns or spends it yet (explicit request: the "earned by
-      // killing enemies, spent on nodes" economy plugs in here later).
+      // Skills tab (see renderSkillsTab). skillPoints is earned one per
+      // wave cleared (grantSkillPoint) and spent in tryUnlockSkill.
       // skillTreePan is the tree-space point shown at the viewport's
       // center; skillTreePanDrag is a real-mouse drag in progress (null
-      // otherwise); skillTreeSelectedNodeId is just the click highlight.
+      // otherwise).
       skillPoints: 0,
       unlockedSkillIds: new Set(), // see getSkillNodeState/resetPlayerSkills
       skillTreePan: { x: 0, y: 0 },
       skillTreePanDrag: null,
-      skillTreeSelectedNodeId: null,
       // Edge-detection for the controller's L1/R1 bumpers stepping
       // between tabs -- same "was it pressed last poll" bookkeeping
       // cursorClickWasPressed does for the Right Trigger, see
@@ -5039,6 +5072,7 @@
   // ------------------------------------------------------------------
 
   const healthTextEl = document.getElementById("health-text");
+  const healthMaxTextEl = document.getElementById("health-max-text");
   const healthBarFillEl = document.getElementById("health-bar-fill");
   const deathScreenEl = document.getElementById("death-screen");
   // Index-matched to players[] -- coopSpectatorScreenEls[i] is shown
@@ -5061,6 +5095,7 @@
   // in the file; by the time this is actually called, it already is.
   const hudRefsP1 = {
     healthTextEl: document.getElementById("health-text-p1"),
+    healthMaxTextEl: document.getElementById("health-max-text-p1"),
     healthBarFillEl: document.getElementById("health-bar-fill-p1"),
     staminaBarFillEl: document.getElementById("stamina-bar-fill-p1"),
     ammoHudEl: document.getElementById("ammo-hud-p1"),
@@ -5070,6 +5105,7 @@
   };
   const hudRefsP2 = {
     healthTextEl: document.getElementById("health-text-p2"),
+    healthMaxTextEl: document.getElementById("health-max-text-p2"),
     healthBarFillEl: document.getElementById("health-bar-fill-p2"),
     staminaBarFillEl: document.getElementById("stamina-bar-fill-p2"),
     ammoHudEl: document.getElementById("ammo-hud-p2"),
@@ -5081,7 +5117,7 @@
     if (isCoopMatchActive) {
       return player === players[0] ? hudRefsP1 : hudRefsP2;
     }
-    return { healthTextEl, healthBarFillEl, staminaBarFillEl, ammoHudEl, ammoLoadedEl, ammoReserveEl, hitMarkerEl };
+    return { healthTextEl, healthMaxTextEl, healthBarFillEl, staminaBarFillEl, ammoHudEl, ammoLoadedEl, ammoReserveEl, hitMarkerEl };
   }
   const staminaBarFillEl = document.getElementById("stamina-bar-fill");
 
@@ -5101,11 +5137,8 @@
   // away pauses an in-progress reload, switching back resumes it. See the
   // report for why that's a deliberate simplification, not an oversight.
   //
-  // Starting state: slot 0 = pistol, slot 1 = glock, both full ammo --
-  // slot 1 is no longer left empty now that a second gun exists to put
-  // there, since there's no pickup/unlock system yet to obtain it any
-  // other way. Flagged in the report in case a pickup system should
-  // gate this later instead.
+  // Starting state: slot 0 = pistol (full ammo), slot 1 = empty. The
+  // bat and Glock are crafted into an empty slot (see craftRecipe).
   // ------------------------------------------------------------------
   function createWeaponSlotState(weaponId) {
     const gunStats = WEAPON_DEFS[weaponId].gun;
@@ -5255,6 +5288,11 @@
       addScore(ENEMY_KILL_SCORE);
       if (Math.random() < AMMO_DROP_CHANCE) {
         spawnAmmoPickup(enemyState.mesh.position);
+      }
+      for (const [itemId, dropChance] of Object.entries(RESOURCE_DROP_CHANCES)) {
+        if (Math.random() < dropChance) {
+          spawnResourceDrop(itemId, enemyState.mesh.position);
+        }
       }
       removeEnemy(enemyState);
     } else if (hitPoint) {
@@ -5747,6 +5785,277 @@
     dropSlotItem(player, player.activeSlotIndex);
   }
 
+  // ------------------------------------------------------------------
+  // RESOURCE DROP MODELS: small world-space models for the resources
+  // enemies can drop (see RESOURCE_DROP_CHANCES). Same split as the
+  // weapon buildModel()s: geometries are fresh per call (so
+  // disposeDroppedItemGeometry can free them), materials are shared.
+  // Each group is centered roughly on its own middle; updateDroppedItems
+  // finds the floor from the real mesh bounds, so the origin doesn't
+  // have to sit at the bottom.
+  // ------------------------------------------------------------------
+  const clothPileMaterials = [
+    new THREE.MeshStandardMaterial({ color: 0x4a6f93, roughness: 1, flatShading: true }), // faded denim blue
+    new THREE.MeshStandardMaterial({ color: 0x8e3b35, roughness: 1, flatShading: true }), // washed-out red
+    new THREE.MeshStandardMaterial({ color: 0x8a8a80, roughness: 1, flatShading: true }), // grey tee
+    new THREE.MeshStandardMaterial({ color: 0x5d6440, roughness: 1, flatShading: true }), // olive
+  ];
+
+  // Shared wood-grain texture for planks: a few darker streaks and one
+  // knot on a canvas, stretched along each plank's length.
+  const plankGrainTexture = (function () {
+    const grainCanvas = document.createElement("canvas");
+    grainCanvas.width = 128;
+    grainCanvas.height = 32;
+    const ctx = grainCanvas.getContext("2d");
+    ctx.fillStyle = "#9a6a3c";
+    ctx.fillRect(0, 0, 128, 32);
+    for (let i = 0; i < 14; i++) {
+      ctx.strokeStyle = i % 3 === 0 ? "rgba(70, 40, 18, 0.55)" : "rgba(110, 70, 36, 0.45)";
+      ctx.lineWidth = 1 + (i % 2);
+      const y = 1 + i * 2.2;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.bezierCurveTo(40, y + 1.5, 80, y - 1.5, 128, y + 0.5);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(60, 34, 14, 0.8)";
+    ctx.beginPath();
+    ctx.ellipse(84, 15, 5, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const texture = new THREE.CanvasTexture(grainCanvas);
+    return texture;
+  })();
+  const plankMaterials = [
+    new THREE.MeshStandardMaterial({ map: plankGrainTexture, color: 0xffffff, roughness: 0.9 }),
+    new THREE.MeshStandardMaterial({ map: plankGrainTexture, color: 0xc9a98a, roughness: 0.9 }), // weathered, greyer board
+  ];
+  const plankNailMaterial = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, metalness: 0.7, roughness: 0.5 });
+
+  const scrapMetalMaterials = [
+    new THREE.MeshStandardMaterial({ color: 0x8c9196, metalness: 0.75, roughness: 0.45, flatShading: true }), // bare steel
+    new THREE.MeshStandardMaterial({ color: 0x7a4a2c, metalness: 0.35, roughness: 0.85, flatShading: true }), // rusted
+    new THREE.MeshStandardMaterial({ color: 0x5f6a70, metalness: 0.6, roughness: 0.6, flatShading: true }),  // dull gunmetal
+  ];
+
+  // Pushes every vertex of `geometry` by up to +/-`amount` on each axis,
+  // so shapes read as crumpled/rough instead of perfectly smooth.
+  // Shared vertices (same position) get the same offset, so the surface
+  // doesn't tear open along seams.
+  function roughenGeometry(geometry, amount) {
+    const positions = geometry.attributes.position;
+    const offsetsByKey = new Map();
+    for (let i = 0; i < positions.count; i++) {
+      const key = positions.getX(i).toFixed(4) + "," + positions.getY(i).toFixed(4) + "," + positions.getZ(i).toFixed(4);
+      let offset = offsetsByKey.get(key);
+      if (!offset) {
+        offset = [(Math.random() * 2 - 1) * amount, (Math.random() * 2 - 1) * amount, (Math.random() * 2 - 1) * amount];
+        offsetsByKey.set(key, offset);
+      }
+      positions.setXYZ(i, positions.getX(i) + offset[0], positions.getY(i) + offset[1], positions.getZ(i) + offset[2]);
+    }
+    geometry.computeVertexNormals();
+  }
+
+  // A small heap of rough, crumpled fabric: several squashed, lumpy
+  // blobs in different colors piled on top of each other.
+  function buildClothPileModel() {
+    const group = new THREE.Group();
+    const lumps = [
+      { x: 0, y: 0, z: 0, sx: 0.16, sy: 0.05, sz: 0.13, mat: 0 },
+      { x: 0.06, y: 0.03, z: -0.04, sx: 0.11, sy: 0.045, sz: 0.09, mat: 1 },
+      { x: -0.07, y: 0.025, z: 0.05, sx: 0.1, sy: 0.04, sz: 0.08, mat: 2 },
+      { x: -0.01, y: 0.06, z: 0.01, sx: 0.08, sy: 0.035, sz: 0.07, mat: 3 },
+      { x: 0.1, y: 0.005, z: 0.08, sx: 0.07, sy: 0.025, sz: 0.05, mat: 2 },
+    ];
+    for (const lump of lumps) {
+      const geometry = new THREE.SphereGeometry(1, 9, 6);
+      geometry.scale(lump.sx, lump.sy, lump.sz);
+      roughenGeometry(geometry, 0.018);
+      const mesh = new THREE.Mesh(geometry, clothPileMaterials[lump.mat]);
+      mesh.position.set(lump.x, lump.y, lump.z);
+      mesh.rotation.y = Math.random() * Math.PI * 2;
+      mesh.castShadow = true;
+      group.add(mesh);
+    }
+    // A loose torn strip trailing off the heap.
+    const stripGeometry = new THREE.BoxGeometry(0.16, 0.008, 0.035, 6, 1, 1);
+    roughenGeometry(stripGeometry, 0.006);
+    const strip = new THREE.Mesh(stripGeometry, clothPileMaterials[1]);
+    strip.position.set(-0.13, -0.02, -0.06);
+    strip.rotation.set(0, 0.6, 0.15);
+    strip.castShadow = true;
+    group.add(strip);
+    return group;
+  }
+
+  // Three short boards stacked slightly askew, a couple with a nail
+  // head showing.
+  function buildPlanksModel() {
+    const group = new THREE.Group();
+    const boards = [
+      { y: 0, z: -0.045, rotY: 0.05, len: 0.4, mat: 0 },
+      { y: 0, z: 0.045, rotY: -0.08, len: 0.36, mat: 1 },
+      { y: 0.032, z: 0, rotY: 0.45, len: 0.38, mat: 0 },
+    ];
+    for (const board of boards) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(board.len, 0.03, 0.08), plankMaterials[board.mat]);
+      mesh.position.set(0, board.y, board.z);
+      mesh.rotation.y = board.rotY;
+      mesh.castShadow = true;
+      group.add(mesh);
+
+      const nail = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.006, 6), plankNailMaterial);
+      nail.position.set(board.len * 0.4, 0.017, 0);
+      mesh.add(nail);
+    }
+    return group;
+  }
+
+  // A few bent, dented metal strips plus a loose bolt -- "metal planks".
+  function buildScrapModel() {
+    const group = new THREE.Group();
+    const strips = [
+      { y: 0, z: -0.04, rotY: 0.1, len: 0.34, width: 0.08, bend: 0.25, mat: 0 },
+      { y: 0.015, z: 0.04, rotY: -0.3, len: 0.3, width: 0.07, bend: -0.35, mat: 1 },
+      { y: 0.03, z: 0, rotY: 0.9, len: 0.26, width: 0.06, bend: 0.5, mat: 2 },
+    ];
+    for (const strip of strips) {
+      const geometry = new THREE.BoxGeometry(strip.len, 0.012, strip.width, 8, 1, 2);
+      const positions = geometry.attributes.position;
+      const halfLen = strip.len / 2;
+      for (let i = 0; i < positions.count; i++) {
+        const t = positions.getX(i) / halfLen; // -1..1 along the strip
+        positions.setY(i, positions.getY(i) + strip.bend * 0.1 * t * t);
+      }
+      roughenGeometry(geometry, 0.004); // dents
+      const mesh = new THREE.Mesh(geometry, scrapMetalMaterials[strip.mat]);
+      mesh.position.set(0, strip.y, strip.z);
+      mesh.rotation.y = strip.rotY;
+      mesh.castShadow = true;
+      group.add(mesh);
+    }
+    const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.05, 6), scrapMetalMaterials[0]);
+    bolt.position.set(0.12, 0.02, 0.08);
+    bolt.rotation.z = Math.PI / 2;
+    bolt.castShadow = true;
+    group.add(bolt);
+    return group;
+  }
+
+  const RESOURCE_MODEL_BUILDERS = {
+    cloth: buildClothPileModel,
+    planks: buildPlanksModel,
+    scrap: buildScrapModel,
+  };
+
+  // Pops one resource item out of `position` (the dead enemy's center)
+  // in a random direction; updateDroppedItems takes it from there.
+  function spawnResourceDrop(itemId, position) {
+    const group = RESOURCE_MODEL_BUILDERS[itemId]();
+    group.position.copy(position);
+    group.rotation.set(
+      (Math.random() * 2 - 1) * 0.5,
+      Math.random() * Math.PI * 2,
+      (Math.random() * 2 - 1) * 0.5
+    );
+    scene.add(group);
+
+    const tossAngle = Math.random() * Math.PI * 2;
+    const tossSpeed = RESOURCE_DROP_TOSS_SPEED * (0.4 + Math.random() * 0.6);
+    const velocity = new THREE.Vector3(
+      Math.cos(tossAngle) * tossSpeed,
+      RESOURCE_DROP_TOSS_UPWARD_SPEED * (0.7 + Math.random() * 0.3),
+      Math.sin(tossAngle) * tossSpeed
+    );
+    const angularVelocity = new THREE.Vector3(
+      (Math.random() * 2 - 1) * RESOURCE_DROP_MAX_SPIN_SPEED,
+      (Math.random() * 2 - 1) * RESOURCE_DROP_MAX_SPIN_SPEED,
+      (Math.random() * 2 - 1) * RESOURCE_DROP_MAX_SPIN_SPEED
+    );
+
+    droppedItems.push({
+      kind: "item",
+      group,
+      itemId,
+      quantity: 1,
+      velocity,
+      angularVelocity,
+      isSettled: false,
+      stillElapsed: 0,
+    });
+  }
+
+  const resourceDropBoundsScratch = new THREE.Box3();
+
+  // Wraps an angle into -PI..PI, so leveling a pile always rolls it the
+  // short way back to flat.
+  function wrapAngle(angle) {
+    return Math.atan2(Math.sin(angle), Math.cos(angle));
+  }
+
+  // Resource items' version of the tumble physics below. Two differences
+  // from dropped weapons: the floor check uses the model's real bounds
+  // (so a pile never sinks into the ground or hovers, whatever way it
+  // landed), and once on the floor it rolls back to lying flat and small
+  // bounces are killed outright, so it reliably comes to a full stop
+  // and freezes.
+  function stepResourceDropPhysics(item, deltaSeconds) {
+    item.velocity.y += GRAVITY * deltaSeconds;
+    item.group.position.addScaledVector(item.velocity, deltaSeconds);
+    item.group.rotation.x += item.angularVelocity.x * deltaSeconds;
+    item.group.rotation.y += item.angularVelocity.y * deltaSeconds;
+    item.group.rotation.z += item.angularVelocity.z * deltaSeconds;
+
+    resourceDropBoundsScratch.setFromObject(item.group);
+    if (resourceDropBoundsScratch.min.y > 0) return; // still airborne
+
+    item.group.position.y -= resourceDropBoundsScratch.min.y;
+    item.velocity.y *= -DROPPED_ITEM_BOUNCE_RESTITUTION;
+    if (Math.abs(item.velocity.y) < DROPPED_ITEM_MIN_BOUNCE_SPEED) item.velocity.y = 0;
+    item.velocity.x *= DROPPED_ITEM_GROUND_FRICTION;
+    item.velocity.z *= DROPPED_ITEM_GROUND_FRICTION;
+    item.angularVelocity.multiplyScalar(DROPPED_ITEM_GROUND_FRICTION);
+
+    const levelFraction = Math.min(1, RESOURCE_DROP_LEVEL_RATE * deltaSeconds);
+    item.group.rotation.x = wrapAngle(item.group.rotation.x) * (1 - levelFraction);
+    item.group.rotation.z = wrapAngle(item.group.rotation.z) * (1 - levelFraction);
+  }
+
+  // Walking over a resource item (settled or still tumbling) puts it
+  // straight into the item inventory. Same player/pointer-lock rules as
+  // updateAmmoPickups. If the inventory has no room, it stays on the
+  // floor until there is.
+  function updateResourcePickups() {
+    const candidatePlayers = isCoopMatchActive ? players : [players[0]];
+
+    for (let i = droppedItems.length - 1; i >= 0; i--) {
+      const item = droppedItems[i];
+      if (item.kind !== "item") continue;
+
+      for (const player of candidatePlayers) {
+        if (player.isDead) continue;
+        if (playerNeedsPointerLock(player) && document.pointerLockElement !== canvas) continue;
+
+        const dx = player.camera.position.x - item.group.position.x;
+        const dz = player.camera.position.z - item.group.position.z;
+        if (Math.hypot(dx, dz) >= RESOURCE_PICKUP_COLLECT_DISTANCE) continue;
+
+        const amountAdded = addItemToInventory(player, item.itemId, item.quantity);
+        if (amountAdded <= 0) continue; // full -- maybe the other player has room
+        item.quantity -= amountAdded;
+        playClip("item_pickup_01", { volume: 0.85 });
+        if (item.quantity <= 0) break;
+      }
+
+      if (item.quantity <= 0) {
+        scene.remove(item.group);
+        disposeDroppedItemGeometry(item.group);
+        droppedItems.splice(i, 1);
+      }
+    }
+  }
+
   // Simple tumble-and-settle physics -- gravity, ground bounce with
   // damping, and a stillness timer that locks the item in place for
   // good once it's stayed below both movement thresholds for
@@ -5757,19 +6066,10 @@
     for (const item of droppedItems) {
       if (item.isSettled) continue;
 
-      item.velocity.y += GRAVITY * deltaSeconds;
-      item.group.position.addScaledVector(item.velocity, deltaSeconds);
-
-      item.group.rotation.x += item.angularVelocity.x * deltaSeconds;
-      item.group.rotation.y += item.angularVelocity.y * deltaSeconds;
-      item.group.rotation.z += item.angularVelocity.z * deltaSeconds;
-
-      if (item.group.position.y <= DROPPED_ITEM_GROUND_Y) {
-        item.group.position.y = DROPPED_ITEM_GROUND_Y;
-        item.velocity.y *= -DROPPED_ITEM_BOUNCE_RESTITUTION;
-        item.velocity.x *= DROPPED_ITEM_GROUND_FRICTION;
-        item.velocity.z *= DROPPED_ITEM_GROUND_FRICTION;
-        item.angularVelocity.multiplyScalar(DROPPED_ITEM_GROUND_FRICTION);
+      if (item.kind === "item") {
+        stepResourceDropPhysics(item, deltaSeconds);
+      } else {
+        stepDroppedWeaponPhysics(item, deltaSeconds);
       }
 
       const isStill =
@@ -5787,13 +6087,39 @@
         item.stillElapsed = 0;
       }
     }
+
+    updateResourcePickups();
   }
 
-  // Nearest dropped item within INTERACT_RANGE of the player, or null.
+  function stepDroppedWeaponPhysics(item, deltaSeconds) {
+    item.velocity.y += GRAVITY * deltaSeconds;
+    item.group.position.addScaledVector(item.velocity, deltaSeconds);
+
+    item.group.rotation.x += item.angularVelocity.x * deltaSeconds;
+    item.group.rotation.y += item.angularVelocity.y * deltaSeconds;
+    item.group.rotation.z += item.angularVelocity.z * deltaSeconds;
+
+    if (item.group.position.y <= DROPPED_ITEM_GROUND_Y) {
+      item.group.position.y = DROPPED_ITEM_GROUND_Y;
+      item.velocity.y *= -DROPPED_ITEM_BOUNCE_RESTITUTION;
+      // Kill tiny bounces outright -- otherwise each frame's gravity
+      // re-bounces it at a small speed that never drops under the settle
+      // threshold (at 60 FPS), so it never freezes.
+      if (Math.abs(item.velocity.y) < DROPPED_ITEM_MIN_BOUNCE_SPEED) item.velocity.y = 0;
+      item.velocity.x *= DROPPED_ITEM_GROUND_FRICTION;
+      item.velocity.z *= DROPPED_ITEM_GROUND_FRICTION;
+      item.angularVelocity.multiplyScalar(DROPPED_ITEM_GROUND_FRICTION);
+    }
+  }
+
+  // Nearest dropped WEAPON within INTERACT_RANGE of the player, or null.
+  // Resource items are skipped -- they're collected by walking over them
+  // (updateResourcePickups), so they shouldn't steal F from a gun nearby.
   function findNearbyDroppedItem(player) {
     let closest = null;
     let closestDistanceSq = INTERACT_RANGE * INTERACT_RANGE;
     for (const item of droppedItems) {
+      if (item.kind === "item") continue;
       const dx = item.group.position.x - player.camera.position.x;
       const dz = item.group.position.z - player.camera.position.z;
       const distanceSq = dx * dx + dz * dz;
@@ -5823,6 +6149,30 @@
   // one, so adding descriptions to the rest later is purely a data
   // change, no tooltip-code changes needed.
   // ------------------------------------------------------------------
+  // Cloth's inventory icon: a scrap of blue checked shirt fabric with a
+  // stitched hem along the top, torn/jagged on every other edge, and a
+  // few frayed threads hanging off.
+  const CLOTH_ICON_URL = "data:image/svg+xml," + encodeURIComponent(
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>" +
+      "<defs><pattern id='check' width='8' height='8' patternUnits='userSpaceOnUse' patternTransform='rotate(-10)'>" +
+        "<rect width='8' height='8' fill='#4f80ad'/>" +
+        "<rect width='8' height='3' fill='#2f5a84'/>" +
+        "<rect width='3' height='8' fill='#2f5a84' opacity='0.75'/>" +
+        "<rect x='5.5' width='0.8' height='8' fill='#c9d6e3' opacity='0.5'/>" +
+      "</pattern></defs>" +
+      "<g stroke='#3d6c98' stroke-width='1.1' stroke-linecap='round' fill='none'>" +
+        "<path d='M49 54 l2 6'/><path d='M44 51 l1 4'/><path d='M35 57 l-1 5'/><path d='M22 55 l-2 5'/>" +
+        "<path d='M10 51 l-4 3'/><path d='M6 38 l-5 1'/><path d='M8 27 l-4 -2'/><path d='M57 30 l5 1'/><path d='M55 43 l4 3'/>" +
+      "</g>" +
+      "<path d='M8 14 L55 8 L57 18 L53 22 L58 29 L52 34 L56 43 L48 47 L50 55 L43 51 L36 58 L30 51 L23 56 L19 48 L11 52 L13 43 L5 38 L11 32 L6 26 L10 21 Z' " +
+        "fill='url(#check)' stroke='#1f3d5c' stroke-width='1.3' stroke-linejoin='round'/>" +
+      "<path d='M8.6 17 L55.4 11' stroke='#1f3d5c' stroke-width='1' opacity='0.6'/>" +
+      "<path d='M10 19.5 L55 13.6' stroke='#efe6cc' stroke-width='1.1' stroke-dasharray='2.6 1.8'/>" +
+      "<path d='M22 21 Q31 34 27 50' stroke='#000' stroke-opacity='0.22' stroke-width='3.5' fill='none'/>" +
+      "<path d='M24.5 21 Q33.5 34 29.5 50' stroke='#fff' stroke-opacity='0.18' stroke-width='1.5' fill='none'/>" +
+    "</svg>"
+  );
+
   const ITEM_DEFS = {
     bandages: {
       id: "bandages",
@@ -5834,8 +6184,27 @@
     },
     rocks: { id: "rocks", displayName: "Rocks", category: "crafting", icon: "\u{1FAA8}", maxStack: null },
     planks: { id: "planks", displayName: "Planks", category: "crafting", icon: "\u{1FAB5}", maxStack: null },
-    cloth: { id: "cloth", displayName: "Cloth", category: "misc", icon: "\u{1F9F5}", maxStack: null },
+    cloth: { id: "cloth", displayName: "Cloth", category: "misc", icon: "\u{1F9F5}", iconImage: CLOTH_ICON_URL, maxStack: null },
+    scrap: { id: "scrap", displayName: "Scrap", category: "crafting", icon: "\u{1F529}", maxStack: null },
   };
+
+  // Fills an icon element with the item's `iconImage` (a picture) when it
+  // has one, otherwise its emoji `icon`. Every place that shows an item
+  // icon goes through this, so switching an item to a picture is just a
+  // data change.
+  function setItemIconContent(el, def) {
+    el.textContent = "";
+    if (def.iconImage) {
+      const img = document.createElement("img");
+      img.className = "item-icon-image";
+      img.src = def.iconImage;
+      img.alt = def.displayName;
+      img.draggable = false;
+      el.appendChild(img);
+    } else {
+      el.textContent = def.icon;
+    }
+  }
 
   // The exact starting kit granted on a fresh game/restart -- see
   // resetItemInventory below, called from resetGame().
@@ -5844,6 +6213,7 @@
     { itemId: "rocks", quantity: 1 },
     { itemId: "planks", quantity: 1 },
     { itemId: "cloth", quantity: 7 },
+    { itemId: "scrap", quantity: 1 },
   ];
 
   // ------------------------------------------------------------------
@@ -5863,6 +6233,28 @@
       resultItemId: "bandages",
       resultQuantity: 1,
       cost: [{ itemId: "cloth", quantity: 3 }],
+      requiredSkillId: "bandages",
+    },
+    // Weapon recipes use resultWeaponId instead of resultItemId: the
+    // weapon goes into the first empty weapon slot (see craftRecipe), and
+    // can't be crafted while both slots are full.
+    {
+      id: "baseball_bat",
+      displayName: "Baseball Bat",
+      description: "A wooden bat for melee attacks.",
+      icon: "\u{1F3CF}",
+      resultWeaponId: "bat",
+      cost: [{ itemId: "planks", quantity: 10 }],
+      requiredSkillId: "baseball_bat",
+    },
+    {
+      id: "glock",
+      displayName: "Glock",
+      description: "A semi-automatic pistol.",
+      icon: "\u{1F52B}",
+      resultWeaponId: "glock",
+      cost: [{ itemId: "scrap", quantity: 6 }],
+      requiredSkillId: "weaponsmith_1",
     },
   ];
 
@@ -5953,9 +6345,14 @@
     return quantity - remaining;
   }
 
+  function hasEmptyWeaponSlot(player) {
+    return player.inventorySlots.some((slot) => !slot);
+  }
+
   // Whether `player` currently holds enough of every ingredient a recipe
   // needs -- every cost line has to be met, not just one.
   function canCraftRecipe(player, recipe) {
+    if (recipe.resultWeaponId && !hasEmptyWeaponSlot(player)) return false;
     return recipe.cost.every((c) => getInventoryItemQuantity(player, c.itemId) >= c.quantity);
   }
 
@@ -5968,9 +6365,20 @@
   // afterward, same "update the UI the moment state changes" pattern
   // addItemToInventory already follows.
   function craftRecipe(player, recipe) {
-    if (!canCraftRecipe(player, recipe)) return false;
+    if (!isRecipeUnlocked(player, recipe) || !canCraftRecipe(player, recipe)) return false;
     for (const cost of recipe.cost) removeItemFromInventory(player, cost.itemId, cost.quantity);
-    addItemToInventory(player, recipe.resultItemId, recipe.resultQuantity); // also re-renders the Inventory tab's grid
+    if (recipe.resultWeaponId) {
+      const slotIndex = player.inventorySlots.findIndex((slot) => !slot);
+      player.inventorySlots[slotIndex] = createWeaponSlotState(recipe.resultWeaponId);
+      if (slotIndex === player.activeSlotIndex) {
+        setActiveViewModel(player);
+        playWeaponSound(getActiveWeaponDef(player), "draw");
+      } else {
+        updateAmmoUI(player);
+      }
+    } else {
+      addItemToInventory(player, recipe.resultItemId, recipe.resultQuantity); // also re-renders the Inventory tab's grid
+    }
     renderCraftingTab(player);
     return true;
   }
@@ -6040,7 +6448,7 @@
         const def = ITEM_DEFS[slot.itemId];
         const iconEl = document.createElement("div");
         iconEl.className = "inventory-slot-icon";
-        iconEl.textContent = def.icon;
+        setItemIconContent(iconEl, def);
         slotEl.appendChild(iconEl);
 
         if (slot.quantity > 1) {
@@ -6214,8 +6622,9 @@
     // longer exists (defensive; CRAFTING_RECIPES is static today, but
     // this keeps renderCraftingInfo from ever rendering nothing at all
     // once a second recipe exists to fall back to).
-    if (!CRAFTING_RECIPES.some((r) => r.id === player.craftingSelectedRecipeId)) {
-      player.craftingSelectedRecipeId = CRAFTING_RECIPES.length > 0 ? CRAFTING_RECIPES[0].id : null;
+    const recipes = getUnlockedRecipes(player);
+    if (!recipes.some((r) => r.id === player.craftingSelectedRecipeId)) {
+      player.craftingSelectedRecipeId = recipes.length > 0 ? recipes[0].id : null;
     }
     renderCraftingRecipeList(player);
     renderCraftingInfo(player);
@@ -6229,14 +6638,18 @@
   function renderCraftingRecipeList(player) {
     const els = inventoryElsFor(player);
     els.craftingList.innerHTML = "";
-    for (const recipe of CRAFTING_RECIPES) {
+    for (const recipe of getUnlockedRecipes(player)) {
       const slotEl = document.createElement("div");
       slotEl.className = "inventory-slot crafting-recipe-slot";
       slotEl.classList.toggle("selected", recipe.id === player.craftingSelectedRecipeId);
 
       const iconEl = document.createElement("div");
       iconEl.className = "inventory-slot-icon";
-      iconEl.textContent = ITEM_DEFS[recipe.resultItemId].icon;
+      if (recipe.icon) {
+        iconEl.textContent = recipe.icon;
+      } else {
+        setItemIconContent(iconEl, ITEM_DEFS[recipe.resultItemId]);
+      }
       slotEl.appendChild(iconEl);
 
       // Plain click (not the 12-slot grid's own mousedown-drag) -- there's
@@ -6271,7 +6684,7 @@
     const els = inventoryElsFor(player);
     els.craftingInfo.innerHTML = "";
 
-    const recipe = CRAFTING_RECIPES.find((r) => r.id === player.craftingSelectedRecipeId);
+    const recipe = getUnlockedRecipes(player).find((r) => r.id === player.craftingSelectedRecipeId);
     if (!recipe) return; // no recipes at all -- nothing to show
 
     const nameEl = document.createElement("div");
@@ -6294,6 +6707,12 @@
       lineEl.textContent = `${ITEM_DEFS[cost.itemId].displayName} x${cost.quantity} (${have}/${cost.quantity})`;
       costListEl.appendChild(lineEl);
     }
+    if (recipe.resultWeaponId && !hasEmptyWeaponSlot(player)) {
+      const slotLineEl = document.createElement("div");
+      slotLineEl.className = "crafting-cost-line unmet";
+      slotLineEl.textContent = "Needs an empty weapon slot";
+      costListEl.appendChild(slotLineEl);
+    }
     els.craftingInfo.appendChild(costListEl);
 
     const craftButtonEl = document.createElement("button");
@@ -6314,8 +6733,8 @@
   // is driven generically off SKILL_TREE_NODES ({ id, name, tier,
   // position, parentId }), so adding tiers/trees is just more entries.
   // Clicking a node unlocks it if it's affordable and its parent is
-  // already unlocked (see tryUnlockSkill). There's no way to earn skill
-  // points yet -- that's still to come.
+  // already unlocked (see tryUnlockSkill). Skill points are earned one
+  // per wave cleared (see grantSkillPoint).
   // ------------------------------------------------------------------
   const SKILL_NODE_WIDTH = 76;
   const SKILL_NODE_HEIGHT = 32;
@@ -6332,8 +6751,14 @@
       id: "run_24_min_5k", name: "24 Minute 5k", tier: 1, position: { x: SKILL_5K_X, y: 0 }, parentId: null,
       description: "Increases Max Stamina by 15", effect: { maxStaminaBonus: 15 },
     },
-    { id: "sliding_1", name: "Sliding 1", tier: 1, position: { x: 0, y: 0 }, parentId: null },
-    { id: "weaponsmith_1", name: "Weaponsmith 1", tier: 1, position: { x: SKILL_NODE_SPACING_X, y: 0 }, parentId: null },
+    {
+      id: "sliding", name: "Sliding", tier: 1, position: { x: 0, y: 0 }, parentId: null,
+      description: "Unlocks Sliding", effect: { unlocksSliding: true },
+    },
+    {
+      id: "baseball_bat", name: "Baseball Bat", tier: 1, position: { x: SKILL_NODE_SPACING_X, y: 0 }, parentId: null,
+      description: "Unlocks Baseball Bat Recipe", effect: { unlocksRecipeId: "baseball_bat" },
+    },
     {
       id: "mpw_15", name: "15 MPW", tier: 2, position: { x: SKILL_5K_X - SKILL_5K_CHILD_OFFSET_X, y: SKILL_NODE_SPACING_Y }, parentId: "run_24_min_5k",
       description: "Increases Max Stamina by 15", effect: { maxStaminaBonus: 15 },
@@ -6342,8 +6767,23 @@
       id: "hills", name: "Hills", tier: 2, position: { x: SKILL_5K_X + SKILL_5K_CHILD_OFFSET_X, y: SKILL_NODE_SPACING_Y }, parentId: "run_24_min_5k",
       description: "Increase Stamina Regeneration by 5%", effect: { staminaRegenMultiplier: 1.05 },
     },
-    { id: "sliding_2", name: "Sliding 2", tier: 2, position: { x: 0, y: SKILL_NODE_SPACING_Y }, parentId: "sliding_1" },
-    { id: "weaponsmith_2", name: "Weaponsmith 2", tier: 2, position: { x: SKILL_NODE_SPACING_X, y: SKILL_NODE_SPACING_Y }, parentId: "weaponsmith_1" },
+    { id: "sliding_2", name: "Sliding 2", tier: 2, position: { x: 0, y: SKILL_NODE_SPACING_Y }, parentId: "sliding" },
+    {
+      id: "weaponsmith_1", name: "Weaponsmith 1", tier: 2, position: { x: SKILL_NODE_SPACING_X, y: SKILL_NODE_SPACING_Y }, parentId: "baseball_bat",
+      description: "Unlocks Glock Recipe", effect: { unlocksRecipeId: "glock" },
+    },
+    {
+      id: "health_1", name: "Health 1", tier: 1, position: { x: SKILL_NODE_SPACING_X * 2, y: 0 }, parentId: null,
+      description: "Increases Max Health by 10", effect: { maxHealthBonus: 10 },
+    },
+    {
+      id: "bandages", name: "Bandages", tier: 2, position: { x: SKILL_NODE_SPACING_X * 2, y: SKILL_NODE_SPACING_Y }, parentId: "health_1",
+      description: "Unlocks Crafting Bandages", effect: { unlocksRecipeId: "bandage" },
+    },
+    {
+      id: "health_2", name: "Health 2", tier: 3, position: { x: SKILL_NODE_SPACING_X * 2, y: SKILL_NODE_SPACING_Y * 2 }, parentId: "bandages",
+      description: "Increases Max Health by 10", effect: { maxHealthBonus: 10 },
+    },
   ];
   const SKILL_TREE_NODES_BY_ID = Object.fromEntries(SKILL_TREE_NODES.map((n) => [n.id, n]));
   const SKILL_UNLOCK_COST = 1; // skill points per node
@@ -6364,7 +6804,32 @@
     if (player.skillPoints < SKILL_UNLOCK_COST) return false;
     player.skillPoints -= SKILL_UNLOCK_COST;
     player.unlockedSkillIds.add(nodeId);
+    // A max health bonus also heals by the same amount, so the new HP is
+    // usable right away rather than just an empty stretch of bar.
+    if (node.effect.maxHealthBonus && !player.isDead) {
+      player.health += node.effect.maxHealthBonus;
+      updateHealthUI(player);
+    }
     return true;
+  }
+
+  function getMaxHealth(player) {
+    let max = MAX_HEALTH;
+    for (const id of player.unlockedSkillIds) {
+      const effect = SKILL_TREE_NODES_BY_ID[id].effect;
+      if (effect && effect.maxHealthBonus) max += effect.maxHealthBonus;
+    }
+    return max;
+  }
+
+  // A recipe with `requiredSkillId` is hidden from the Crafting tab
+  // entirely until that skill node is unlocked.
+  function isRecipeUnlocked(player, recipe) {
+    return !recipe.requiredSkillId || player.unlockedSkillIds.has(recipe.requiredSkillId);
+  }
+
+  function getUnlockedRecipes(player) {
+    return CRAFTING_RECIPES.filter((r) => isRecipeUnlocked(player, r));
   }
 
   // Sums every unlocked node's effects -- computed on demand rather than
@@ -6388,14 +6853,21 @@
     return multiplier;
   }
 
+  // One point per player for every wave cleared (see updateWaveManager).
+  function grantSkillPoint(player) {
+    player.skillPoints += 1;
+    const els = inventoryElsFor(player);
+    if (els.skillTreeBuilt) els.skillPointsValue.textContent = player.skillPoints;
+  }
+
   // Wipes every unlocked skill and skill point -- called when a game
   // starts (resetPlayerState) AND when one ends (triggerDeath's game-over
   // branch, resetGame), as a double safety net (explicit request).
   function resetPlayerSkills(player) {
     player.unlockedSkillIds.clear();
     player.skillPoints = 0;
-    player.skillTreeSelectedNodeId = null;
     player.stamina = Math.min(player.stamina, getMaxStamina(player));
+    player.health = Math.min(player.health, getMaxHealth(player));
     const els = inventoryElsFor(player);
     if (els.skillTreeBuilt) {
       renderSkillTreeSelection(player);
@@ -6452,6 +6924,11 @@
       nodeEl.style.height = SKILL_NODE_HEIGHT + "px";
       nodeEl.style.left = node.position.x - SKILL_NODE_WIDTH / 2 + "px";
       nodeEl.style.top = node.position.y - SKILL_NODE_HEIGHT / 2 + "px";
+      // Drop the red flash once it's played -- a leftover .denied would
+      // replay the animation every time the hidden Skills tab is shown again.
+      nodeEl.addEventListener("animationend", function () {
+        nodeEl.classList.remove("denied");
+      });
       els.skillTreeLayer.appendChild(nodeEl);
     }
 
@@ -6513,12 +6990,11 @@
     els.skillTreeLayer.style.transform = `translate(${halfW - pan.x}px, ${halfH - pan.y}px)`;
   }
 
-  // Selected highlight plus each node's unlocked/locked look.
+  // Each node's unlocked/locked look.
   function renderSkillTreeSelection(player) {
     const els = inventoryElsFor(player);
     els.skillTreeLayer.querySelectorAll(".skill-tree-node").forEach((el) => {
       const state = getSkillNodeState(player, SKILL_TREE_NODES_BY_ID[el.dataset.nodeId]);
-      el.classList.toggle("selected", el.dataset.nodeId === player.skillTreeSelectedNodeId);
       el.classList.toggle("unlocked", state === "unlocked");
       el.classList.toggle("locked", state === "locked" || state === "unavailable");
     });
@@ -6553,12 +7029,18 @@
     if (nodeId) onSkillNodeClick(player, nodeId);
   }
 
-  // Highlights the node and unlocks it if possible (see tryUnlockSkill).
+  // Unlocks the node if possible (see tryUnlockSkill); otherwise flashes
+  // it red -- unless it's already unlocked, where a click does nothing.
   function onSkillNodeClick(player, nodeId) {
     playClip("menu_click_01");
-    player.skillTreeSelectedNodeId = nodeId;
+    const els = inventoryElsFor(player);
     if (tryUnlockSkill(player, nodeId)) {
-      inventoryElsFor(player).skillPointsValue.textContent = player.skillPoints;
+      els.skillPointsValue.textContent = player.skillPoints;
+    } else if (!player.unlockedSkillIds.has(nodeId)) {
+      const nodeEl = els.skillTreeLayer.querySelector(`.skill-tree-node[data-node-id="${nodeId}"]`);
+      nodeEl.classList.remove("denied");
+      void nodeEl.offsetWidth; // restart the animation on repeat clicks
+      nodeEl.classList.add("denied");
     }
     renderSkillTreeSelection(player);
     updateInventoryItemTooltip(player);
@@ -6602,7 +7084,7 @@
 
     const ghostEl = document.createElement("div");
     ghostEl.className = "inventory-drag-ghost";
-    ghostEl.textContent = ITEM_DEFS[slot.itemId].icon;
+    setItemIconContent(ghostEl, ITEM_DEFS[slot.itemId]);
     ghostEl.style.left = x + "px";
     ghostEl.style.top = y + "px";
     document.body.appendChild(ghostEl);
@@ -6985,28 +7467,11 @@
   // changed -- picking something into the other slot shouldn't cancel
   // whatever the active gun is doing (mid-reload, mid-ADS, etc.).
   //
-  // Non-weapon items (item.kind === "item") take a completely separate
-  // path into the 12-slot item inventory instead -- nothing currently
-  // spawns one of these in the world (no resource-drop sources exist
-  // yet), but the type-check is wired up now so a future drop source
-  // just works without touching this function again.
+  // Weapons only -- resource items (item.kind === "item") are collected
+  // automatically by walking over them, see updateResourcePickups.
   function tryPickUpNearbyItem(player) {
     const item = findNearbyDroppedItem(player);
     if (!item) return;
-
-    if (item.kind === "item") {
-      const amountAdded = addItemToInventory(player, item.itemId, item.quantity);
-      item.quantity -= amountAdded;
-      if (item.quantity <= 0) {
-        scene.remove(item.group);
-        disposeDroppedItemGeometry(item.group);
-        droppedItems.splice(droppedItems.indexOf(item), 1);
-      }
-      // else: inventory is full with no matching/under-cap stack -- the
-      // pickup partially (or entirely) fails and the rest stays on the
-      // ground rather than bumping something else out to make room.
-      return;
-    }
 
     scene.remove(item.group);
     disposeDroppedItemGeometry(item.group);
@@ -7064,9 +7529,11 @@
   // hudRefsFor's own comment.
   function updateHealthUI(player) {
     const refs = hudRefsFor(player);
-    const pct = Math.max(0, Math.min(100, (player.health / MAX_HEALTH) * 100));
+    const maxHealth = getMaxHealth(player);
+    const pct = Math.max(0, Math.min(100, (player.health / maxHealth) * 100));
     refs.healthBarFillEl.style.width = pct + "%";
     refs.healthTextEl.textContent = Math.ceil(Math.max(0, player.health));
+    refs.healthMaxTextEl.textContent = maxHealth;
 
     // Green (51-100) -> yellow (21-50) -> red (1-20) as health drops.
     if (pct > 50) {
@@ -7089,13 +7556,14 @@
 
   // Right-click (or the controller's L2) on a Bandages slot in the open
   // inventory -- explicit request. Uses one and heals BANDAGE_HEAL_AMOUNT,
-  // capped at MAX_HEALTH. Does nothing at full health or while dead, so a
+  // capped at getMaxHealth. Does nothing at full health or while dead, so a
   // bandage is never wasted.
   function useBandage(player) {
-    if (player.isDead || player.health >= MAX_HEALTH) return false;
+    const maxHealth = getMaxHealth(player);
+    if (player.isDead || player.health >= maxHealth) return false;
     if (getInventoryItemQuantity(player, "bandages") <= 0) return false;
     removeItemFromInventory(player, "bandages", 1);
-    player.health = Math.min(MAX_HEALTH, player.health + BANDAGE_HEAL_AMOUNT);
+    player.health = Math.min(maxHealth, player.health + BANDAGE_HEAL_AMOUNT);
     updateHealthUI(player);
     renderInventoryPanel(player);
     updateInventoryItemTooltip(player);
@@ -7366,7 +7834,7 @@
     player.isDead = false;
 
     player.inventorySlots[0] = createWeaponSlotState("pistol");
-    player.inventorySlots[1] = createWeaponSlotState("bat"); // temporary -- see createPlayer's own inventorySlots comment
+    player.inventorySlots[1] = null; // starts empty -- see createPlayer's own inventorySlots comment
     player.activeSlotIndex = 0;
 
     resetItemInventory(player);
@@ -11336,6 +11804,7 @@
   // or having just let go of sprint while that speed is still carrying).
   function tryStartSlide(player) {
     if (player.isSliding || player.slideCooldown > 0 || player.isDead || !player.isGrounded) return;
+    if (!player.unlockedSkillIds.has("sliding")) return; // gated behind the Sliding skill
     if (playerNeedsPointerLock(player) && document.pointerLockElement !== canvas) return;
 
     player.camera.getWorldDirection(forwardVector);
@@ -12097,6 +12566,7 @@
     // bonus belongs -- see the SCORE comment above.
     if (enemies.length === 0) {
       addScore(currentDifficulty.roundClearScore);
+      for (const p of isCoopMatchActive ? players : [players[0]]) grantSkillPoint(p);
       waveState = "grace";
       waveTimer = BETWEEN_WAVE_GRACE_PERIOD;
     }
