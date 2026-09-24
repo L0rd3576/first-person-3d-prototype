@@ -2,6 +2,13 @@
 
 This is a first-person 3D game being built with Claude Code by a college student.
 
+## Git location
+
+The parent folder `C:\Users\qj6264sf\Desktop\3dgame-from-laptop` is NOT a git repo.
+The actual git repository (tracking `https://github.com/L0rd3576/first-person-3d-prototype`)
+lives in this directory: `C:\Users\qj6264sf\Desktop\3dgame-from-laptop\first-person-3d-prototype`.
+Run git commands from here, not the parent.
+
 ## Launching the game
 
 When the user says "Launch" (or asks to launch/run the game), run `npm run tauri dev` in the
