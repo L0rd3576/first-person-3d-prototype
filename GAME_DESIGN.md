@@ -12,9 +12,11 @@ the code and re-sync this file.
 
 A first-person, wave-based survival shooter titled **"Escape From Kise."** (per the title
 screen — there's still no story/framing behind that name; see [Known Gaps](#9-known-gaps--open-design-questions)).
-The player spawns inside a small single-building floor plan, fights off escalating waves of one
-enemy type (plus a faster variant), and survives as long as possible, on one of three difficulty
-levels chosen from a pre-game setup screen. There is currently no win condition.
+The player spawns inside a small single-building floor plan, fights off escalating waves of
+block-humanoid enemies (a regular type plus fast, brute, and wave-10 boss variants), crafts
+weapons/ammo/healing from enemy drops, spends skill points earned per wave, and survives as long
+as possible, on one of three difficulty levels chosen from a pre-game setup screen. Solo or local
+split-screen co-op. There is currently no win condition.
 
 **Platform / tech stack:**
 - **Tauri 2 (Rust)** — native desktop window/shell, packaging. See `src-tauri/`.
@@ -116,24 +118,37 @@ slot isn't a weapon at all — it just means the player holds fists (see §5).
 
 ### Current weapon roster
 
-| | Pistol | Glock |
-|---|---|---|
-| Damage/shot | 40 | 30 |
-| Magazine | 8+1 (9 max loaded) | 17+1 (18 max loaded) |
-| Reload draws | 7 rounds from reserve | 17 rounds from reserve |
-| Starting reserve | 35 (5 clips) | 51 (3 magazines — guessed, unspecified) |
-| Reload duration | 2.25s (same for both — tuned down from 2.4s) | 2.25s |
-| View-model kick (visual) | pitch 0.09, kickback 0.05, recovers at rate 12 | pitch 0.06, kickback 0.035, recovers at rate 15 |
-| Camera recoil (affects aim) | +0.028 rad pitch/shot, ±0.014 rad random yaw, recovers at rate 7 | +0.018 rad pitch/shot, ±0.009 rad random yaw, recovers at rate 9 |
-| Shot sound | own recorded clip | own recorded clip |
-| Reload sound | shared clip (same recording used by both guns) | shared clip |
+Every run starts with **slot 1 = Pistol, slot 2 = empty (fists)**. Everything else is crafted
+(see §5 Crafting) after unlocking its recipe in the skill tree.
 
-The pistol's reload is a partial-clip design on purpose: reloading with a round still chambered
-tops out at 8/9, not a full 9, since the clip itself only ever holds 7 — but see **Ammo Mode**
-below, which changes this entirely under "Easy."
+| | Pistol | Glock | Shotgun | SMG | AK-47 |
+|---|---|---|---|---|---|
+| Damage | 40 | 30 | 12 pellets × 9.25 | 18 | 37 |
+| Fire mode | semi | semi | pump (0.85s between shots) | auto, 12/s | auto, 8/s (0.125s) |
+| Magazine (Easy / Realistic) | 7 / 7+1 | 17 / 17+1 | 6-shell tube | 25 / 25+1 | 30 / 30+1 |
+| Starting reserve | 35 (+ extra mags by difficulty, see §4) | 51 | 24 | 75 | 30 |
+| Reload | 2.25s | 2.25s | 0.6s per shell, interruptible | 1.6s | 2.3s |
+| Sight / zoom (ADS) | iron, 75°→60° FOV | iron, 75°→60° | notch-and-post iron sights (rear U-notch, front post with orange dot) | 1× holo, red ring | 1.5× ACOG, red chevron (FOV ~54°) |
+| Ammo box pickup | 1 magazine (7) | 1 magazine (17) | 8 shells | 1 magazine (25) | 10 rounds |
+| Crafted Ammo | 4 magazines | 4 magazines | 5 tubes (30) | 4 magazines | 1 magazine (30) |
+| Recipe cost | — (starting gun) | 2 scrap | 5 scrap | 5 scrap | 15 scrap + 3 planks |
+| Sounds | own shot, shared pistol reload | own shot, shared pistol reload | own shot, shell insert, pump | Glock shot, pistol reload (sped up) | own shot + own reload (mag out/in + hammer cock, ~2.2s) |
 
-Both start equipped: slot 1 = pistol, slot 2 = Glock (there's no pickup/unlock gate on the
-Glock — see §9).
+- **Shotgun pellets:** full damage out to 8.5 units, smoothstep falloff to 10% at 20 units.
+  Pellets prioritize the front of a group: besides the exact body-part meshes, each pellet also
+  tests every enemy's solid collision cylinder (padded 0.1 units) and hits whichever is nearest,
+  so pellets can't slip between a front enemy's legs into the one behind.
+- **Guns with their own sight** (`hasSight`: shotgun, SMG, AK) hide the screen crosshair dot
+  while aiming; the others show it only while aiming.
+- **Baseball bat** (melee-only, crafted for 4 planks): 60 damage swing with a 0.3s windup, 3.2
+  reach, 1.0s cooldown; alternate attack (the Aim bind) is a horizontal sweep hitting up to 3
+  enemies for 12 each with knockback. 120 durability (a swing that hits costs 1, a sweep that
+  hits 1 per 4; whiffs cost nothing). Dropped, it's drawn 1.3× bigger and always lies flat.
+- **Katana** (melee-only, crafted for 1 plank + 3 scrap): one attack only, 30 damage per slash,
+  2.8 reach, automatic (hold attack; 0.4s between slashes). Slashes alternate top right → top
+  left, then top left → top right, high across the screen, the cutting edge leading. Hits follow
+  the blade, not the crosshair: as it sweeps a ~63°-each-side arc, anything it passes over within
+  reach (with line of sight) is cut -- the first one only, 1 enemy per slash. No durability. Dropped, it lies flat.
 
 ### Ammo Mode setting (Realistic / Easy)
 
@@ -187,54 +202,82 @@ Two separate, per-weapon-configurable systems, both firing from the same shot:
 
 ### Melee (works with a gun equipped or with fists)
 
-- Damage: 25 (same for gun-swing and fist-punch).
-- Range: 2.2 units (instant raycast, same hit-resolution style as gunfire, just range-limited).
-- Cooldown: 0.6s between swings; the swing/punch animation itself takes 0.45s.
-- With a gun equipped: the gun lifts, then swings forward/down as a strike (reuses the same
-  pitch axis as recoil/reload tilt).
+- **Damage/range:** gun-bash 25 dmg / 2.2 units; fists 55 dmg / 2.8 units; bat see above.
+- Cooldown: 0.6s between swings (bat 1.0s); the swing/punch animation itself takes 0.45s.
+- **Knockback:** every single-target melee hit (fists, gun-bash, bat swing) shoves a surviving
+  enemy straight away from the attacker (initial speed 4, decaying) — half-ish of the bat sweep's 6.
+- With a gun equipped: the gun lifts, then swings forward/down as a strike.
 - With fists: alternates left/right punch each swing (thrust animation).
-- No dedicated melee-impact sound exists yet (see §9).
 
 ### Damage reference
 
-| Source | Damage | Hits to kill a base enemy (60 HP) |
-|---|---|---|
-| Pistol | 40 | 2 |
-| Glock | 30 | 2 |
-| Melee (either) | 25 | 3 |
-| Enemy contact (per player, normal variant) | 10/tick, every 0.5s | — |
-| Enemy contact (fast/"green" variant) | 30, once, self-destructs | — |
+| Source | Damage |
+|---|---|
+| Pistol / Glock / SMG / AK-47 | 40 / 30 / 18 / 37 per hit |
+| Shotgun | 9.25 per pellet × 12 (falloff past 8.5 units) |
+| Fists / gun-bash / bat swing / bat sweep / katana slash | 55 / 25 / 60 / 12 / 30 |
+| Enemy contact (regular) | 10 per tick, every 0.5s, + knockback |
+| Fast/"green" enemy | 30 once, self-destructs (killing one also makes it explode, harmlessly) |
+| Brute | 35 per hit (1.5s apart) + big launch knockback |
+| Boss ground slam (stomp) | 50 to every player within 3 units of the landing point |
+| Boss grab-and-throw | 25 on hitting the ground |
+
+---
 
 ---
 
 ## 4. Enemies
 
-- **One enemy archetype** with a faster variant, not multiple distinct enemy types.
-- **Base stats:** 60 HP, speed `3.025` units/sec (~59% of player walk speed), person-sized box
-  (`0.6 × 1.8 × 0.6`). Speed and size are each independently randomized ±1–5% per spawn (flavor,
-  not wave-based scaling).
-- **Fast ("green") variant:** same stats otherwise, but moves at **2.805×** the
-  (already-randomized) base speed (`GREEN_ENEMY_SPEED_MULTIPLIER` — reduced from an original
-  3.3× per tuning pass). Visually distinct (green body material vs. red). **Its attack is
-  different in kind, not just speed:** instead of the normal enemy's repeated contact-tick
-  damage, one contact detonates it for a single **30-damage hit**, destroying it in the process
-  via the same "kill" pathway as any other death (score, ammo-drop chance, particles) — see
-  `GREEN_ENEMY_EXPLOSION_DAMAGE` and the `isGreen` branch in `updateEnemies`. The explosion has
-  its own particle burst (bigger/brighter/faster than a normal death, see §7) and its own sound
-  effect, played unconditionally (**not** gated by the Gore setting — that setting only affects
-  the gore/blood system described in §7).
-- **Face texture:** every enemy gets a flat face plane glued to the front of its body, picked at
-  spawn from `FACE_TEXTURE_DEFS` — 44 face images embedded as base64 data URIs (from
-  `5 nights at kise/images/`), each with its own aspect ratio. `EVANSFACE_SPAWN_CHANCE` (85%)
-  picks "evanface" (the default/majority face); the other 15% is a uniform random pick from the
-  remaining 43. Several of these face images are also reused as backdrops for various UI screens
-  (see §8) — that's purely a "we already have the asset decoded" convenience, unrelated to
-  enemy spawning. Materials/geometries are cached per face key rather than rebuilt per spawn.
-- **Contact damage:** normal variant deals 10 HP per tick, every 0.5s, while within contact range
-  (which scales with that enemy's own randomized size); the fast/green variant instead deals its
-  one-time 30-damage explosion (see above).
-- **Knockback:** a fixed velocity impulse pushes the player away from the enemy on each contact tick
-  (not applied on the green variant's self-destructing explosion contact).
+- **Body model:** every enemy (and the co-op player bodies) is a block humanoid built by
+  `buildHumanoidModel` — head, torso, two arms and two legs as separate boxes, arms/legs on
+  shoulder/hip pivots. The model is 1.9 units tall (legs 0.62, torso 0.72, head 0.56; arms 0.56)
+  with feet on the ground; **gameplay size is unchanged** — collision, contact range and spawn
+  height still use `ENEMY_SIZE` (0.6 × 1.8 × 0.6). Hitscan hits any body-part mesh.
+- **Animation:** a small reusable clip system (`ENEMY_ANIMATIONS`): idle, walk (arms/legs swing
+  in opposite pairs, phase driven by distance actually moved so faster enemies step faster), plus
+  boss clips (slam prepare/jump/land, grab, throw). Parts ease toward each clip's target pose, so
+  transitions blend. Every enemy has its own animation state.
+- **Face texture:** a flat plane on the front of the head, sized to the head keeping each image's
+  aspect ratio. 45 faces in the random pool (`FACE_TEXTURE_DEFS`, embedded base64, including the
+  JPG `fathiface`): 85% "evanface", 15% uniform random from the rest. The boss always wears
+  `gamewave10boss`, which is excluded from the random and co-op pools and fills the entire head
+  front (cropped, not stretched).
+- **Variants:**
+  - **Regular:** 60 HP, speed `3.025` units/sec, speed/size each randomized ±1–5% per spawn.
+    Contact deals 10/tick every 0.5s plus knockback.
+  - **Fast ("green"):** `3.3 × 0.85 × 0.85 × 0.95` ≈ 2.26× speed. One contact detonates it for a
+    single 30-damage hit (own particles/sound). Killed by a player, it still explodes (same
+    particles and sound) but deals no damage.
+  - **Brute ("blue"):** 1.458× size (two 10% cuts from the original 1.8×), 1.05× speed,
+    `170 × difficulty health multiplier + 240` HP (410 / 410 / 444), 35-damage hit that launches
+    the player, 1.5s between hits. Even waves from 4 on (see Difficulty). Always drops 2 scrap,
+    50% ammo box.
+    - **Enemy throw:** if its target is 9–25 units away with line of sight and a regular (red)
+      enemy is within 3 units, it picks that enemy up (0.35s), stands still holding it overhead
+      for 1.3s (turning to face the target), then throws it on an arc at 9 units/sec (half
+      gravity) aimed where the target stood at release — dodgeable, and the thrown enemy can be
+      shot mid-air. A hit deals 10 (a red enemy's own contact damage) plus a shove, once; the thrown enemy then lands and keeps
+      chasing. If line of sight breaks before the throw, or the brute dies, it just drops the
+      enemy harmlessly. 6s cooldown per brute. Own animations for both (pick up / hold and wind
+      up / throw; carried and thrown flailing).
+  - **Boss (wave 10 only, dark orange):** exactly 2× size, 1.43× (1.3 × 1.1) the regular enemy's
+    difficulty-adjusted speed (no variance), 1,800 / 2,200 / 2,600 HP by difficulty, 1.3× head.
+    Spawns halfway through wave 10's spawn window. A health bar shows at the top of the screen
+    while it's alive, labelled "FAT CHASE". At a third of its health it spawns 3 fast enemies around itself (once). No contact damage — two attacks, run by a state
+    machine (`moving → preparingSlam → jumping → landing` and `moving → grabbing → throwing`):
+    - **Ground slam:** when ≥ 8s since its last landing and ≤ 10 units from its target, it stops
+      and turns to lock on for 1s (arms raised), then jumps. The target's position is recorded at
+      takeoff and never updated; a red ring marks it. It flies there in 1.08s over walls (peak 5
+      units, walls are 3), is pushed out of any wall it lands in, and deals 50 to every player
+      within 3 units with line of sight. 0.54s recovery.
+    - **Grab-and-throw:** within 2 units of its target with line of sight (5s cooldown), it grabs
+      the player, holds them in front and slowly lifts them 2 units over 1.5s (player can't move,
+      jump or slide, but can still shoot), then throws them forward and down; hitting the ground
+      deals 25. Releases without damage if either dies mid-grab. While held, the player can't be
+      hurt by anything else (other enemies don't attack them); that ends the moment they're let
+      go.
+    - Pausing freezes every slam/grab timer where it is.
+    All values live in `BOSS_ENEMY`.
 - **AI / pathfinding — this is grid A\*, not a two-state inside/outside zone system.** An earlier
   version of this project *did* use a two-state (outside/inside building) approach (see git
   history), but it's been fully replaced. Current behavior:
@@ -271,12 +314,14 @@ Two separate, per-weapon-configurable systems, both firing from the same shot:
     - Wave 3: exactly 1, at a random point in the wave's spawn window.
     - Wave 4: exactly 3 — one fixed at 3s in, then two more 0.4s apart right at the end.
     - Wave 5+: `count = wave - 1`, each at an independent random time in the spawn window.
-  - **Grace periods:** 5s before wave 1, 10s between every wave after (starting the moment the
-    previous wave's *last enemy dies*, not when it finishes spawning). Grace periods (and all
+  - **Wave 10 exception:** exactly 3 / 4 / 5 fast enemies on Normal / Hard / Legendary
+    (`greenEnemyCountByWave`), overriding the formula.
+  - **Grace periods:** 10s before wave 1, 30s between every wave after on every difficulty
+    (starting the moment the previous wave's *last enemy dies*, not when it finishes spawning). Grace periods (and all
     other wave/enemy/reload/recoil timers) are frozen while the game is paused or before the
     player has ever clicked to start.
-  - **25%** chance per kill to drop an ammo pickup at the death position (reduced from an
-    original 30% — see §5).
+  - **25%** chance per kill to drop an ammo pickup (**30% on Normal**; brutes 50% / 55%), plus
+    independent resource rolls: cloth 15%, planks 10%, scrap 6% (see §5).
 
 ### Difficulty system
 
@@ -291,6 +336,12 @@ ever run.
 | Enemy health | 1.0× (60 HP) | 1.0× (60 HP) | 1.2× (72 HP) |
 | Enemy count formula | `f(w) = 8 + 4w` | `f(w) = 10 + 5w` | same as Hard |
 | Fast-enemy schedule | starts wave 3 (as above) | same shape, shifted 1 wave earlier (starts wave 2) | same as Hard |
+| Fast enemies on wave 10 | 3 | 4 | 5 |
+| Brutes | wave 4: 1, +1 every even wave | wave 4: 2, +1 every even wave | same as Hard |
+| Brute HP | 410 | 410 | 444 |
+| Boss HP | 1,800 | 2,200 | 2,600 |
+| Starting pistol reserve | +2 magazines (49) | +1 magazine (42) | +0 (35) |
+| Ammo box drop chance | +5 percentage points | — | — |
 
 The speed/health multipliers apply to *every* enemy including the fast variant (its own 2.805×
 speed multiplier stacks on top of the difficulty multiplier, not instead of it). The wave-count
@@ -301,7 +352,9 @@ formula is capped at 100 regardless of difficulty, same as Normal.
 - **+10 points** for every enemy killed, any variant (`ENEMY_KILL_SCORE` in the code).
 - **A per-difficulty bonus every time a wave is fully cleared:** +100 on Normal, +150 on Hard,
   +200 on Legendary (`DIFFICULTIES[id].roundClearScore` in the code — same data-driven object the
-  rest of the difficulty system uses, not a separate hardcoded check).
+  rest of the difficulty system uses, not a separate hardcoded check). **Boss waves** (any wave
+  the boss is scheduled on — currently only wave 10) pay +100 more and grant **2 skill points**
+  per player instead of 1.
 - Current score is shown in the top-right HUD during play; resets to 0 at the start of every run
   (death+restart, or exiting to the main menu).
 - **Session high score:** the best `currentScore` has reached across *any* run since the app was
@@ -320,7 +373,7 @@ equipped weapon, and vice versa.
 
 The non-weapon item inventory (`INVENTORY_SYSTEM_ENABLED = true`, gating its one open path,
 `toggleInventory()`) is fully live again as of 2026-09-21, including in co-op: each player now has
-their own fully separate item inventory — own 8 slots, own panel (positioned on their own half of
+their own fully separate item inventory — own 12 slots, own panel (positioned on their own half of
 the split screen), own cursor (real mouse for a keyboard+mouse player, left-stick-driven for a
 controller player, Right Trigger to click/drag), and own drag state. A drag/drop can never cross
 into the other player's grid or panel, and one player's inventory being open no longer freezes the
@@ -336,11 +389,12 @@ other player or affects their gameplay.
   cancels ADS, and cancels any in-progress melee swing. A reload in progress on a slot you
   switch away from *pauses* (doesn't keep advancing) until you switch back to it. Drawing a
   weapon (switching to it, or picking one up into the active slot) is wired to play a "draw"
-  sound if the weapon def defines one — neither current weapon has one recorded yet, so this is
-  presently silent (see §7/§9).
-- **Ammo pickups:** small floating cubes, dropped at **25%** chance on enemy death (reduced from
-  an original 30%), despawn after 60s if uncollected. Walking within 0.8 units collects one
-  (+12 reserve rounds) and plays a pickup sound (at 85% of the clip's normal volume). Ammo goes
+  sound if the weapon def defines one — no weapon has one recorded yet, so this is presently
+  silent (see §7/§9). The ammo counter hides whenever the active slot is empty (fixed in co-op,
+  where a CSS specificity bug kept it visible).
+- **Ammo pickups:** small floating cubes, dropped at **25%** chance on enemy death (30% on
+  Normal), despawn after 60s if uncollected. Walking within 0.8 units collects one (one magazine
+  of reserve by default; shotgun 8 shells, AK 10 rounds — see §3) and plays a pickup sound (at 85% of the clip's normal volume). Ammo goes
   to whichever gun is actually "in hand": the active slot if it holds a gun, or the other slot's
   gun if the active slot is fists. If neither slot has a gun, the pickup is left alone rather
   than wasted.
@@ -350,29 +404,62 @@ other player or affects their gameplay.
   both a linear- and angular-speed threshold. Dropped items never collide with the player or
   enemies — purely visual/interactive. Dropping empties the slot (fists become active if it was
   the active one).
-- **Picking up (`F`):** picks up the nearest dropped item within 2.0 units — a plain proximity
+- **Dropping on death (co-op):** if a teammate is still alive, BOTH slots drop side by side so
+  the survivor can take either; otherwise just the held weapon drops.
+- **Picking up (`F`):** picks up the nearest dropped item within 3.0 units — a plain proximity
   check, not an aim/raycast requirement (chosen deliberately over reusing melee's raycast
   pattern, since precisely crosshair-aiming at a small gun lying flat on the ground would feel
   unreliable). Fills an empty slot if one exists; if both are full, replaces the active slot and
   drops what was there (same drop behavior as `G`). Picked-up ammo state is exact, not reset to
   a fresh weapon. Plays a pickup sound at full volume (distinct from the ammo pickup's reduced
   volume, even though it's the same underlying clip).
-- **Current weapon roster:** Pistol and Glock (see §3). No other weapon types exist (no
-  grenades/attachments/armor/keys/etc.).
+- **Current weapon roster:** Pistol, Glock, Shotgun, SMG, AK-47 and Baseball Bat (see §3). No
+  grenades/attachments/armor/keys/etc.
 
 ### Non-weapon item inventory
 
-- **8 slots**, toggled open/closed with `E` (`toggleInventory` keybind). Each slot is either
-  empty or `{ itemId, quantity }`.
-- **Real-time, not a real pause:** enemies keep moving/attacking while it's open — only player
-  input (movement, look, firing) freezes. This is deliberately different from the pause menu,
-  which does fully freeze the simulation (see §8).
-- **Starting kit** (granted fresh on every run, via `resetGame`): 1 Bandages, 1 Rocks, 1 Planks,
-  1 Cloth.
-- **Item types** (`ITEM_DEFS`): Bandages (`healing` category), Rocks/Planks (`crafting`),
-  Cloth (`misc`) — categories exist as data but **nothing currently consumes or crafts with any
-  of these items**. They can be carried and picked up (dropped world items of `kind: "item"` add
-  to a matching/under-cap stack, or a free slot) but have no functional effect yet. See §9.
+- **12 slots** per player, toggled with `E` (`toggleInventory`). Tabs: Inventory / Crafting /
+  Skills (Tab/Shift+Tab or L1/R1). Real-time — enemies keep moving while it's open.
+- **Starting kit:** empty.
+- **Items** (`ITEM_DEFS`): Bandages (heals 15), Medkit (heals 40), Rocks, Planks, Cloth, Scrap.
+  Right-click (or L2 on a controller) a healing item to use it — any item with a `healAmount`;
+  does nothing at full health (compared as the HUD shows it, rounded up).
+- **Dropping items:** with the inventory open (KB+M), pressing the Drop bind over Cloth, Planks,
+  Scrap, Bandages or a Medkit throws that whole stack the way the player is looking, as one pile
+  with its own 3D model. The thrower can't pick it back up until they've stepped away from it.
+- **Resource drops:** each kill independently rolls cloth 15% / planks 10% / scrap 6%; walking
+  over a drop collects it.
+
+### Crafting
+
+| Recipe | Cost | Unlocked by |
+|---|---|---|
+| Ammo (for the held gun, else the other slot's) | 1 scrap | always |
+| Bandage | 3 cloth | Bandages skill |
+| Medkit | 1 scrap + 4 cloth | Medkit skill |
+| Baseball Bat | 4 planks | Baseball Bat Recipe |
+| Glock | 2 scrap | Glock Recipe |
+| Shotgun | 5 scrap | Shotgun Recipe |
+| SMG | 5 scrap | SMG Recipe |
+| Katana | 1 plank + 3 scrap | Katana Recipe |
+| AK-47 | 15 scrap + 3 planks | AK-47 Recipe |
+
+Weapon recipes show drawn gun-silhouette icons. A crafted weapon fills the first empty slot, or
+replaces (and drops) the held one. Controller: left stick moves the cursor, right stick up/down
+steps through recipes (hold to repeat), R2 clicks. The Craft button is a full-width bar.
+
+### Skill tree
+
+1 skill point per player per cleared wave (2 on boss waves), 1 point per skill. Columns:
+
+- **5k (stamina):** 22 Minute 5k (+15 max stamina) → 15 MPW (+15) and Hills (+7% stamina regen)
+  → 20 Minute 5k (+15, needs both) → Distance Runner (+25) **or** Mid Distance (+5, +5% sprint
+  speed) — mutually exclusive → 18 Minute 5k (+15, needs either one).
+- **Sliding:** Sliding (unlocks sliding) → Faster Sliding (+0.2s) → Efficient Slides (sliding
+  costs no stamina).
+- **Weapons:** Baseball Bat Recipe → Glock Recipe → Shotgun Recipe and SMG Recipe → Katana Recipe
+  (needs either one — `parentsRequired: "any"`) → AK-47 Recipe.
+- **Health:** Health 1 (+10 max HP) → Bandages → Health 2 (+10) → Medkit.
 
 ---
 
@@ -644,7 +731,7 @@ Gates three things, all at the moment an enemy dies:
   - Center: a small crosshair dot, plus a brief red "X" hit marker flash (0.2s) on a confirmed
     hit (gunfire or melee).
 - **Item inventory panel** (`E` to toggle, see §5): a separate on-screen panel, centered, showing
-  8 slots. Unlike the pause menu, opening it does **not** freeze the simulation — enemies keep
+  12 slots. Unlike the pause menu, opening it does **not** freeze the simulation — enemies keep
   acting; only player input freezes.
 - **Start screen:** minimal "Click to play" prompt.
 - **Pause menu:** triggered whenever pointer lock is lost while alive (Esc, alt-tab, or any other
@@ -670,7 +757,7 @@ Being direct about the distance between "a collection of working mechanics" and 
 
 - **No win condition — confirmed as the intended design, not an open gap.** Waves escalate forever
   (`8 + 4N` zombies, capped at 100; `N - 1` fast enemies from wave 5 on, uncapped wave number) with
-  no ending, no boss, no "you survived" state; the only way a run ends is death. "Survive as long
+  no ending and no "you survived" state — the wave 10 boss is a spike, not a finale; the only way a run ends is death. "Survive as long
   as possible, together" (co-op) or solo is the design, per explicit user decision — not something
   to revisit unless asked.
 - **Score exists, but no run summary and no cross-launch persistence.** There's a live score
@@ -679,19 +766,13 @@ Being direct about the distance between "a collection of working mechanics" and 
   asked for — the high score resets to 0 every time the app is relaunched rather than being
   remembered long-term the way the difficulty choice and key bindings are. Worth deciding whether
   that's the intended final behavior or just where this stopped for now.
-- **No health recovery of any kind.** No regen, no health pickups/kits — only ammo drops exist.
-  Bandages exist in the item inventory (see §5) with a `healing` category tag but currently do
-  nothing when held. Once damaged, the only way to reset health is a full death+restart.
-- **The non-weapon item inventory is temporarily disabled entirely** (`INVENTORY_SYSTEM_ENABLED =
-  false` in `index.html`, set 2026-09-19 by explicit request — see §10) on top of already being
-  inert: even before being switched off, Bandages/Rocks/Planks/Cloth could be carried, picked up,
-  and stacked, but nothing in the game consumed, crafted with, or otherwise used any of them — the
-  system exists (slots, stacking, drop/pickup, its own toggleable panel) but has no gameplay effect
-  and currently can't even be opened. It's also still only ever a single shared, P1-only panel in
-  co-op — P2 has no way to use it even once re-enabled.
-- **Single enemy archetype.** "Fast enemy" is a speed/color/attack-behavior variant of the same
-  mesh and AI, not a distinct enemy type — no ranged enemies, no special attacks beyond the one
-  explosion behavior, no boss waves.
+- **Health recovery is crafted-only.** Bandages (15) and Medkits (40) heal, but there's no
+  regen and no health pickups dropped by enemies.
+- **One boss, one boss wave.** The boss only appears on wave 10; nothing escalates it after that,
+  and there are no other special enemy behaviors beyond the green explosion, brute launch and boss
+  slam/grab. No ranged enemies.
+- **Several weapons borrow sounds:** the SMG uses the Glock's shot and the pistol's reload; no
+  weapon has a draw sound.
 - **Gore audio is distance-attenuated, not truly positional.** `playGoreAudioAt` scales volume by
   straight-line distance from the camera (with a hard cutoff beyond which it doesn't play at all)
   but has no stereo panning or directionality — a death to the player's left and one an equal
@@ -710,18 +791,12 @@ Being direct about the distance between "a collection of working mechanics" and 
   purpose.
 - **No melee-impact sound.** Gunfire, reload, footsteps, pickups, menu actions, sliding, and
   enemy deaths all have audio; a melee hit landing does not.
-- **Glock has no acquisition gate.** It starts equipped in slot 2 from the very beginning — there's
-  no pickup/unlock moment for it, which undercuts the point of having a drop/pickup system if the
-  second gun is just handed over for free. Worth deciding whether new guns should start as
-  world pickups instead.
 - **A title exists ("Escape From Kise.") but no narrative/theme behind it.** No framing for who
   the player is, why the building is being attacked, what "Kise" refers to, or what the enemies
   are (they're referred to as "enemies"/"zombies" only in code comments, never in-game).
 - **Single map, no variety.** One floor plan, no second area, no procedural variation. The
   building now has a visually/audibly distinct interior (concrete floor, different footstep
   sound) but it's still the same one building.
-- **No enemy variety in behavior beyond the one green-variant explosion**, every enemy otherwise
-  uses identical pathing/aggro logic with no ranged/ambush/group-tactic behavior.
 - **Dropped-item geometry is duplicated per instance** (each `buildModel()` call creates fresh
   geometry rather than sharing it across instances of the same weapon) — a correctness non-issue
   today (disposed on pickup/reset) but worth revisiting if dropped items become numerous or
@@ -1870,3 +1945,32 @@ worked on):**
   live singleplayer run, the same bug class as an already-fixed 2026-09-19 co-op one; and a
   held-button double-activation bug where switching screens via Square/X while still holding the
   button immediately "activated" the new screen's first item too before it was ever released).
+- **2026-09-21 → 2026-09-23 (catch-up, summarized from git history — not re-documented in
+  detail at the time)** — Co-op item inventory with Crafting and Skills tabs; controller-only aim
+  assist; stamina, tactical sprint and skill-tree unlocks; enemy resource drops (cloth, planks,
+  scrap); brute enemy on even waves 4+; shotgun, SMG and baseball bat as crafted weapons. §3–§5
+  above now describe these as currently implemented.
+- **2026-09-24** — Large pass:
+  - **Enemies are block humanoids** (head/torso/arms/legs) with a reusable idle/walk animation
+    system; the co-op player bodies and setup-screen preview use the same model. Model 1.9 tall
+    with a longer torso and shorter arms; gameplay size unchanged.
+  - **Wave 10 boss** (§4): slam and grab-and-throw state machine, fixed `gamewave10boss` face
+    filling the head, bigger head, dark orange; boss waves give +100 score and 2 skill points.
+  - **AK-47** (§3): automatic rifle, 1.5× ACOG, own shot/reload sounds, AK-47 Recipe skill
+    (needs Shotgun or SMG Recipe), 15 scrap + 3 planks.
+  - **Shotgun:** notch-and-post iron sights, 9.25 per pellet, falloff from 8.5 units, 8 shells per
+    ammo box, pellets prioritize the front enemy. SMG holo sight fixed (floating posts) and its
+    reticle shrunk.
+  - **Skills:** 18 Minute 5k, Efficient Slides, Medkit added; 5k renames (24→22, 22→20); Hills 7%.
+    The skill tree supports "any one parent" nodes; weapon/health columns shifted right so
+    Sliding's column no longer overlaps.
+  - **Items/crafting:** Medkit item and recipe; bandages heal 15; bat costs 4 planks; gun-shaped
+    recipe icons; controller right-stick recipe navigation; wider/taller Craft button.
+  - **Balance:** 30s between waves on every difficulty; brutes 10% smaller and +40 HP; green
+    enemies 5% slower; wave 10 fast-enemy counts 3/4/5; Normal +2 / Hard +1 starting magazines;
+    Normal +5 points ammo drop chance; single-target melee knockback; pickup range 3.0; dropped bat
+    bigger and always flat.
+  - **Fixes:** pistol no longer starts with an unreachable 9 rounds (7 / 7+1); no looking around
+    while dead; co-op shows one death screen when both die; co-op dead player drops both weapons if
+    the teammate lives; ammo counter hides with bare hands in co-op.
+  - `fathiface` added to the random face pool (45 faces).
