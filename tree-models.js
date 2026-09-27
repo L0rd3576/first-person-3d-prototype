@@ -31,6 +31,7 @@
 
   const TREE_BUILDS_PER_TYPE = 2;
   const TREE_CHUNK_M = 40;
+  const TRUNK_LIFT = 0.1; // extra bare trunk, as a fraction of a type's height (the whole tree ~10% taller)
 
   // Reference sizes in meters (every tree is scaled to the size campus-world
   // gave it). R = crown radius, Ry = crown's vertical radius / R, base =
@@ -267,8 +268,30 @@
       "  transformed += fl;",
       "}",
     ].join("\n");
-    function withWind(material) {
+    // LOD cross-fade: while a chunk changes detail level, the incoming and
+    // outgoing builds are both drawn with complementary ordered-dither
+    // patterns (treeFade = how far along; treeFadeOut = the outgoing one),
+    // so together they always cover each pixel exactly once -- a soft
+    // dissolve, no holes, no double drawing. Done with a few pre-made
+    // material copies per fade step (they share one shader program), so
+    // nothing changes per frame except which material a fading mesh uses.
+    const FADE_DECL = [
+      "uniform float treeFade;",
+      "uniform float treeFadeOut;",
+      "float treeBayer2(vec2 a) { a = floor(a); return fract(a.x * 0.5 + a.y * a.y * 0.75); }",
+      "float treeBayer4(vec2 a) { return treeBayer2(0.5 * a) * 0.25 + treeBayer2(a); }",
+    ].join("\n");
+    const FADE_FRAGMENT = [
+      "if (treeFade < 0.999) {",
+      "  float treeDither = treeBayer4(gl_FragCoord.xy);",
+      "  if (treeFadeOut > 0.5 ? treeDither < treeFade : treeDither >= treeFade) discard;",
+      "}",
+    ].join("\n");
+    function withWind(material, fade = 1, fadeOut = false) {
+      const fadeUniforms = { treeFade: { value: fade }, treeFadeOut: { value: fadeOut ? 1 : 0 } };
       material.onBeforeCompile = (shader) => {
+        shader.uniforms.treeFade = fadeUniforms.treeFade;
+        shader.uniforms.treeFadeOut = fadeUniforms.treeFadeOut;
         shader.uniforms.envTime = env.envTime;
         shader.uniforms.windDir = env.windDir;
         shader.uniforms.windStrength = env.windStrength;
@@ -280,12 +303,27 @@
         // so a leaf card seen from behind isn't dark.
         shader.fragmentShader = shader.fragmentShader
           .replace("( gl_FrontFacing ) ? vLightFront : vLightBack", "vLightFront")
-          .replace("( gl_FrontFacing ) ? vIndirectFront : vIndirectBack", "vIndirectFront");
+          .replace("( gl_FrontFacing ) ? vIndirectFront : vIndirectBack", "vIndirectFront")
+          .replace("#include <common>", "#include <common>\n" + FADE_DECL)
+          .replace("#include <clipping_planes_fragment>", "#include <clipping_planes_fragment>\n" + FADE_FRAGMENT);
       };
       return material;
     }
-    const barkMaterial = withWind(new THREE.MeshLambertMaterial({ map: barkTexture, vertexColors: true, side: THREE.DoubleSide }));
-    const leafMaterial = withWind(new THREE.MeshLambertMaterial({ map: leafTexture, vertexColors: true, alphaTest: 0.42, side: THREE.DoubleSide }));
+    const makeBarkMaterial = (fade, out) => withWind(new THREE.MeshLambertMaterial({ map: barkTexture, vertexColors: true, side: THREE.DoubleSide }), fade, out);
+    const makeLeafMaterial = (fade, out) => withWind(new THREE.MeshLambertMaterial({ map: leafTexture, vertexColors: true, alphaTest: 0.42, side: THREE.DoubleSide }), fade, out);
+    const barkMaterial = makeBarkMaterial();
+    const leafMaterial = makeLeafMaterial();
+    const LOD_FADE_TIME = 0.6;   // s
+    const LOD_FADE_STEPS = 10;
+    const fadeMaterials = new Map(); // "bark:3:in" -> material, made on first use
+    function fadeMaterial(kind, step, out) {
+      const key = kind + ":" + step + ":" + (out ? "out" : "in");
+      if (!fadeMaterials.has(key)) {
+        const f = step / LOD_FADE_STEPS;
+        fadeMaterials.set(key, kind === "bark" ? makeBarkMaterial(f, out) : makeLeafMaterial(f, out));
+      }
+      return fadeMaterials.get(key);
+    }
 
     // --- Tree type geometry ----------------------------------------------
     const swayAt = (y, H) => Math.pow(Math.max(0, y) / H, 1.7);
@@ -387,8 +425,11 @@
 
     function buildBroadleaf(spec, seed) {
       const rand = mulberry32(seed);
-      const H = spec.H, R = spec.R, Ry = spec.R * spec.Ry;
-      const crownBase = spec.base * H;
+      // Trunk lift: the crown sits TRUNK_LIFT of the tree's height higher on
+      // a longer trunk (the crown itself keeps its size).
+      const lift = spec.H * TRUNK_LIFT;
+      const H = spec.H + lift, R = spec.R, Ry = spec.R * spec.Ry;
+      const crownBase = spec.base * spec.H + lift;
       const leanAz = rand() * Math.PI * 2;
       const lean = spec.lean || 0;
       const leanAt = (y) => [Math.cos(leanAz) * lean * y, 0, Math.sin(leanAz) * lean * y];
@@ -556,8 +597,9 @@
 
     function buildConifer(spec, seed) {
       const rand = mulberry32(seed);
-      const H = spec.H, R = spec.R;
-      const y0 = spec.base * H, yTop = H * 0.96;
+      const lift = spec.H * TRUNK_LIFT * 0.6; // conifers: a bit more bare trunk under the lowest branches
+      const H = spec.H + lift, R = spec.R;
+      const y0 = spec.base * spec.H + lift, yTop = H * 0.96;
       const tiers = [];
       for (let i = 0; i < spec.tiers; i++) {
         const t = i / (spec.tiers - 1);
@@ -719,7 +761,7 @@
       let sw = sh * (0.9 + 0.25 * h(4));
       // Near a walk-in building the crown was already shrunk to fit -- keep it that way.
       if (tree.maxCrownR !== undefined) sw = Math.min(sw, tree.maxCrownR / build.crownR);
-      const height = spec.H * sh;
+      const height = build.H * sh;
       const leanAmount = h(6) * 0.05, leanAz = h(7) * Math.PI * 2;
       const tints = conifer ? CONIFER_TINTS : LEAF_TINTS;
       const leafTint = tints[Math.floor(h(8) * tints.length)];
@@ -803,7 +845,7 @@
       for (const t of list) {
         const tree = dressTree(t);
         const key = Math.floor(tree.x / TREE_CHUNK_M) + "," + Math.floor(tree.z / TREE_CHUNK_M);
-        if (!chunks.has(key)) chunks.set(key, { trees: [], cx: 0, cz: 0, lods: [null, null, null], shown: -1 });
+        if (!chunks.has(key)) chunks.set(key, { trees: [], cx: 0, cz: 0, lods: [null, null, null], shown: -1, fadeFrom: -1, fadeStart: -1e9 });
         chunks.get(key).trees.push(tree);
       }
       chunkList = [...chunks.values()];
@@ -825,6 +867,8 @@
         const geometry = mergeGeometry(items);
         if (!geometry) continue;
         const mesh = new THREE.Mesh(geometry, material);
+        mesh.userData.kind = material === barkMaterial ? "bark" : "leaf";
+        mesh.userData.baseMaterial = material;
         mesh.matrixAutoUpdate = false;
         mesh.visible = false;
         root.add(mesh);
@@ -836,17 +880,45 @@
       for (const mesh of ch.lods[lod]) { root.remove(mesh); mesh.geometry.dispose(); }
       ch.lods[lod] = null;
       if (ch.shown === lod) ch.shown = -1;
+      if (ch.fadeFrom === lod) ch.fadeFrom = -1;
     }
-    function showChunk(ch, lod) {
-      if (ch.shown === lod) return;
-      if (ch.shown >= 0 && ch.lods[ch.shown]) for (const m of ch.lods[ch.shown]) m.visible = false;
-      if (lod >= 0) for (const m of ch.lods[lod]) m.visible = true;
-      ch.shown = lod;
+    // step null = fully shown (base material); else a fade step in/out.
+    function setMeshes(ch, lod, visible, step, out) {
+      if (lod < 0 || !ch.lods[lod]) return;
+      for (const m of ch.lods[lod]) {
+        m.visible = visible;
+        m.material = step === null ? m.userData.baseMaterial : fadeMaterial(m.userData.kind, step, out);
+      }
+    }
+    // Switches a chunk to `lod` (-1 = none) with a short dithered
+    // cross-fade (or a fade in/out at the draw-distance edge).
+    function showChunk(ch, lod, now) {
+      if (ch.shown !== lod) {
+        // A fade still running is snapped to its end first.
+        if (ch.fadeFrom !== -1) setMeshes(ch, ch.fadeFrom, false, null);
+        ch.fadeFrom = ch.shown;
+        ch.fadeStart = now;
+        ch.fading = true;
+        ch.shown = lod;
+      }
+      if (!ch.fading) return;
+      const f = (now - ch.fadeStart) / LOD_FADE_TIME;
+      if (f >= 1) {
+        setMeshes(ch, ch.fadeFrom, false, null);
+        setMeshes(ch, ch.shown, true, null);
+        ch.fadeFrom = -1;
+        ch.fading = false;
+        return;
+      }
+      const step = Math.min(LOD_FADE_STEPS - 1, Math.max(1, Math.round(f * LOD_FADE_STEPS)));
+      setMeshes(ch, ch.shown, true, step, false);
+      setMeshes(ch, ch.fadeFrom, true, step, true);
     }
 
     // Per frame: picks each chunk's detail level from the nearest viewer.
     function updateVisibility(viewers) {
       let budget = BUILDS_PER_UPDATE;
+      const now = performance.now() / 1000;
       for (const ch of chunkList) {
         let d = Infinity;
         for (const v of viewers) d = Math.min(d, Math.hypot(v.x - ch.cx, v.z - ch.cz));
@@ -861,7 +933,7 @@
             want = ch.shown; // keep what it has until there's time to build the better one
           }
         }
-        showChunk(ch, want);
+        showChunk(ch, want, now);
         if (ch.lods[0] && d > FREE_LOD0_BEYOND_M) freeChunkLod(ch, 0);
         if (ch.lods[1] && d > FREE_LOD1_BEYOND_M) freeChunkLod(ch, 1);
       }

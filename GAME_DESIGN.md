@@ -2242,3 +2242,7 @@ worked on):**
 - **Bandage sound:** 20% quieter (`BANDAGE_VOLUME` 0.8).
 - **Testing starts:** `TEMP_STARTING_SKILL_POINTS` / `TEMP_STARTING_SCRAP` exist for testing, and are both back to 0.
 - **Build:** `builds/9_27_2026_build.exe` -- a portable release binary with everything above.
+- **Tree LOD fade:** trees dissolve between their 3 detail levels (and in/out at the draw edge) over 0.6 s.
+  - It's an ordered-dither cross-fade using cached per-step material copies, with no per-frame cost (`LOD_FADE_TIME` in `tree-models.js`).
+- **Taller trees:** trunks are ~10% of the tree's height longer (`TRUNK_LIFT`). Crowns keep their size, conifers get a bit more bare trunk, and colliders are unchanged.
+- **Kise door frames:** the two doors in Kise's west glass wall have thin brick frames (0.14 m jambs, 0.2 m header).

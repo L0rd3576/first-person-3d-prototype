@@ -843,6 +843,8 @@
     const GLASS_PANE_M = 0.06;      // glass thickness
     const GLASS_DOOR_WIDTH_M = 2.2; // doors set into a glass wall
     const GLASS_DOOR_HEIGHT_M = 2.6;
+    const GLASS_DOOR_FRAME_M = 0.14;  // brick jambs either side of a door in a glass wall
+    const GLASS_DOOR_HEADER_M = 0.2;  // brick header over it
     // Free-standing interior glass walls: [x1, y1, x2, y2, height m] (axis-aligned px).
     const GLASS_WALLS = [
       [726.1, 325.4, 726.1, 334.7, KISE_CEILING_M], // Kise: the hallway's glass side where it meets the dining room (insidekiselookingnorth.png); brick end: BUILDINGS
@@ -1505,9 +1507,16 @@
               let at = g.g0;
               for (const doorPx of (g.doors || []).slice().sort((a, b) => a - b)) {
                 const d0 = toAlong(doorPx) - GLASS_DOOR_WIDTH_M / 2, d1 = d0 + GLASS_DOOR_WIDTH_M;
-                glassSeg(at, d0, g.height, 0);
-                glassSeg(d0, d1, g.height, GLASS_DOOR_HEIGHT_M);
-                at = d1;
+                // A thin brick frame around the doorway (jambs + header),
+                // kept inside this glass span so it never overlaps the wall.
+                const f0 = Math.max(g.g0, d0 - GLASS_DOOR_FRAME_M), f1 = Math.min(g.g1, d1 + GLASS_DOOR_FRAME_M);
+                const frameTop = Math.min(g.height, GLASS_DOOR_HEIGHT_M + GLASS_DOOR_HEADER_M);
+                glassSeg(at, f0, g.height, 0);
+                seg(f0, d0, frameTop, 0);
+                seg(d1, f1, frameTop, 0);
+                seg(d0, d1, frameTop, GLASS_DOOR_HEIGHT_M);
+                glassSeg(f0, f1, g.height, frameTop);
+                at = f1;
               }
               glassSeg(at, g.g1, g.height, 0);
             }
