@@ -372,6 +372,44 @@ All of these live in `campus.html`.
   (solid orange edges, slotted faces) with box collision, 1.1 m tall and
   see/shoot-through.
 
+- **2026-09-27:** Two mid-block zebra crosswalks from the pink marks on
+  `screenshot1.png`: across 14th St on the central mall (y 405) and across
+  17th St at the walk to Nemzek's west door (y 302). Each sits on a plain
+  asphalt patch so the dashed center line stops at the bars.
+
+- **2026-09-27 (2):** Alex Nemzek Hall re-traced from `screenshot8nemzek.png`
+  (fitted: map px = (px - 530) × 0.353 + 1450, (py - 267.5) × 0.353 + 302):
+  - Hallway (blue) widened to ~6.3 m (y 297.2–306.8); the north blocks now end at 297.2.
+  - The east inlet (red) is shallower (y 297.2–306.8); the east block starts right below it.
+  - Nemzek Fieldhouse (purple) is now walk-in, from `gamenemzekfieldhouse.jpg` (the plan's
+    bottom is west): a gray concrete indoor track, 185 m around the outer lane, with four
+    lanes, around an NCAA men's court with ceiling-hung hoops, plus the plan's small rooms
+    in the corners. Doors: V102–V105 out to the west (with walks to the 17th St sidewalk),
+    C110 and C109 east into the open area, and C101 north into the hallway.
+  - The open area (green) is walk-in: open to the hallway along its full width, with doors
+    into the fieldhouse.
+
+- **2026-09-27 (3):** Nemzek and the stadium, second pass:
+  - The hallway is as wide as the inlet, and both reach the grandstand's north end (y 297.2–318).
+    The Fieldhouse and the open area shift south to fit; the Fieldhouse now ends in line with
+    the building's south side (y 433.4). The open area's ceiling is the hallway's height (7 m).
+  - The Fieldhouse track sits where the plan shows it: off-center toward the west, with 3 lanes.
+  - A concrete alley runs between the building and the back of the grandstand. The press box
+    is narrower north–south (y 349–390).
+  - Stadium: only the lanes are track surface. The infield is turf, with a darker event area
+    inside the north curve, and the west straight's lanes run on as a squared-off chute north
+    of the curve.
+
+- **2026-09-27 (4):** Nemzek details:
+  - The grandstand's north end reaches a little past the inlet's south edge (y 313).
+  - Fieldhouse hoops are portable stanchions (`gamehoop.webp`, black padding): a padded base
+    behind each baseline, an upright, and a boom out to the backboard.
+  - The hallway's west and east entrances are 11 m wide, almost the hallway's width
+    (`gamenemzekentrance.jpg`). The west one has a white overhang on two brick pillars and a
+    wider walk from 17th St.
+  - A "NEMZEK HALL" sign (`gamenemzeksign.jpg`) sits north of the entrance walk, facing south
+    and square to the building: a cream panel on two brick pedestals.
+
 ## Flags (not enough detail in the image; placeholder used)
 - Z03 South House: footprint hidden under the Google Maps label. Placeholder 7 m house south of the lawn.
 - Z03 service yard contents are unclear (containers or equipment). Two placeholder containers.
@@ -381,3 +419,8 @@ All of these live in `campus.html`.
   than the other screenshots, so house footprints are approximate. The
   larger building west of 10th St (by the curved drive) and the Romkey Park
   shelter are placeholders.
+- Z17 Nemzek Fieldhouse: the track follows the emergency plan's placement and proportions,
+  which makes its outer lane ~146 m around. The 185 m real-life figure doesn't fit the plan's
+  layout inside the hall. C109 falls just south of the green box, so the open area runs a few
+  meters past it to include that door. C111 (south-east on the plan) opens into an unbuilt
+  part of the interior, so it's left out.

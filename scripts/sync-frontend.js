@@ -17,7 +17,7 @@ fs.copyFileSync(htmlSrc, htmlDest);
 console.log(`Synced ${htmlSrc} -> ${htmlDest}`);
 
 // The campus greybox page plus the scripts shared by it and index.html.
-for (const file of ["campus.html", "campus-world.js", "procedural-spawn.js"]) {
+for (const file of ["campus.html", "campus-world.js", "procedural-spawn.js", "zombie-model.js"]) {
   const src = path.join(root, file);
   const dest = path.join(destDir, file);
   fs.copyFileSync(src, dest);

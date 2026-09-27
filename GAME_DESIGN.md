@@ -2108,3 +2108,51 @@ worked on):**
   - **Fixes:** co-op player bodies now rise with bleacher steps; the sky dome no longer ends
     partway across a large map.
   - Boss HP is 2,200 / 2,400 / 2,600 (Normal / Hard / Legendary).
+- **2026-09-27** — Weather and new zombie models:
+  - **Rainstorms** (weather layer on top of the day/night cycle, which is unchanged): occasional
+    storms (earliest ~6 min into a match, then at least 15 min apart, ~7% chance per minute after
+    that) with a cloud build-up, 2–5 minutes of light/normal/heavy rain, and a slow clear-up.
+    - Clouds and overcast tinting on the existing sky dome; softer sunlight; less visibility (fog)
+      in heavy rain only; subtle wet-darkened ground; small splashes; synthesized rain ambience
+      and rare distant thunder with a faint flash. Rain stops under campus roofs.
+    - One-draw-call GPU rain volume that follows each camera (co-op included).
+    - Tuning in `WEATHER_CONFIG` (`index.html`); `weatherDebug.startRain(1)` in the devtools
+      console forces a storm for testing.
+  - **Zombie model overhaul** (`zombie-model.js`): enemies are now low-poly skinned zombies on one
+    shared 19-bone rig — 4 body shapes × 3 LODs, 6 archetypes (normal, tall, heavy, thin,
+    damaged, casual), randomized clothing, skin, wounds and height. Recycled zombies are
+    re-dressed.
+    - Face pictures wrap around a curved head with feathered edges.
+    - Zombie walk (limps, uneven stride, hunch), idle variations with twitches, and four attacks
+      (swipe, grab, downswing, lunge) that wind up as a zombie closes in and strike on the hit.
+      Boss and brute special moves reuse their old clips, mapped onto the new rig.
+    - Variant colors are kept as clothing: red/brown normal, green fast, blue brute, orange boss.
+    - Hits use invisible per-bone boxes (the head box is still `Head`, so headshots work the same).
+      Models are pooled; draw calls per zombie went from 7 to 2.
+  - **Fog** (same weather state machine as rain, so the two never overlap): a chance of morning
+    mist at the start of each day (20%) and of dusk haze late in the afternoon (25%), at least
+    20 minutes apart, with 4 minutes of guaranteed clear weather after any rain or fog.
+    - Forms over ~24 s. Morning fog thins and burns off by mid-morning; dusk fog thickens as the
+      light fades and lingers into the night.
+    - Pure distance fog plus a matching hazy horizon — no particles or extra rendering. Visuals
+      only; spawning and AI are untouched. Tuning in `WEATHER_CONFIG`
+      (`weatherDebug.startFog("morning" | "dusk")` to force it).
+    - Tested over 200 simulated cycles: about one fog every ~5 cycles, never alongside rain, only
+      in the morning/dusk windows, and the 8 / 4-minute day/night clock is unaffected.
+  - **Sprint weapon pose:** while sprinting, the equipped weapon eases (~0.15 s) into a carry pose,
+    pulled in, turned inward and canted, with a subtle running sway. It's an offset on top of each
+    weapon's own pose, purely visual.
+  - **Zombie gait:** walkers take longer strides (1.9 m per cycle at base speed), and faster zombies
+    (harder difficulties) lengthen their stride rather than just stepping faster, so they stride
+    out smoothly instead of scurrying.
+  - **Zombie walk rework:** the same models and base cycle, now with weight and follow-through.
+    - Motion ripples up the body (legs, then hips, spine, chest, shoulders).
+    - Springy, uneven arms: elbows fold and hands flop from each arm's own swing.
+    - The head lags and leads into turns.
+    - The body sinks on each footfall and rises on push-off.
+    - Idle and walk cross-fade instead of switching, with a lean into the first step.
+    - Slow posture shifts, and a short flinch when hit.
+    - Per-zombie arm swing, looseness, head lag and stride, fixed for each zombie's life.
+    - Secondary motion scales down with animation LOD. 60 walking zombies cost ~0.3 ms/frame.
+  - **Glock damage:** 25 per bullet on body shots, 32 on headshots (was a flat 30). A one-burst kill now
+    needs at least one headshot on Normal/Hard. Weapons can set an optional `headshotDamage`.

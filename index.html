@@ -2562,6 +2562,7 @@
      (procedural-spawn.js) -- see the CAMPUS MAP section in the game script. -->
 <script src="campus-world.js"></script>
 <script src="procedural-spawn.js"></script>
+<script src="zombie-model.js"></script>
 
 <script>
 (function () {
@@ -3512,6 +3513,11 @@
       gunBobPhase: 0,
       gunBobAmplitude: 0,
       gunBobOffsetY: 0,
+      // Sprint pose (see SPRINT WEAPON POSE / updateGunBob): 0 = normal, 1 =
+      // fully in the sprint carry; plus that pose's small running sway.
+      gunSprintBlend: 0,
+      gunSprintOffset: new THREE.Vector3(),
+      gunSprintRotation: new THREE.Vector3(),
       gunMeleeOffsetY: 0,
       gunMeleeOffsetX: 0,       // the bat's own shove sweep only -- see getBatSweepPose/applyGunTransform
       gunMeleeOffsetZ: 0,       // ditto
@@ -5569,7 +5575,8 @@
       id: "glock",
       displayName: "Glock",
       gun: {
-        damage: 30,
+        damage: 25,          // per bullet, body shots
+        headshotDamage: 32,  // per bullet, head shots
         magazineCapacity: 18,
         maxLoadedAmmo: 19,
         defaultReserveAmmo: 54, // 3 magazines' worth
@@ -7191,15 +7198,17 @@
     // getBatSweepPose/updateMelee) -- harmless to add unconditionally here
     // since they're 0 the rest of the time, same as every other melee
     // offset/rotation channel below.
+    // gunSprintOffset/Rotation: the sprint carry pose (see SPRINT WEAPON
+    // POSE) -- zero whenever the player isn't sprinting.
     player.viewModelRoot.position.set(
-      player.gunAdsPosition.x + player.gunMeleeOffsetX + player.gunReloadPos.x,
-      player.gunAdsPosition.y + player.gunBobOffsetY + player.gunMeleeOffsetY + player.gunReloadPos.y,
-      player.gunAdsPosition.z + player.gunRecoilKickZ + player.gunMeleeOffsetZ + player.gunReloadPos.z
+      player.gunAdsPosition.x + player.gunMeleeOffsetX + player.gunReloadPos.x + player.gunSprintOffset.x,
+      player.gunAdsPosition.y + player.gunBobOffsetY + player.gunMeleeOffsetY + player.gunReloadPos.y + player.gunSprintOffset.y,
+      player.gunAdsPosition.z + player.gunRecoilKickZ + player.gunMeleeOffsetZ + player.gunReloadPos.z + player.gunSprintOffset.z
     );
     player.viewModelRoot.rotation.set(
-      player.gunReloadRot.x + player.gunRecoilPitchX + player.gunMeleeRotationX,
-      player.gunAdsRotationY + player.gunReloadRot.y,
-      player.gunReloadRot.z // reload cant (see updateReloadAnimation) -- 0 otherwise
+      player.gunReloadRot.x + player.gunRecoilPitchX + player.gunMeleeRotationX + player.gunSprintRotation.x,
+      player.gunAdsRotationY + player.gunReloadRot.y + player.gunSprintRotation.y,
+      player.gunReloadRot.z + player.gunSprintRotation.z // reload cant (see updateReloadAnimation) -- 0 otherwise
     );
 
     // Bat shove roll (see BAT_SHOVE_ROTATION): rotates the whole view
@@ -7349,6 +7358,11 @@
     sunDiscColor: { value: new THREE.Color() },
     sunDiscSize: { value: 0 },
     starStrength: { value: 0 },
+    // Weather layer (see WEATHER): 0 cover = the shader's cloud branch is
+    // skipped entirely, so clear skies look and cost exactly as before.
+    cloudCover: { value: 0 },
+    cloudColor: { value: new THREE.Color() },
+    cloudOffset: { value: new THREE.Vector2() },
   };
   const skyDome = new THREE.Mesh(
     new THREE.SphereGeometry(450, 32, 16),
@@ -7360,8 +7374,13 @@
       fragmentShader:
         "uniform vec3 horizonColor; uniform vec3 midColor; uniform vec3 topColor; uniform vec3 glowColor;" +
         "uniform float glowStrength; uniform vec3 sunDirection; uniform vec3 sunDiscColor; uniform float sunDiscSize;" +
-        "uniform float starStrength; varying vec3 vDir;" +
+        "uniform float starStrength; uniform float cloudCover; uniform vec3 cloudColor; uniform vec2 cloudOffset; varying vec3 vDir;" +
         "float hash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453); }" +
+        "float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }" +
+        "float vnoise(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);" +
+        "  return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), f.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x), f.y); }" +
+        "float fbm(vec2 p) { float v = 0.0; float a = 0.5;" +
+        "  for (int i = 0; i < 4; i++) { v += a * vnoise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; } return v; }" +
         "void main() {" +
         "  vec3 dir = normalize(vDir);" +
         "  float h = max(dir.y, 0.0);" +
@@ -7374,6 +7393,19 @@
         "  vec3 cell = floor(dir * 260.0);" +
         "  float star = step(0.9975, hash(cell)) * smoothstep(0.05, 0.3, h);" +
         "  col += vec3(0.9, 0.93, 1.0) * star * starStrength * (0.5 + 0.5 * hash(cell + 1.0));" +
+        // Weather clouds: fbm lumps projected onto a flat cloud layer that
+        // grow with cover into a full overcast deck. Near the horizon the
+        // projection stretches, so detail fades into a plain veil there.
+        "  if (cloudCover > 0.001) {" +
+        "    vec2 uv = dir.xz / (h + 0.08) * 0.9 + cloudOffset;" +
+        "    float n = fbm(uv);" +
+        "    float thresh = mix(0.72, 0.18, cloudCover);" +
+        "    float lumps = smoothstep(thresh, thresh + 0.28, n);" +
+        "    float veil = smoothstep(0.55, 1.0, cloudCover) * 0.85;" +
+        "    float detail = smoothstep(0.02, 0.25, h);" +
+        "    float c = mix(veil + cloudCover * 0.25, max(lumps, veil), detail) * smoothstep(-0.05, 0.04, dir.y);" +
+        "    col = mix(col, cloudColor * (0.82 + 0.3 * n * detail), clamp(c, 0.0, 1.0));" +
+        "  }" +
         "  gl_FragColor = vec4(col, 1.0);" +
         "}",
       side: THREE.BackSide,
@@ -7457,15 +7489,903 @@
       .add(dayNightColorScratch.copy(DAY_NIGHT_LOOK_STOPS[4].light).multiplyScalar(moonFade));
     skyUniforms.sunDiscSize.value = sunFade > 0 ? SUN_DISC_SIZE : MOON_DISC_SIZE;
     skyUniforms.starStrength.value = smoothstep01((nightness - 0.6) / 0.4);
+    applyWeatherLook(nightness); // overcast/rain layer on top -- see WEATHER
   }
+
+  // ------------------------------------------------------------------
+  // WEATHER (explicit request): occasional rainstorms as a purely
+  // atmospheric layer on top of the day/night cycle. It never touches
+  // dayNightTime -- applyDayNightLook computes the time-of-day look from
+  // scratch every frame, then applyWeatherLook tints that result toward
+  // overcast. Nothing in gameplay reads any of this.
+  //
+  //   CLEAR -> CLOUDY_BUILDUP -> RAIN_STARTING -> RAINING -> RAIN_ENDING
+  //   -> CLEARING -> CLEAR ...
+  //   CLEAR -> FOG_FORMING -> FOG -> FOG_CLEARING -> CLEAR ...
+  //
+  // Fog and rain are states of the same machine, so they can never
+  // overlap: rain only rolls in CLEAR, fog only rolls in CLEAR, and every
+  // weather event ends with WEATHER_COOLDOWN of guaranteed clear weather.
+  // Fog only rolls at two moments per day/night cycle -- early morning
+  // and late afternoon (see FOG) -- and is just the scene's existing
+  // distance fog pulled in plus a matching haze on the sky's horizon, so
+  // it costs nothing extra to render.
+  //
+  // Everything visual is driven by three smoothed 0..1 values:
+  // cloudAmount (sky/lighting), rainAmount (particles/sound/fog) and
+  // wetness (ground darkening, which lags the rain both ways).
+  //
+  // Rain itself is ONE draw call: a fixed pool of streak quads whose
+  // positions are computed entirely in the vertex shader -- each drop
+  // falls on its own speed and wraps inside a box that's re-centered on
+  // whichever camera is rendering (so co-op's two halves both get rain
+  // with no CPU work per drop). Intensity just changes the draw range.
+  // Splashes are a small pooled Points cloud near the player.
+  // ------------------------------------------------------------------
+  const WEATHER_CONFIG = {
+    // Frequency. Once MIN_TIME_BETWEEN_RAIN has passed since the last
+    // storm (or FIRST_RAIN_MIN_DELAY into a match), every
+    // WEATHER_CHECK_INTERVAL seconds there's a RAIN_CHANCE roll -- so the
+    // wait is unpredictable, averaging ~29 min (several 12-min day/night
+    // cycles) between storms.
+    RAIN_CHANCE: 0.07,
+    WEATHER_CHECK_INTERVAL: 60,        // seconds
+    FIRST_RAIN_MIN_DELAY: 6 * 60,      // seconds into a match
+    MIN_TIME_BETWEEN_RAIN: 15 * 60,    // seconds, from the end of the last storm
+    // How long rain is actually falling, first drizzle to last drop.
+    RAIN_DURATION_MIN: 2 * 60,
+    RAIN_DURATION_MAX: 5 * 60,
+    // Transitions (seconds).
+    BUILDUP_DURATION: 22,              // clouds roll in before the first drop
+    RAIN_START_DURATION: 12,           // drizzle -> full intensity
+    RAIN_END_DURATION: 25,             // full intensity -> last drops
+    CLEARING_DURATION: 80,             // overcast -> clear after the rain stops
+    // Intensity: each storm picks a base level; while raining it drifts
+    // around that level every INTENSITY_DRIFT_MIN..MAX seconds.
+    INTENSITY_LEVELS: { light: 0.38, normal: 0.66, heavy: 1.0 },
+    INTENSITY_WEIGHTS: { light: 0.45, normal: 0.4, heavy: 0.15 },
+    INTENSITY_DRIFT_MIN: 20,
+    INTENSITY_DRIFT_MAX: 45,
+    INTENSITY_SMOOTHING: 5,            // seconds (time constant) for intensity changes
+    // Particles.
+    MAX_RAIN_PARTICLES: 11000,         // drops at intensity 1
+    RAIN_VOLUME_SIZE: 44,              // meters across the box around the camera
+    RAIN_VOLUME_HEIGHT: 22,
+    RAIN_FALL_SPEED: 13,               // m/s
+    RAIN_STREAK_LENGTH: 0.75,          // meters
+    RAIN_STREAK_WIDTH: 0.011,          // meters (half-width)
+    RAIN_OPACITY: 0.32,
+    MAX_SPLASHES: 220,
+    SPLASH_RATE: 240,                  // per second at intensity 1
+    SPLASH_RADIUS: 11,                 // meters around the player
+    // Sky / lighting.
+    CLOUD_DARKNESS: 0.34,              // how much an overcast sky darkens (by day)
+    CLOUD_DESATURATION: 0.8,
+    SUN_DIMMING: 0.55,                 // direct light lost under full overcast
+    AMBIENT_BOOST: 0.25,               // diffuse fill gained under overcast
+    NIGHT_DARKNESS_SCALE: 0.35,        // overcast darkening kept at night (so nights don't go black)
+    HEAVY_RAIN_FOG_REDUCTION: 0.32,    // fog distance lost in the heaviest rain
+    // Ground.
+    GROUND_WETNESS: 1.0,               // scales every surface's wet darkening
+    WET_RISE_TIME: 35,                 // seconds of rain to soak through
+    WET_DRY_TIME: 110,                 // seconds to dry after the rain
+    // Wind (per storm, randomized around these).
+    WIND_ANGLE_DEG: 35,
+    WIND_SPEED: 2.2,                   // m/s at intensity ~0.5; heavier rain blows harder
+    // Sound.
+    RAIN_VOLUME: 0.42,
+    THUNDER_VOLUME: 0.5,
+    THUNDER_MIN_INTENSITY: 0.55,       // only normal/heavy rain thunders
+    THUNDER_INTERVAL_MIN: 45,          // seconds
+    THUNDER_INTERVAL_MAX: 120,
+    // Minimum clear weather after ANY event (rain or fog) before the next.
+    WEATHER_COOLDOWN: 4 * 60,
+    // Fog. Rolled once at the start of each day (morning) and once late
+    // in the afternoon (dusk), only while CLEAR. Most mornings/evenings
+    // stay clear: about one foggy morning or dusk every ~5 cycles.
+    MORNING_FOG_CHANCE: 0.2,
+    DUSK_FOG_CHANCE: 0.25,
+    MORNING_FOG_ROLL_TIME: 1,          // seconds into the day
+    DUSK_FOG_ROLL_TIME: 8 * 60 - 110,  // seconds into the day (sunset starts at 7:00)
+    MIN_TIME_BETWEEN_FOG_EVENTS: 20 * 60, // seconds, from the end of the last fog
+    FOG_FORM_DURATION: 24,             // clear -> haze -> full fog
+    FOG_CLEAR_DURATION: 45,            // full fog -> clear (morning: "burning off")
+    // How long fog lasts once formed (seconds). Morning fog is gone well
+    // before midday; dusk fog lingers past nightfall (night starts 110 s
+    // after the dusk roll).
+    MORNING_FOG_DURATION_MIN: 100,
+    MORNING_FOG_DURATION_MAX: 170,
+    DUSK_FOG_DURATION_MIN: 150,
+    DUSK_FOG_DURATION_MAX: 220,
+    // Look. Distances are the scene fog's linear start/end at full fog
+    // (clear weather is 40 -> 110 m); FOG_MAX_DENSITY scales how far toward
+    // them it goes. Nearby stays crisp, 30-60 m hazes, beyond fades out.
+    FOG_START_DISTANCE: 12,
+    FOG_END_DISTANCE: 68,
+    FOG_MAX_DENSITY: 1.0,
+    MORNING_FOG_COLOR: 0xcfd6dc,       // cool whitish gray
+    DUSK_FOG_COLOR: 0x9a8e98,          // muted, keeps some of the sunset's warmth
+  };
+
+  const WEATHER_STATES = {
+    CLEAR: "CLEAR",
+    CLOUDY_BUILDUP: "CLOUDY_BUILDUP",
+    RAIN_STARTING: "RAIN_STARTING",
+    RAINING: "RAINING",
+    RAIN_ENDING: "RAIN_ENDING",
+    CLEARING: "CLEARING",
+    FOG_FORMING: "FOG_FORMING",
+    FOG: "FOG",
+    FOG_CLEARING: "FOG_CLEARING",
+  };
+
+  const weather = {
+    state: WEATHER_STATES.CLEAR,
+    stateTime: 0,
+    stateDuration: 0,
+    clearTime: 0,             // seconds spent CLEAR since the last storm / match start
+    nextCheckIn: 0,
+    isFirstStorm: true,
+    baseIntensity: 0,
+    rainTarget: 0,            // where rainAmount is heading
+    driftTarget: 0,
+    driftTimer: 0,
+    rainAmount: 0,
+    cloudAmount: 0,
+    cloudFrom: 0,             // cloudAmount when the current state began
+    rainFrom: 0,
+    wetness: 0,
+    rainTime: 0,              // particle clock -- restarts whenever rain is fully off
+    windX: 0,
+    windZ: 0,
+    thunderTimer: 0,
+    flash: 0,
+    pendingThunderIn: -1,
+    tickedThisFrame: false,
+    cooldown: 0,              // guaranteed clear time left after the last event
+    fogAmount: 0,             // 0..1, drives the fog look
+    fogFrom: 0,
+    fogKind: "morning",
+    fogDuration: 0,
+    timeSinceFog: 0,
+    lastDayNightTime: 0,      // for spotting the fog roll moments
+  };
+
+  const baseFogNear = scene.fog.near;
+  const baseFogFar = scene.fog.far;
+
+  function randomRange(min, max) {
+    return min + Math.random() * (max - min);
+  }
+
+  function enterWeatherState(state, duration = 0) {
+    weather.state = state;
+    weather.stateTime = 0;
+    weather.stateDuration = duration;
+    weather.cloudFrom = weather.cloudAmount;
+    weather.rainFrom = weather.rainTarget;
+    weather.fogFrom = weather.fogAmount;
+  }
+
+  function pickStormIntensity() {
+    const w = WEATHER_CONFIG.INTENSITY_WEIGHTS;
+    const roll = Math.random() * (w.light + w.normal + w.heavy);
+    const levels = WEATHER_CONFIG.INTENSITY_LEVELS;
+    if (roll < w.light) return levels.light;
+    if (roll < w.light + w.normal) return levels.normal;
+    return levels.heavy;
+  }
+
+  // Starts a storm's build-up right away. intensity is optional (0..1).
+  function beginStorm(intensity) {
+    weather.baseIntensity = intensity !== undefined ? intensity : pickStormIntensity();
+    weather.driftTarget = weather.baseIntensity;
+    const angle = THREE.MathUtils.degToRad(WEATHER_CONFIG.WIND_ANGLE_DEG + randomRange(-60, 60));
+    const speed = WEATHER_CONFIG.WIND_SPEED * (0.6 + 0.8 * weather.baseIntensity) * randomRange(0.7, 1.2);
+    weather.windX = Math.cos(angle) * speed;
+    weather.windZ = Math.sin(angle) * speed;
+    weather.isFirstStorm = false;
+    enterWeatherState(WEATHER_STATES.CLOUDY_BUILDUP, WEATHER_CONFIG.BUILDUP_DURATION);
+  }
+
+  function resetWeather() {
+    weather.state = WEATHER_STATES.CLEAR;
+    weather.stateTime = 0;
+    weather.clearTime = 0;
+    weather.nextCheckIn = WEATHER_CONFIG.WEATHER_CHECK_INTERVAL;
+    weather.isFirstStorm = true;
+    weather.rainTarget = 0;
+    weather.rainAmount = 0;
+    weather.cloudAmount = 0;
+    weather.wetness = 0;
+    weather.rainTime = 0;
+    weather.flash = 0;
+    weather.pendingThunderIn = -1;
+    weather.cooldown = 0;
+    weather.fogAmount = 0;
+    weather.timeSinceFog = WEATHER_CONFIG.MIN_TIME_BETWEEN_FOG_EVENTS; // the first morning can be foggy
+    weather.lastDayNightTime = dayNightTime;
+    skyUniforms.cloudOffset.value.set(Math.random() * 50, Math.random() * 50);
+    applyWetness(0);
+  }
+
+  // True when the day/night clock passed `mark` this frame (handles the
+  // wrap from the end of night back to 0).
+  function dayNightClockCrossed(mark) {
+    const prev = weather.lastDayNightTime;
+    const now = dayNightTime;
+    return now >= prev ? prev < mark && mark <= now : mark > prev || mark <= now;
+  }
+
+  function beginFog(kind) {
+    const cfg = WEATHER_CONFIG;
+    weather.fogKind = kind;
+    weather.fogDuration = kind === "morning"
+      ? randomRange(cfg.MORNING_FOG_DURATION_MIN, cfg.MORNING_FOG_DURATION_MAX)
+      : randomRange(cfg.DUSK_FOG_DURATION_MIN, cfg.DUSK_FOG_DURATION_MAX);
+    enterWeatherState(WEATHER_STATES.FOG_FORMING, cfg.FOG_FORM_DURATION);
+  }
+
+  // Fog's dice rolls: once each morning and once each dusk, only while
+  // clear (never during/just after rain) and not too soon after the last fog.
+  function rollForFog() {
+    const cfg = WEATHER_CONFIG;
+    if (weather.cooldown > 0 || weather.timeSinceFog < cfg.MIN_TIME_BETWEEN_FOG_EVENTS) return false;
+    if (dayNightClockCrossed(cfg.MORNING_FOG_ROLL_TIME) && Math.random() < cfg.MORNING_FOG_CHANCE) {
+      beginFog("morning");
+      return true;
+    }
+    if (dayNightClockCrossed(cfg.DUSK_FOG_ROLL_TIME) && Math.random() < cfg.DUSK_FOG_CHANCE) {
+      beginFog("dusk");
+      return true;
+    }
+    return false;
+  }
+
+  // The clear-weather dice rolls -- see RAIN_CHANCE and rollForFog.
+  function updateClearWeather(deltaSeconds) {
+    if (weather.cooldown > 0) {
+      weather.cooldown -= deltaSeconds;
+      weather.clearTime += deltaSeconds;
+      return;
+    }
+    if (rollForFog()) return;
+    weather.clearTime += deltaSeconds;
+    const minWait = weather.isFirstStorm ? WEATHER_CONFIG.FIRST_RAIN_MIN_DELAY : WEATHER_CONFIG.MIN_TIME_BETWEEN_RAIN;
+    if (weather.clearTime < minWait) return;
+    weather.nextCheckIn -= deltaSeconds;
+    if (weather.nextCheckIn > 0) return;
+    weather.nextCheckIn = WEATHER_CONFIG.WEATHER_CHECK_INTERVAL;
+    if (Math.random() < WEATHER_CONFIG.RAIN_CHANCE) beginStorm();
+  }
+
+  function updateWeatherState(deltaSeconds) {
+    weather.stateTime += deltaSeconds;
+    const t = weather.stateDuration > 0 ? smoothstep01(weather.stateTime / weather.stateDuration) : 1;
+    const done = weather.stateTime >= weather.stateDuration;
+    const cfg = WEATHER_CONFIG;
+
+    switch (weather.state) {
+      case WEATHER_STATES.CLEAR:
+        weather.cloudAmount = 0;
+        weather.rainTarget = 0;
+        updateClearWeather(deltaSeconds);
+        break;
+      case WEATHER_STATES.CLOUDY_BUILDUP:
+        weather.cloudAmount = weather.cloudFrom + (1 - weather.cloudFrom) * t;
+        weather.rainTarget = 0;
+        if (done) {
+          // Total rain time is RAIN_DURATION_MIN..MAX, transitions included.
+          const rainDuration = randomRange(cfg.RAIN_DURATION_MIN, cfg.RAIN_DURATION_MAX);
+          weather.rainingDuration = Math.max(30, rainDuration - cfg.RAIN_START_DURATION - cfg.RAIN_END_DURATION);
+          enterWeatherState(WEATHER_STATES.RAIN_STARTING, cfg.RAIN_START_DURATION);
+        }
+        break;
+      case WEATHER_STATES.RAIN_STARTING:
+        weather.cloudAmount = 1;
+        // Starts as a drizzle (a light fraction), then builds to the storm's level.
+        weather.rainTarget = weather.baseIntensity * (0.25 + 0.75 * t) * Math.min(1, weather.stateTime / 2);
+        if (done) {
+          weather.driftTimer = randomRange(cfg.INTENSITY_DRIFT_MIN, cfg.INTENSITY_DRIFT_MAX);
+          weather.thunderTimer = randomRange(cfg.THUNDER_INTERVAL_MIN * 0.5, cfg.THUNDER_INTERVAL_MAX);
+          enterWeatherState(WEATHER_STATES.RAINING, weather.rainingDuration);
+        }
+        break;
+      case WEATHER_STATES.RAINING:
+        weather.cloudAmount = 1;
+        weather.driftTimer -= deltaSeconds;
+        if (weather.driftTimer <= 0) {
+          weather.driftTimer = randomRange(cfg.INTENSITY_DRIFT_MIN, cfg.INTENSITY_DRIFT_MAX);
+          // Mostly stays near the storm's level; a light storm can briefly
+          // pick up and a heavy one ease off.
+          weather.driftTarget = THREE.MathUtils.clamp(weather.baseIntensity + randomRange(-0.22, 0.18), 0.22, 1);
+        }
+        weather.rainTarget = weather.driftTarget;
+        updateThunder(deltaSeconds);
+        if (done) enterWeatherState(WEATHER_STATES.RAIN_ENDING, cfg.RAIN_END_DURATION);
+        break;
+      case WEATHER_STATES.RAIN_ENDING:
+        weather.cloudAmount = 1;
+        weather.rainTarget = weather.rainFrom * (1 - t);
+        if (done && weather.rainAmount < 0.01) enterWeatherState(WEATHER_STATES.CLEARING, cfg.CLEARING_DURATION);
+        break;
+      case WEATHER_STATES.CLEARING:
+        weather.cloudAmount = weather.cloudFrom * (1 - t);
+        weather.rainTarget = 0;
+        if (done) {
+          weather.cloudAmount = 0;
+          weather.clearTime = 0;
+          weather.nextCheckIn = cfg.WEATHER_CHECK_INTERVAL;
+          weather.cooldown = cfg.WEATHER_COOLDOWN;
+          enterWeatherState(WEATHER_STATES.CLEAR);
+        }
+        break;
+      case WEATHER_STATES.FOG_FORMING:
+        // Clear -> slight haze -> moderate -> full, eased.
+        weather.fogAmount = weather.fogFrom + (fogLevel() - weather.fogFrom) * t;
+        if (done) enterWeatherState(WEATHER_STATES.FOG, weather.fogDuration);
+        break;
+      case WEATHER_STATES.FOG:
+        weather.fogAmount = fogLevel();
+        if (done) enterWeatherState(WEATHER_STATES.FOG_CLEARING, cfg.FOG_CLEAR_DURATION);
+        break;
+      case WEATHER_STATES.FOG_CLEARING:
+        weather.fogAmount = weather.fogFrom * (1 - t);
+        if (done) {
+          weather.fogAmount = 0;
+          weather.timeSinceFog = 0;
+          weather.cooldown = cfg.WEATHER_COOLDOWN;
+          weather.nextCheckIn = cfg.WEATHER_CHECK_INTERVAL;
+          enterWeatherState(WEATHER_STATES.CLEAR);
+        }
+        break;
+    }
+  }
+
+  // Full-fog density right now. Morning fog thins as the morning goes on
+  // (burning off); dusk fog thickens as the daylight fades.
+  function fogLevel() {
+    if (weather.fogKind === "morning") {
+      const progress = weather.state === WEATHER_STATES.FOG ? Math.min(1, weather.stateTime / weather.fogDuration) : 0;
+      return 1 - 0.35 * progress;
+    }
+    return 0.65 + 0.35 * getNightness(dayNightTime);
+  }
+
+  function updateThunder(deltaSeconds) {
+    if (weather.pendingThunderIn >= 0) {
+      weather.pendingThunderIn -= deltaSeconds;
+      if (weather.pendingThunderIn < 0) playThunder();
+    }
+    if (weather.rainAmount < WEATHER_CONFIG.THUNDER_MIN_INTENSITY) return;
+    weather.thunderTimer -= deltaSeconds;
+    if (weather.thunderTimer > 0) return;
+    weather.thunderTimer = randomRange(WEATHER_CONFIG.THUNDER_INTERVAL_MIN, WEATHER_CONFIG.THUNDER_INTERVAL_MAX);
+    // Distant strike: a soft flash, the rumble a few seconds later.
+    weather.flash = randomRange(0.45, 1);
+    weather.pendingThunderIn = randomRange(1.5, 4.5);
+  }
+
+  function updateWeather(deltaSeconds) {
+    weather.tickedThisFrame = true;
+    weather.timeSinceFog += deltaSeconds;
+    updateWeatherState(deltaSeconds);
+    weather.lastDayNightTime = dayNightTime;
+
+    const k = 1 - Math.exp(-deltaSeconds / WEATHER_CONFIG.INTENSITY_SMOOTHING);
+    weather.rainAmount += (weather.rainTarget - weather.rainAmount) * k;
+    if (weather.rainTarget === 0 && weather.rainAmount < 0.003) weather.rainAmount = 0;
+
+    // Wetness soaks in while it rains and dries slowly afterwards.
+    const wetTarget = Math.min(1, weather.rainAmount * 1.5);
+    const wetTime = wetTarget > weather.wetness ? WEATHER_CONFIG.WET_RISE_TIME : WEATHER_CONFIG.WET_DRY_TIME;
+    weather.wetness += (wetTarget - weather.wetness) * Math.min(1, deltaSeconds * 3 / wetTime);
+    applyWetness(weather.wetness);
+
+    weather.flash = Math.max(0, weather.flash - deltaSeconds * 3.5);
+    // Clouds drift with the wind.
+    skyUniforms.cloudOffset.value.x += (0.004 + weather.windX * 0.004) * deltaSeconds;
+    skyUniforms.cloudOffset.value.y += (0.002 + weather.windZ * 0.004) * deltaSeconds;
+
+    if (weather.rainAmount > 0) weather.rainTime += deltaSeconds;
+    else weather.rainTime = 0;
+    updateRainVisuals(deltaSeconds);
+  }
+
+  // --- Sky & lighting overlay -------------------------------------------
+  const weatherGray = new THREE.Color();
+  const WEATHER_GRAY_TINT = new THREE.Color(0.93, 0.97, 1.04); // faintly cool storm gray
+  const DAY_CLOUD_COLOR = new THREE.Color(0x9ba3ad);
+  const NIGHT_CLOUD_COLOR = new THREE.Color(0x1f2535);
+
+  function overcastColor(color, amount, darkness) {
+    const lum = color.r * 0.299 + color.g * 0.587 + color.b * 0.114;
+    weatherGray.setRGB(lum, lum, lum).multiply(WEATHER_GRAY_TINT);
+    color.lerp(weatherGray, amount * WEATHER_CONFIG.CLOUD_DESATURATION);
+    color.multiplyScalar(1 - darkness * amount);
+  }
+
+  function applyWeatherLook(nightness) {
+    const cfg = WEATHER_CONFIG;
+    const cloud = weather.cloudAmount;
+    // Heavier rain makes a darker, more dramatic sky.
+    const overcast = cloud * (0.8 + 0.2 * weather.rainAmount);
+    const darkness = cfg.CLOUD_DARKNESS * (0.75 + 0.35 * weather.rainAmount) *
+      (1 - (1 - cfg.NIGHT_DARKNESS_SCALE) * nightness);
+
+    if (overcast > 0.0005) {
+      overcastColor(skyUniforms.horizonColor.value, overcast, darkness);
+      overcastColor(skyUniforms.midColor.value, overcast, darkness * 1.1);
+      overcastColor(skyUniforms.topColor.value, overcast, darkness * 1.2);
+      // An overcast sky is nearly uniform -- pull the zenith toward the horizon.
+      skyUniforms.midColor.value.lerp(skyUniforms.horizonColor.value, overcast * 0.45);
+      skyUniforms.topColor.value.lerp(skyUniforms.horizonColor.value, overcast * 0.35);
+      skyUniforms.glowStrength.value *= 1 - 0.85 * overcast;
+      skyUniforms.sunDiscColor.value.multiplyScalar(1 - 0.95 * overcast);
+      skyUniforms.starStrength.value *= 1 - overcast;
+      sunLight.intensity *= 1 - cfg.SUN_DIMMING * overcast * (1 - 0.5 * nightness);
+      ambientLight.intensity *= 1 + cfg.AMBIENT_BOOST * overcast;
+      sunLight.color.lerp(ambientLight.color, 0.35 * overcast); // softer, less golden light
+    }
+    skyUniforms.cloudCover.value = cloud;
+    skyUniforms.cloudColor.value.copy(DAY_CLOUD_COLOR).lerp(NIGHT_CLOUD_COLOR, nightness)
+      .multiplyScalar(1 - 0.35 * weather.rainAmount);
+
+    if (weather.flash > 0.001) {
+      const f = weather.flash * weather.flash;
+      ambientLight.intensity += 0.55 * f;
+      skyUniforms.horizonColor.value.addScalar(0.12 * f);
+      skyUniforms.midColor.value.addScalar(0.16 * f);
+      skyUniforms.topColor.value.addScalar(0.16 * f);
+      skyUniforms.cloudColor.value.addScalar(0.2 * f);
+    }
+
+    scene.background.copy(skyUniforms.horizonColor.value);
+    scene.fog.color.copy(skyUniforms.horizonColor.value);
+    // Reduced visibility only in heavy rain (fog distance is cosmetic --
+    // nothing in gameplay reads it).
+    const heavy = smoothstep01((weather.rainAmount - 0.55) / 0.45);
+    const fogScale = 1 - cfg.HEAVY_RAIN_FOG_REDUCTION * heavy;
+    scene.fog.near = baseFogNear * (1 - 0.4 * heavy);
+    scene.fog.far = baseFogFar * fogScale;
+    if (weather.fogAmount > 0.0005) applyFogLook(nightness);
+
+    rainUniforms.rainColor.value.copy(skyUniforms.horizonColor.value).multiplyScalar(0.85).addScalar(0.12);
+    splashUniforms.splashColor.value.copy(rainUniforms.rainColor.value);
+  }
+
+  // --- Fog look -------------------------------------------------------------
+  // Only global parameters: the scene's linear distance fog is pulled in
+  // and tinted, and the sky's horizon/lower sky take the same color so the
+  // ground fades seamlessly into a hazy sky. Sun/stars soften, and the
+  // light turns a little cooler and flatter (more so for morning mist).
+  const FOG_MORNING_TINT = new THREE.Color(WEATHER_CONFIG.MORNING_FOG_COLOR);
+  const FOG_DUSK_TINT = new THREE.Color(WEATHER_CONFIG.DUSK_FOG_COLOR);
+  const FOG_COOL_LIGHT = new THREE.Color(0xdfe6ee);
+  const fogColorScratch = new THREE.Color();
+
+  function applyFogLook(nightness) {
+    const cfg = WEATHER_CONFIG;
+    const amount = smoothstep01(weather.fogAmount) * cfg.FOG_MAX_DENSITY;
+    const morning = weather.fogKind === "morning";
+    // Fog is lit by the sky: bright pale mist by day, dim by night, and
+    // dusk fog keeps part of the sunset horizon's color instead of going gray.
+    fogColorScratch.copy(morning ? FOG_MORNING_TINT : FOG_DUSK_TINT).multiplyScalar(1 - 0.78 * nightness);
+    fogColorScratch.lerp(skyUniforms.horizonColor.value, morning ? 0.25 : 0.45);
+    const horizon = skyUniforms.horizonColor.value;
+    horizon.lerp(fogColorScratch, 0.85 * amount);
+    skyUniforms.midColor.value.lerp(horizon, 0.45 * amount);
+    skyUniforms.topColor.value.lerp(horizon, 0.18 * amount);
+    skyUniforms.glowStrength.value *= 1 - 0.4 * amount;
+    skyUniforms.sunDiscColor.value.multiplyScalar(1 - (morning ? 0.6 : 0.35) * amount);
+    skyUniforms.starStrength.value *= 1 - 0.8 * amount;
+    scene.background.copy(horizon);
+    scene.fog.color.copy(horizon);
+    scene.fog.near += (cfg.FOG_START_DISTANCE - scene.fog.near) * amount;
+    scene.fog.far += (cfg.FOG_END_DISTANCE - scene.fog.far) * amount;
+    // Diffuse, cooler light.
+    sunLight.intensity *= 1 - (morning ? 0.3 : 0.15) * amount;
+    ambientLight.intensity *= 1 + 0.1 * amount;
+    if (morning) sunLight.color.lerp(FOG_COOL_LIGHT, 0.3 * amount);
+  }
+
+  // --- Ground wetness ---------------------------------------------------
+  // Surfaces register a darkening factor (asphalt darkens most when wet);
+  // wetness just scales each one's color from its dry value. Material
+  // color/roughness changes never recompile anything.
+  const wetSurfaces = [];
+  let appliedWetness = -1;
+  function registerWetSurface(material, darken, wetRoughness) {
+    wetSurfaces.push({
+      material,
+      darken,
+      dryColor: material.color.clone(),
+      dryRoughness: material.roughness,
+      wetRoughness,
+    });
+    appliedWetness = -1; // force the next applyWetness to cover it
+  }
+  function applyWetness(wetness) {
+    if (Math.abs(wetness - appliedWetness) < 0.004 && !(wetness === 0 && appliedWetness !== 0)) return;
+    appliedWetness = wetness;
+    const w = wetness * WEATHER_CONFIG.GROUND_WETNESS;
+    for (const s of wetSurfaces) {
+      s.material.color.copy(s.dryColor).multiplyScalar(1 - s.darken * w);
+      if (s.wetRoughness !== undefined) s.material.roughness = s.dryRoughness + (s.wetRoughness - s.dryRoughness) * w;
+    }
+  }
+
+  // --- Rain streaks -----------------------------------------------------
+  const rainUniforms = {
+    camPos: { value: new THREE.Vector3() },
+    time: { value: 0 },
+    boxSize: { value: new THREE.Vector3(WEATHER_CONFIG.RAIN_VOLUME_SIZE, WEATHER_CONFIG.RAIN_VOLUME_HEIGHT, WEATHER_CONFIG.RAIN_VOLUME_SIZE) },
+    wind: { value: new THREE.Vector3() },
+    fallSpeed: { value: WEATHER_CONFIG.RAIN_FALL_SPEED },
+    streakLength: { value: WEATHER_CONFIG.RAIN_STREAK_LENGTH },
+    streakWidth: { value: WEATHER_CONFIG.RAIN_STREAK_WIDTH },
+    floorY: { value: 0 },
+    opacity: { value: 0 },
+    rainColor: { value: new THREE.Color() },
+  };
+
+  const rainGeometry = (function buildRainGeometry() {
+    const count = WEATHER_CONFIG.MAX_RAIN_PARTICLES;
+    const seeds = new Float32Array(count * 4 * 3);
+    const corners = new Float32Array(count * 4 * 2);
+    const rnds = new Float32Array(count * 4);
+    const indices = new Uint32Array(count * 6);
+    const cornerPattern = [-1, 0, 1, 0, 1, 1, -1, 1];
+    for (let i = 0; i < count; i++) {
+      const sx = Math.random(), sy = Math.random(), sz = Math.random(), r = Math.random();
+      for (let v = 0; v < 4; v++) {
+        const vi = i * 4 + v;
+        seeds[vi * 3] = sx; seeds[vi * 3 + 1] = sy; seeds[vi * 3 + 2] = sz;
+        corners[vi * 2] = cornerPattern[v * 2]; corners[vi * 2 + 1] = cornerPattern[v * 2 + 1];
+        rnds[vi] = r;
+      }
+      const b = i * 4;
+      indices.set([b, b + 1, b + 2, b, b + 2, b + 3], i * 6);
+    }
+    const geometry = new THREE.BufferGeometry();
+    // "position" is unused by the shader but three.js expects it to exist.
+    geometry.setAttribute("position", new THREE.BufferAttribute(seeds, 3));
+    geometry.setAttribute("corner", new THREE.BufferAttribute(corners, 2));
+    geometry.setAttribute("rnd", new THREE.BufferAttribute(rnds, 1));
+    geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+    geometry.setDrawRange(0, 0);
+    return geometry;
+  })();
+
+  const rainMesh = new THREE.Mesh(
+    rainGeometry,
+    new THREE.ShaderMaterial({
+      uniforms: rainUniforms,
+      vertexShader:
+        "uniform vec3 camPos; uniform float time; uniform vec3 boxSize; uniform vec3 wind; uniform float fallSpeed;" +
+        "uniform float streakLength; uniform float streakWidth; uniform float floorY;" +
+        "attribute vec2 corner; attribute float rnd;" +
+        "varying float vAlpha; varying float vAlong; varying float vSide;" +
+        "void main() {" +
+        "  float speedScale = 0.82 + 0.36 * rnd;" +
+        "  vec3 vel = vec3(wind.x * (0.75 + 0.5 * rnd), -fallSpeed * speedScale, wind.z * (0.75 + 0.5 * rnd));" +
+        "  vec3 center = camPos + vec3(0.0, boxSize.y * 0.22, 0.0);" +
+        // position is the drop's 0..1 seed; wrapping keeps it inside the box around the camera
+        "  vec3 p = position * boxSize + vel * time;" +
+        "  vec3 rel = mod(p - center, boxSize) - boxSize * 0.5;" +
+        "  vec3 head = center + rel;" +
+        "  vec3 dir = normalize(vel);" +
+        "  vec3 wp = head - dir * streakLength * speedScale * corner.y;" +
+        "  vec3 side = normalize(cross(dir, normalize(cameraPosition - wp)));" +
+        "  float dist = length(head - cameraPosition);" +
+        // widen far drops a little so they don't shimmer out to sub-pixel slivers
+        "  wp += side * streakWidth * (1.0 + dist * 0.04) * corner.x;" +
+        "  float edge = 1.0 - smoothstep(0.55, 1.0, length(rel.xz) / (boxSize.x * 0.5));" +
+        "  float vert = 1.0 - smoothstep(0.38, 0.5, abs(rel.y) / boxSize.y);" +
+        "  float nearFade = smoothstep(0.5, 2.0, dist);" +
+        "  float aboveGround = step(floorY, head.y);" +
+        "  vAlpha = edge * vert * nearFade * aboveGround * (0.6 + 0.4 * rnd);" +
+        "  vAlong = corner.y; vSide = corner.x;" +
+        "  gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);" +
+        "}",
+      fragmentShader:
+        "uniform vec3 rainColor; uniform float opacity;" +
+        "varying float vAlpha; varying float vAlong; varying float vSide;" +
+        "void main() {" +
+        "  float a = opacity * vAlpha * (1.0 - vAlong * 0.75) * (1.0 - abs(vSide) * 0.6);" +
+        "  if (a < 0.004) discard;" +
+        "  gl_FragColor = vec4(rainColor, a);" +
+        "}",
+      side: THREE.DoubleSide, // streak winding depends on the view side
+      transparent: true,
+      depthWrite: false,
+      fog: false,
+    })
+  );
+  rainMesh.frustumCulled = false;
+  rainMesh.renderOrder = 10;
+  rainMesh.visible = false;
+
+  // Per-camera "am I under a roof" fade (campus hollow buildings -- the
+  // default map's building has no roof, so rain falls inside it).
+  const weatherIndoorByCamera = new Map();
+  function weatherGroundHeightAt(x, z) {
+    return isCampusMap && campusWorld ? campusWorld.groundHeightAt(x, z) : 0;
+  }
+  function isWeatherSheltered(x, z) {
+    return isCampusMap && campusWorld ? campusWorld.isInsideHollowBuilding(x, z) : false;
+  }
+
+  rainMesh.onBeforeRender = function (_renderer, _scene, renderCamera) {
+    renderCamera.getWorldPosition(rainUniforms.camPos.value);
+    const p = rainUniforms.camPos.value;
+    rainUniforms.floorY.value = weatherGroundHeightAt(p.x, p.z) - 0.05;
+    const indoor = weatherIndoorByCamera.get(renderCamera) || 0;
+    rainUniforms.opacity.value = WEATHER_CONFIG.RAIN_OPACITY * (0.75 + 0.25 * weather.rainAmount) * (1 - indoor);
+  };
+  scene.add(rainMesh);
+
+  // --- Splashes ---------------------------------------------------------
+  const splashUniforms = {
+    time: { value: 0 },
+    splashColor: { value: new THREE.Color() },
+    opacity: { value: 0 },
+    pixelScale: { value: 1 },
+  };
+  const SPLASH_LIFETIME = 0.28;
+  const splashPositions = new Float32Array(WEATHER_CONFIG.MAX_SPLASHES * 3);
+  const splashBirths = new Float32Array(WEATHER_CONFIG.MAX_SPLASHES).fill(-10);
+  const splashGeometry = new THREE.BufferGeometry();
+  splashGeometry.setAttribute("position", new THREE.BufferAttribute(splashPositions, 3));
+  splashGeometry.setAttribute("birth", new THREE.BufferAttribute(splashBirths, 1));
+  const splashPoints = new THREE.Points(
+    splashGeometry,
+    new THREE.ShaderMaterial({
+      uniforms: splashUniforms,
+      vertexShader:
+        "uniform float time; uniform float pixelScale; attribute float birth; varying float vAge;" +
+        "void main() {" +
+        "  vAge = (time - birth) / " + SPLASH_LIFETIME.toFixed(3) + ";" +
+        "  vec4 mv = modelViewMatrix * vec4(position, 1.0);" +
+        "  gl_PointSize = (vAge < 0.0 || vAge > 1.0) ? 0.0 : pixelScale * (0.05 + 0.1 * vAge) / -mv.z;" +
+        "  gl_Position = projectionMatrix * mv;" +
+        "}",
+      fragmentShader:
+        "uniform vec3 splashColor; uniform float opacity; varying float vAge;" +
+        "void main() {" +
+        "  vec2 d = gl_PointCoord - 0.5; d.y *= 2.2;" + // squashed ring, lying on the ground
+        "  float r = length(d);" +
+        "  float ring = smoothstep(0.5, 0.36, r) * smoothstep(0.12, 0.3, r);" +
+        "  float a = opacity * ring * (1.0 - vAge);" +
+        "  if (a < 0.01) discard;" +
+        "  gl_FragColor = vec4(splashColor, a);" +
+        "}",
+      transparent: true,
+      depthWrite: false,
+      fog: false,
+    })
+  );
+  splashPoints.frustumCulled = false;
+  splashPoints.renderOrder = 10;
+  splashPoints.visible = false;
+  scene.add(splashPoints);
+
+  let splashNextIndex = 0;
+  let splashAccumulator = 0;
+  function spawnSplashes(deltaSeconds, viewers) {
+    splashAccumulator += WEATHER_CONFIG.SPLASH_RATE * weather.rainAmount * deltaSeconds;
+    let spawned = 0;
+    while (splashAccumulator >= 1) {
+      splashAccumulator -= 1;
+      const viewer = viewers[spawned % viewers.length];
+      spawned++;
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 1 + Math.sqrt(Math.random()) * WEATHER_CONFIG.SPLASH_RADIUS;
+      const x = viewer.position.x + Math.cos(angle) * radius;
+      const z = viewer.position.z + Math.sin(angle) * radius;
+      if (isWeatherSheltered(x, z)) continue;
+      const i = splashNextIndex;
+      splashNextIndex = (splashNextIndex + 1) % WEATHER_CONFIG.MAX_SPLASHES;
+      splashPositions[i * 3] = x;
+      splashPositions[i * 3 + 1] = weatherGroundHeightAt(x, z) + 0.03;
+      splashPositions[i * 3 + 2] = z;
+      splashBirths[i] = weather.rainTime;
+    }
+    if (spawned > 0) {
+      splashGeometry.attributes.position.needsUpdate = true;
+      splashGeometry.attributes.birth.needsUpdate = true;
+    }
+  }
+
+  function getWeatherViewerCameras() {
+    return isCoopMatchActive ? [players[0].camera, players[1].camera] : [camera];
+  }
+
+  function updateRainVisuals(deltaSeconds) {
+    const raining = weather.rainAmount > 0;
+    rainMesh.visible = raining;
+    splashPoints.visible = raining;
+    if (!raining) {
+      splashBirths.fill(-10);
+      splashGeometry.attributes.birth.needsUpdate = true;
+      return;
+    }
+    const viewers = getWeatherViewerCameras();
+    for (const viewerCamera of viewers) {
+      const sheltered = isWeatherSheltered(viewerCamera.position.x, viewerCamera.position.z) ? 1 : 0;
+      const prev = weatherIndoorByCamera.get(viewerCamera) || 0;
+      weatherIndoorByCamera.set(viewerCamera, prev + (sheltered - prev) * Math.min(1, deltaSeconds * 4));
+    }
+
+    const drops = Math.round(WEATHER_CONFIG.MAX_RAIN_PARTICLES * Math.min(1, weather.rainAmount));
+    rainGeometry.setDrawRange(0, drops * 6);
+    rainUniforms.time.value = weather.rainTime;
+    rainUniforms.wind.value.set(weather.windX, 0, weather.windZ);
+
+    splashUniforms.time.value = weather.rainTime;
+    splashUniforms.opacity.value = 0.35 * Math.min(1, weather.rainAmount * 2);
+    splashUniforms.pixelScale.value = renderer.domElement.height * 0.5 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    spawnSplashes(deltaSeconds, viewers);
+  }
+
+  // --- Sound --------------------------------------------------------------
+  // No rain recordings in the audio folder, so the ambience is synthesized
+  // once: a looping buffer of pink noise with scattered droplet ticks,
+  // through two filters -- a bright "hiss" layer and a low "roar" layer
+  // that only comes up in heavier rain. Muffled under a roof.
+  let rainAudio = null;
+  let rainAudioLevel = 0;
+
+  function buildRainNoiseBuffer() {
+    const rate = audioContext.sampleRate;
+    const length = Math.floor(rate * 4);
+    const buffer = audioContext.createBuffer(2, length, rate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = buffer.getChannelData(ch);
+      let b0 = 0, b1 = 0, b2 = 0;
+      for (let i = 0; i < length; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99765 * b0 + white * 0.099;
+        b1 = 0.963 * b1 + white * 0.2965;
+        b2 = 0.57 * b2 + white * 1.0526;
+        data[i] = (b0 + b1 + b2 + white * 0.1848) * 0.11;
+      }
+      // Droplets: short decaying ticks at random pitches.
+      const drops = Math.floor(4 * 700);
+      for (let d = 0; d < drops; d++) {
+        const start = Math.floor(Math.random() * length);
+        const freq = 1800 + Math.random() * 4500;
+        const amp = 0.04 + Math.random() * 0.12;
+        const dur = Math.floor(rate * (0.002 + Math.random() * 0.006));
+        for (let j = 0; j < dur; j++) {
+          const idx = (start + j) % length;
+          data[idx] += amp * Math.sin((2 * Math.PI * freq * j) / rate) * Math.exp(-j / (dur * 0.3));
+        }
+      }
+    }
+    return buffer;
+  }
+
+  function startRainAudio() {
+    const source = audioContext.createBufferSource();
+    source.buffer = buildRainNoiseBuffer();
+    source.loop = true;
+    const muffle = audioContext.createBiquadFilter();
+    muffle.type = "lowpass";
+    muffle.frequency.value = 9000;
+    const hissFilter = audioContext.createBiquadFilter();
+    hissFilter.type = "highpass";
+    hissFilter.frequency.value = 700;
+    const hissGain = audioContext.createGain();
+    hissGain.gain.value = 0;
+    const roarFilter = audioContext.createBiquadFilter();
+    roarFilter.type = "lowpass";
+    roarFilter.frequency.value = 420;
+    const roarGain = audioContext.createGain();
+    roarGain.gain.value = 0;
+    source.connect(muffle);
+    muffle.connect(hissFilter).connect(hissGain).connect(masterGainNode);
+    muffle.connect(roarFilter).connect(roarGain).connect(masterGainNode);
+    source.start();
+    rainAudio = { source, muffle, hissGain, roarGain };
+  }
+
+  function stopRainAudio() {
+    rainAudio.source.stop();
+    rainAudio.source.disconnect();
+    rainAudio = null;
+  }
+
+  // Runs every frame from animate(). Only audible on frames where the
+  // world actually ticked the weather -- pausing or leaving to the menu
+  // fades the rain out instead of leaving it hissing over the menus.
+  function updateWeatherAudio(deltaSeconds) {
+    const worldRunning = weather.tickedThisFrame;
+    weather.tickedThisFrame = false;
+    const target = worldRunning ? WEATHER_CONFIG.RAIN_VOLUME * Math.pow(weather.rainAmount, 0.8) : 0;
+    rainAudioLevel += (target - rainAudioLevel) * Math.min(1, deltaSeconds * 2.5);
+
+    if (!rainAudio) {
+      if (target > 0.001) startRainAudio();
+      else return;
+    }
+    if (target === 0 && rainAudioLevel < 0.001) {
+      stopRainAudio();
+      return;
+    }
+    let indoor = 0;
+    for (const viewerCamera of getWeatherViewerCameras()) indoor = Math.max(indoor, weatherIndoorByCamera.get(viewerCamera) || 0);
+    const heavy = weather.rainAmount * weather.rainAmount;
+    rainAudio.hissGain.gain.value = rainAudioLevel * (1 - 0.55 * indoor);
+    rainAudio.roarGain.gain.value = rainAudioLevel * heavy * 0.9;
+    rainAudio.muffle.frequency.value = 9000 - 8000 * indoor;
+  }
+
+  // Distant thunder: brown-noise rumble with a slow rolling envelope,
+  // synthesized once and replayed at slightly different pitches.
+  let thunderBuffer = null;
+  function playThunder() {
+    if (audioContext.state !== "running") return;
+    if (!thunderBuffer) {
+      const rate = audioContext.sampleRate;
+      const length = Math.floor(rate * 5.5);
+      thunderBuffer = audioContext.createBuffer(1, length, rate);
+      const data = thunderBuffer.getChannelData(0);
+      let brown = 0;
+      for (let i = 0; i < length; i++) {
+        brown = (brown + (Math.random() * 2 - 1) * 0.02) / 1.02;
+        const t = i / rate;
+        const envelope = Math.min(1, t / 0.35) * Math.exp(-t / 1.6) *
+          (0.65 + 0.35 * Math.sin(t * 5.3) * Math.sin(t * 2.1 + 1));
+        data[i] = brown * 3.5 * envelope;
+      }
+    }
+    const source = audioContext.createBufferSource();
+    source.buffer = thunderBuffer;
+    source.playbackRate.value = randomRange(0.75, 1.1);
+    const filter = audioContext.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = 260;
+    const gain = audioContext.createGain();
+    gain.gain.value = WEATHER_CONFIG.THUNDER_VOLUME * randomRange(0.6, 1);
+    source.connect(filter).connect(gain).connect(masterGainNode);
+    source.start();
+  }
+
+  // Dev hook for testing without waiting ~30 min for a storm, from the
+  // devtools console: weatherDebug.startRain(1) (heavy), .stopRain(),
+  // .startFog("morning" | "dusk"), .state().
+  window.weatherDebug = {
+    startRain(intensity) {
+      if (weather.state === WEATHER_STATES.CLEAR || weather.state === WEATHER_STATES.CLEARING) beginStorm(intensity);
+    },
+    stopRain() {
+      if (weather.state === WEATHER_STATES.RAINING || weather.state === WEATHER_STATES.RAIN_STARTING) {
+        enterWeatherState(WEATHER_STATES.RAIN_ENDING, WEATHER_CONFIG.RAIN_END_DURATION);
+      }
+    },
+    // weatherDebug.startFog("morning" | "dusk")
+    startFog(kind = "morning") {
+      if (weather.state === WEATHER_STATES.CLEAR) beginFog(kind);
+    },
+    state() {
+      return {
+        state: weather.state, rain: weather.rainAmount, clouds: weather.cloudAmount, wetness: weather.wetness,
+        fog: weather.fogAmount, fogKind: weather.fogKind, cooldown: weather.cooldown,
+      };
+    },
+    config: WEATHER_CONFIG,
+  };
 
   function updateDayNightCycle(deltaSeconds) {
     dayNightTime = (dayNightTime + deltaSeconds) % DAY_NIGHT_CYCLE_DURATION;
+    updateWeather(deltaSeconds); // runs on its own clock -- never touches dayNightTime
     applyDayNightLook();
   }
 
   function resetDayNightCycle() {
     dayNightTime = 0; // always start in full day
+    resetWeather();   // and clear skies
     applyDayNightLook();
   }
   resetDayNightCycle();
@@ -7483,6 +8403,7 @@
   ground.rotation.x = -Math.PI / 2; // lay flat
   ground.receiveShadow = true;
   scene.add(ground);
+  registerWetSurface(groundMaterial, 0.2, 0.6); // see WEATHER
 
   // A simple grid helper on top of the ground so motion is easy to see.
   const grid = new THREE.GridHelper(PLATFORM_SIZE, 40, 0x2f5a26, 0x2f5a26);
@@ -7741,33 +8662,12 @@
 
   // ------------------------------------------------------------------
   // ENEMY: a person-sized body that constantly walks toward the player.
-  // Materials are shared across every spawned enemy (created once here);
-  // each enemy is its own humanoid model (see buildHumanoidModel) plus a small state
-  // object in the `enemies` array -- see spawnEnemy() and updateEnemies()
-  // further below, after the wave spawner section.
+  // Each enemy is a pooled zombie model (see ZOMBIE MODEL / zombie-model.js;
+  // its variant colors -- red, green fast, blue brute, orange boss -- are
+  // its clothing now) plus a small state object in the `enemies` array --
+  // see spawnEnemy() and updateEnemies() further below, after the wave
+  // spawner section.
   // ------------------------------------------------------------------
-  const enemyBodyMaterial = new THREE.MeshStandardMaterial({
-    color: 0x8b0000,
-    roughness: 0.7,
-  });
-  // Green variant for the fast enemy (see computeGreenEnemySpawnTimes and
-  // spawnEnemy below) -- same geometry/face, just a different body color
-  // and speed.
-  const greenEnemyBodyMaterial = new THREE.MeshStandardMaterial({
-    color: 0x228b22,
-    roughness: 0.7,
-  });
-  // Blue variant for the brute enemy (see BRUTE_ENEMY_* and spawnEnemy
-  // below) -- same geometry/face, scaled up via sizeScale.
-  const bruteEnemyBodyMaterial = new THREE.MeshStandardMaterial({
-    color: 0x1f4fbf,
-    roughness: 0.7,
-  });
-  // Boss (see BOSS_ENEMY) -- dark orange, same geometry/face system.
-  const bossEnemyBodyMaterial = new THREE.MeshStandardMaterial({
-    color: 0xa84300, // dark orange
-    roughness: 0.7,
-  });
 
   // Placeholder face: rather than texturing a BoxGeometry face slot
   // (unreliable to get facing the right way once the box is rotated),
@@ -8042,6 +8942,45 @@
     });
 
     return { root, parts: { head, torso, leftArm, rightArm, leftLeg, rightLeg }, face, meshes };
+  }
+
+  // ------------------------------------------------------------------
+  // ZOMBIE MODEL (explicit request): enemies now use the low-poly
+  // skinned zombie from zombie-model.js -- one shared rig, 4 body shapes
+  // x 3 LODs, randomized clothing/skin/damage, a curved face, and zombie
+  // walk/idle/attack animation. buildHumanoidModel above is still the
+  // co-op player bodies' (and setup screen previews') model. Purely
+  // visual: enemyState.mesh is still the root Group whose position/
+  // rotation the AI drives, and hits land on invisible per-bone boxes
+  // (the head one is named "Head", so headshots work exactly as before).
+  // ------------------------------------------------------------------
+  const zombieSystem = createZombieSystem(THREE, {
+    feetY: -ENEMY_SIZE.height / 2,
+    // Speeds the walk/sprint strides are tuned for; faster zombies (harder
+    // difficulties) lengthen their stride from these instead of scurrying.
+    walkRefSpeed: ENEMY_SPEED,
+    sprintRefSpeed: ENEMY_SPEED * GREEN_ENEMY_SPEED_MULTIPLIER,
+    defaultFaceKey: "evanface",
+    getFace: (key) => ({
+      texture: getFaceMaterial(key).map, // same cached texture the player bodies use
+      aspect: FACE_TEXTURE_DEFS[key].aspect,
+      fillHead: !!FACE_TEXTURE_DEFS[key].fillHead,
+    }),
+  });
+
+  // Nearest viewer (either co-op player) -- picks the zombie's LOD.
+  function zombieViewerDistance(position) {
+    let best = Infinity;
+    const count = isCoopMatchActive ? 2 : 1;
+    for (let i = 0; i < count; i++) {
+      const cam = players[i].camera.position;
+      best = Math.min(best, Math.hypot(cam.x - position.x, cam.z - position.z));
+    }
+    return best;
+  }
+
+  function dressZombie(zombie, variant, faceKey, headScale) {
+    zombieSystem.applyAppearance(zombie, zombieSystem.randomAppearance(variant, faceKey, { headScale }));
   }
 
   // True alphabetical order (unlike FACE_KEYS itself, which deliberately
@@ -8698,8 +9637,50 @@
     return context.isWalking ? "walk" : "idle";
   }
 
+  // Zombies: the same clip choice and clip clock as below (so every
+  // boss/brute special clip still plays at its gameplay moments), but
+  // walk/idle/attacks come from zombie-model.js and the older special
+  // clips are mapped onto the new rig there.
+  const zombieLegacyPose = createEnemyPose();
+  function updateZombieAnimation(enemyState, deltaSeconds, context) {
+    const anim = enemyState.animation;
+    const next = chooseEnemyAnimation(enemyState, context);
+    if (next !== anim.current) {
+      anim.current = next;
+      anim.time = 0;
+    }
+    anim.time += deltaSeconds;
+    let legacyPose = null;
+    let legacySmoothing;
+    if (next !== "walk" && next !== "idle") {
+      for (const part of ENEMY_ANIMATED_PARTS) {
+        zombieLegacyPose[part].x = 0;
+        zombieLegacyPose[part].y = 0;
+        zombieLegacyPose[part].z = 0;
+      }
+      const clip = ENEMY_ANIMATIONS[next];
+      clip.pose(anim, zombieLegacyPose);
+      legacyPose = zombieLegacyPose;
+      legacySmoothing = clip.smoothing;
+    }
+    zombieSystem.update(enemyState.zombie, deltaSeconds, {
+      movedDistance: context.movedDistance,
+      isWalking: context.isWalking,
+      sizeScale: context.sizeScale,
+      speed: enemyState.speed,
+      yaw: enemyState.yaw,
+      distance: zombieViewerDistance(enemyState.mesh.position),
+      legacyPose,
+      legacySmoothing,
+    });
+  }
+
   // context: { movedDistance, isWalking, sizeScale }
   function updateEnemyAnimation(enemyState, deltaSeconds, context) {
+    if (enemyState.zombie) {
+      updateZombieAnimation(enemyState, deltaSeconds, context);
+      return;
+    }
     const anim = enemyState.animation;
     const next = chooseEnemyAnimation(enemyState, context);
     if (next !== anim.current) {
@@ -8733,25 +9714,18 @@
     const isGreen = variant === "green";
     const isBrute = variant === "brute";
     const isBoss = variant === "boss";
-    const bodyMaterial = isGreen ? greenEnemyBodyMaterial
-      : isBrute ? bruteEnemyBodyMaterial
-      : isBoss ? bossEnemyBodyMaterial
-      : enemyBodyMaterial;
     // See FACE_TEXTURE_DEFS/EVANSFACE_SPAWN_CHANCE above: 85% evansface,
     // 15% a uniformly random pick from every other embedded face. `mesh`
-    // is now the model's root Group (see buildHumanoidModel) -- kept under
-    // the same name/field since everything else only reads its
-    // position/rotation.
-    // The boss always gets BOSS_FACE_KEY instead.
-    const model = buildHumanoidModel(bodyMaterial, isBoss ? BOSS_FACE_KEY : pickRandomFaceKey());
-    const mesh = model.root;
-    if (isBoss) {
-      // Bigger head (face included -- it's a child of the head), raised by
-      // the extra half-height so it still sits right on the torso.
-      const head = model.parts.head;
-      head.scale.setScalar(BOSS_ENEMY.headScale);
-      head.position.y += (ENEMY_BODY.head.height * (BOSS_ENEMY.headScale - 1)) / 2;
-    }
+    // is the enemy's root Group -- kept under the same name/field since
+    // everything else only reads its position/rotation. The zombie model
+    // (pooled, see ZOMBIE MODEL) hangs under it, dressed for its variant:
+    // green/blue/orange clothing still marks fast/brute/boss enemies.
+    // The boss always gets BOSS_FACE_KEY and a bigger head (face included).
+    const zombie = zombieSystem.acquire();
+    dressZombie(zombie, variant || "normal", isBoss ? BOSS_FACE_KEY : pickRandomFaceKey(), isBoss ? BOSS_ENEMY.headScale : 1);
+    const mesh = new THREE.Group();
+    mesh.name = "Zombie";
+    mesh.add(zombie.rig);
 
     // currentDifficulty's speed multiplier applies before the green
     // multiplier, so a fast enemy on Hard/Legendary is faster by both
@@ -8811,9 +9785,10 @@
       repathTimer: Math.random() * NAV_REPATH_INTERVAL,
       losCheckTimer: Math.random() * NAV_LOS_CHECK_INTERVAL,
       hasLineOfSightCached: false,
-      // Body parts + this enemy's own animation state (see
-      // ENEMY_ANIMATIONS/updateEnemyAnimation) -- per enemy, never shared.
-      parts: model.parts,
+      // This enemy's zombie model + its clip state (see
+      // updateZombieAnimation) -- per enemy, never shared.
+      parts: null,
+      zombie,
       animation: createEnemyAnimationState(),
       // Boss-only slam state machine (see createBossState) -- null for
       // every other variant.
@@ -8829,11 +9804,11 @@
       thrownState: null,
       isRemoved: false, // set by removeEnemy, so anything still holding a reference can tell
     };
-    // Tagged on the root and every body-part mesh (face included) so a
-    // raycast hit on any of them resolves straight back to this enemy's
-    // state, without walking up the parent chain.
+    // Tagged on the root and every hit box so a raycast hit on any of them
+    // resolves straight back to this enemy's state, without walking up
+    // the parent chain.
     mesh.userData.enemyRef = enemyState;
-    for (const partMesh of model.meshes) partMesh.userData.enemyRef = enemyState;
+    for (const box of zombie.hitboxes) box.userData.enemyRef = enemyState;
     enemyState.maxHealth = enemyState.health;
 
     enemies.push(enemyState);
@@ -8895,6 +9870,7 @@
 
   function removeEnemy(enemyState) {
     scene.remove(enemyState.mesh);
+    if (enemyState.zombie) zombieSystem.release(enemyState.zombie); // model back to the pool
     enemyState.isRemoved = true;
     if (enemyState.boss) {
       hideBossSlamMarker(enemyState.boss);
@@ -9030,6 +10006,7 @@
       treeDrawDistance: CAMPUS_TREE_DRAW_DISTANCE,
     });
     campusWorld.root.visible = false;
+    for (const s of campusWorld.wetSurfaces) registerWetSurface(s.material, s.darken); // see WEATHER
     const b = campusWorld.bounds;
     campusSpawner = createProceduralSpawnManager(CAMPUS_SPAWN_CONFIG, {
       getPlayers: () => livingPlayersForCampus().map((p) => ({ x: p.camera.position.x, z: p.camera.position.z, yaw: p.yaw })),
@@ -9129,6 +10106,11 @@
     if (enemyState.isRemoved) return;
     enemyState.dormant = false;
     enemyState.mesh.visible = true;
+    // Recycled zombies come back looking like a different one.
+    if (enemyState.zombie) {
+      const previous = enemyState.zombie.appearance;
+      dressZombie(enemyState.zombie, previous.variant, enemyState.boss ? BOSS_FACE_KEY : pickRandomFaceKey(), previous.headScale);
+    }
     enemyState.mesh.position.set(position.x, (ENEMY_SIZE.height / 2) * enemyState.sizeScale, position.z);
     enemyMeshes.push(enemyState.mesh);
     enemyState.targetPlayer = null;
@@ -9526,6 +10508,16 @@
 
   function damageEnemy(enemyState, amount, hitPoint, deathParticleOptions = DEATH_PARTICLE_OPTIONS) {
     enemyState.health -= amount;
+    // Visual only: a surviving zombie flinches, twisting away from the side
+    // it was hit on (its own left is local +X). Not the boss.
+    if (enemyState.zombie && enemyState.health > 0 && !enemyState.boss) {
+      let side = 0;
+      if (hitPoint) {
+        const toHitX = hitPoint.x - enemyState.mesh.position.x, toHitZ = hitPoint.z - enemyState.mesh.position.z;
+        side = Math.sign(toHitX * Math.cos(enemyState.yaw) - toHitZ * Math.sin(enemyState.yaw));
+      }
+      zombieSystem.flinch(enemyState.zombie, side);
+    }
     if (enemyState.boss) {
       // Boss drops to a third of its health (explicit request): calls in
       // BOSS_ENEMY.minionCount fast enemies from where it stands, once.
@@ -12801,6 +13793,7 @@
 
     for (const enemyState of enemies) {
       scene.remove(enemyState.mesh);
+      if (enemyState.zombie) zombieSystem.release(enemyState.zombie);
       if (enemyState.boss) hideBossSlamMarker(enemyState.boss);
     }
     enemies.length = 0;
@@ -16286,7 +17279,11 @@
         fireSniperPenetratingShot(player, def, hits, raycaster.ray.direction);
         return;
       }
-      damageEnemy(hitEnemy, def.gun.damage, hits[0].point);
+      // headshotDamage (optional, per weapon -- e.g. the Glock): a separate
+      // per-bullet value when the round hits the head hit box.
+      const isHeadshot = hits[0].object.name === "Head";
+      const damage = isHeadshot && def.gun.headshotDamage !== undefined ? def.gun.headshotDamage : def.gun.damage;
+      damageEnemy(hitEnemy, damage, hits[0].point);
       showHitMarker(player);
     }
   }
@@ -17619,6 +18616,43 @@
   // maintains. Only active while grounded; amplitude eases toward its
   // target (0 when airborne/standing still, scaling up with speed otherwise)
   // rather than snapping, so starting/stopping/landing doesn't pop.
+  // ------------------------------------------------------------------
+  // SPRINT WEAPON POSE (explicit request): purely visual. While sprinting,
+  // whatever gun is out eases (~0.15 s) into a carry pose -- pulled in
+  // toward the body, a touch lower, turned inward and canted -- with a
+  // small running sway on top, then eases back out when sprinting ends.
+  // It's an offset added in applyGunTransform on top of each weapon's own
+  // pose (and recoil/reload/melee), so every weapon keeps its own hold.
+  // Nothing in firing, aiming, reloading or movement reads it.
+  // ------------------------------------------------------------------
+  const SPRINT_POSE_BLEND_SPEED = 14;     // 1/sec -- about 0.15 s to settle
+  const SPRINT_POSE_OFFSET = new THREE.Vector3(-0.045, -0.012, 0.07); // view-model space: in, a touch lower, toward the camera
+  const SPRINT_POSE_ROTATION = new THREE.Vector3(-0.06, 0.55, 0.28); // muzzle tipped slightly down, yaw inward, roll
+  const SPRINT_SWAY_POS = 0.012;          // running sway amplitude (units)
+  const SPRINT_SWAY_ROT = 0.035;          // running sway amplitude (radians)
+
+  function updateGunSprintPose(player, deltaSeconds) {
+    const target = player.isSprinting && !player.isSliding ? 1 : 0;
+    player.gunSprintBlend += (target - player.gunSprintBlend) * Math.min(1, SPRINT_POSE_BLEND_SPEED * deltaSeconds);
+    if (player.gunSprintBlend < 0.001) player.gunSprintBlend = 0;
+    // Eased so it starts and settles softly.
+    const k = player.gunSprintBlend * player.gunSprintBlend * (3 - 2 * player.gunSprintBlend);
+    // Sway rides the existing bob phase: one side-to-side swing per stride,
+    // an up/down dip per step.
+    const phase = player.gunBobPhase;
+    const sway = Math.sin(phase * 0.5), dip = Math.abs(Math.sin(phase * 0.5));
+    player.gunSprintOffset.set(
+      SPRINT_POSE_OFFSET.x * k + sway * SPRINT_SWAY_POS * k,
+      SPRINT_POSE_OFFSET.y * k - dip * SPRINT_SWAY_POS * k,
+      SPRINT_POSE_OFFSET.z * k
+    );
+    player.gunSprintRotation.set(
+      SPRINT_POSE_ROTATION.x * k + dip * SPRINT_SWAY_ROT * 0.6 * k,
+      SPRINT_POSE_ROTATION.y * k + sway * SPRINT_SWAY_ROT * 0.5 * k,
+      SPRINT_POSE_ROTATION.z * k + sway * SPRINT_SWAY_ROT * k
+    );
+  }
+
   function updateGunBob(player, deltaSeconds) {
     const speed = player.velocity.length();
 
@@ -17638,6 +18672,7 @@
     // rather than snapping the instant ADS starts/ends.
     const adsBobScale = 1 - easeInOutCubic(player.aimProgress) * 0.8;
     player.gunBobOffsetY = Math.sin(player.gunBobPhase) * player.gunBobAmplitude * adsBobScale;
+    updateGunSprintPose(player, deltaSeconds);
   }
 
   // Horizontal physics velocity (x/z only — vertical motion is handled
@@ -18923,6 +19958,12 @@
       // as "touching" and lands hits through it. Not while the target is
       // held by the boss (explicit request) -- nothing else can touch
       // them until they're let go (see takeDamage's own grabbedBy check).
+      // Visual only: the zombie winds up as it closes in with its hit
+      // nearly ready (the strike itself plays on the damage below).
+      if (distanceToPlayer < contactDistance * 2 && enemyState.hasLineOfSightCached && enemyState.hitCooldown < 0.3 && !targetPlayer.grabbedBy) {
+        zombieSystem.setWindup(enemyState.zombie, true);
+      }
+
       if (distanceToPlayer < contactDistance && enemyState.hasLineOfSightCached && enemyState.hitCooldown <= 0 && !targetPlayer.grabbedBy) {
         if (enemyState.isGreen) {
           // One contact detonates a green enemy in the player's face for
@@ -18944,6 +19985,7 @@
           // contact from ever registering twice.
           playRandomClip(["bat_hit_01", "bat_hit_02"], { volume: 1.5 });
           takeDamage(targetPlayer, BRUTE_ENEMY_DAMAGE);
+          zombieSystem.triggerAttack(enemyState.zombie, "downswing", 1.6);
           if (distanceToPlayer > MIN_ENEMY_DISTANCE) {
             enemyToPlayer.normalize();
             targetPlayer.bruteKnockbackVelocity.set(
@@ -18956,6 +19998,7 @@
         }
 
         takeDamage(targetPlayer, ENEMY_DAMAGE_PER_HIT);
+        zombieSystem.triggerAttack(enemyState.zombie);
 
         // Knockback: shove the player's velocity directly away from the
         // enemy. Always based on the real enemy->player direction (not
@@ -20066,6 +21109,7 @@
     updatePlayerBodyMeshes(deltaSeconds);
 
     updateScopeOverlays(deltaSeconds);
+    updateWeatherAudio(deltaSeconds);
     renderFrame();
 
     // Clears this frame's wasActionJustPressed edges -- must run after

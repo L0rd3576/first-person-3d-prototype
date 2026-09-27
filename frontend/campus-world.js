@@ -131,7 +131,7 @@
     //   DIRT_CIRCLES -- [centerX, centerY, radius px] (ball-field infields)
     //   DIRT_ARCS    -- [centerX, centerY, inner r, outer r, start deg, sweep deg]
     //                   (degrees counterclockwise on the screenshot, 0 = east)
-    //   TRACKS       -- [x1, y1, x2, y2] running track as a capsule (round ends)
+    //   TRACKS       -- [x1, y1, x2, y2, extras?] running track as a capsule (round ends)
     //   TURF_AREAS   -- [x1, y1, x2, y2] stadium field
     //   GRASS_AREAS  -- [x1, y1, x2, y2] grass drawn on top of a lot (islands)
     const DIRT_AREAS = [
@@ -151,7 +151,12 @@
       [1675, 648, 103.5, 108.5, 95, 85], // softball outfield warning track (centered on home plate)
     ];
     const TRACKS = [
-      [1517, 240, 1637, 505], // Nemzek Stadium track
+      // Nemzek Stadium track (screenshot8nemzek.png): only the lanes are track
+      // surface -- the infield is turf, except the darker event area inside
+      // the north curve (from its lanes down to ~4 px short of the field),
+      // and the west straight's lanes run on north past the curve's start as
+      // a square-ended chute.
+      [1517, 240, 1637, 505, { northEventAreaToY: 287.4, westChuteTopY: 248.9 }],
     ];
     // Natural-grass soccer pitches, long axis east/west: [x1, y1, x2, y2].
     const SOCCER_FIELDS = [
@@ -176,9 +181,12 @@
     ];
     // Paved areas (same light concrete as the walkways).
     const PLAZAS = [
-      [1478, 298, 1509, 318], // Nemzek: paved area at the north end of the stands, outside the inlet
-      [1330, 298, 1450, 306], // Nemzek: hallway floor
-      [1450, 298, 1478, 318], // Nemzek: the inlet in the building's east side (hallway's east door opens into it)
+      [1478, 297.2, 1509, 318], // Nemzek: paved area at the north end of the stands, outside the inlet
+      [1329.3, 297.2, 1450, 318], // Nemzek: hallway floor
+      [1450, 297.2, 1478, 318], // Nemzek: the inlet in the building's east side (hallway's east door opens into it)
+      [1335.3, 318, 1396.3, 433.4], // Nemzek Fieldhouse floor (track and court are drawn over it)
+      [1396.3, 318, 1431.6, 380.2], // Nemzek: open area east of the fieldhouse
+      [1478, 318, 1485, 440], // Nemzek: concrete alley between the building and the back of the grandstand
       [718.5, 283.5, 772, 391], // Z07: MSUM Dining's floor
       [711.8, 300.2, 718.5, 313.3], // Z07: entrance link floor
       [633, 272, 668, 297],   // Z07: paved plaza between the library, M-5 and Comstock's west door
@@ -330,7 +338,11 @@
       [1005, 530, 1005, 660],
       // east of 17th Street
       [1300, 443, 1510, 443], // south side of Alex Nemzek Hall
-      [1311, 302, 1330, 302, 4], // 17th St sidewalk to the Nemzek hallway's west door
+      [1311, 307.6, 1330, 307.6, 9], // 17th St sidewalk to the Nemzek hallway's wide west entrance (gamenemzekentrance.jpg)
+      [1311, 330.7, 1335.3, 330.7, 3], // 17th St sidewalk to the Fieldhouse's west doors (V102-V105)
+      [1311, 355.1, 1335.3, 355.1, 3],
+      [1311, 397, 1335.3, 397, 3],
+      [1311, 417.6, 1335.3, 417.6, 3],
       [1500, 225, 1500, 300], // drive between Nemzek Hall and the stadium
       [95, 437, 215, 437],    // Z03: walk between the Newman Center and Center for Business
       [205, 437, 205, 490],   // Z03: east side of Center for Business
@@ -645,18 +657,83 @@
       // between it and the stadium grandstand.
       // (the walk-through hallway between the fieldhouse and the hall, along
       // the blue line in screenshot4.png, is in HOLLOW_BUILDINGS)
-      [1360, 233, 1478, 298, 18], // Nemzek Fieldhouse (north gym)
-      [1330, 260, 1360, 298, 9],  // west wing
-      [1335, 306, 1400, 437, 16], // west gym
-      [1400, 306, 1450, 440, 12], // middle
-      [1411, 352, 1446, 406, 17], // raised roof over the middle
-      [1450, 318, 1478, 440, 13], // east block -- starts south of the inlet (the alley runs along its east side)
+      // (footprint re-traced from screenshot8nemzek.png: the Fieldhouse is the
+      // south-west block, walk-in, with the open area east of it -- both in
+      // HOLLOW_BUILDINGS)
+      [1360, 233, 1478, 297.2, 18], // north gym
+      [1330, 260, 1360, 297.2, 9],  // west wing
+      [1431.6, 318, 1450, 380.2, 12], // middle, beside the open area
+      [1396.3, 380.2, 1450, 440, 12], // middle, south of the open area
+      [1411, 380.2, 1446, 406, 17], // raised roof over the middle
+      [1450, 318, 1478, 440, 13], // east block -- south of the inlet, in line with the grandstand's north end
       [1683, 505, 1698, 515, 4],  // shed by the softball field
       [1683, 605, 1695, 640, 3.5], // softball storage building
       [1757, 545, 1776, 643, 5],  // Municipal Pool bathhouse (placeholder -- no interior)
       ...HOUSES,
       ...BORDER_HOUSES,
     ];
+
+    // Nemzek Fieldhouse footprint (screenshot px) -- a 40 x 76 m hall, south of
+    // the hallway -- and its indoor track, placed like the emergency plan
+    // (gamenemzekfieldhouse.jpg): the plan's track spans 12% / 88% of the hall
+    // north -> south and sits off-center to the west (7.1 m clear on the east,
+    // 5.1 m on the west, where the plan's bottom is). Offsets are meters from
+    // the hall's inner center, x east, z south.
+    const FIELDHOUSE_PX = [1335.3, 318, 1396.3, 433.4];
+    const FIELDHOUSE = {
+      trackOuter: { minX: -14.67, maxX: 12.65, minZ: -28.57, maxZ: 28.97 },
+      lanes: 3,
+      laneWidthM: 1.07,
+      courtLengthM: 28.65,     // NCAA men's regulation: 94 x 50 ft
+      courtWidthM: 15.24,
+    };
+    FIELDHOUSE.trackCenterX = (FIELDHOUSE.trackOuter.minX + FIELDHOUSE.trackOuter.maxX) / 2;
+    FIELDHOUSE.trackCenterZ = (FIELDHOUSE.trackOuter.minZ + FIELDHOUSE.trackOuter.maxZ) / 2;
+    FIELDHOUSE.trackOuterRadiusM = (FIELDHOUSE.trackOuter.maxX - FIELDHOUSE.trackOuter.minX) / 2;
+    FIELDHOUSE.trackHalfStraightM = (FIELDHOUSE.trackOuter.maxZ - FIELDHOUSE.trackOuter.minZ) / 2 - FIELDHOUSE.trackOuterRadiusM;
+
+    // Fieldhouse props (screenshot px, see ZONE_DETAIL's prop format): the
+    // two ceiling-hung hoops over the court, and the small rooms from the
+    // plan tucked into the hall's corners, clear of the track's curves.
+    function fieldhouseProps() {
+      const cpx = (FIELDHOUSE_PX[0] + FIELDHOUSE_PX[2]) / 2, cpy = (FIELDHOUSE_PX[1] + FIELDHOUSE_PX[3]) / 2;
+      const px = (mx) => cpx + mx / MAP_SCALE, py = (mz) => cpy + mz / MAP_SCALE;
+      // Box centered on (x, z) m from the hall's center, size w x d m.
+      const box = (x, z, w, d, height, color, raised) =>
+        [px(x - w / 2), py(z - d / 2), px(x + w / 2), py(z + d / 2), height, color, ...(raised ? [raised] : [])];
+      const props = [];
+      const hx0 = FIELDHOUSE.trackCenterX;
+      // Portable hoops (gamehoop.webp, with black padding instead of blue): a
+      // padded base behind the baseline, a padded upright, a white boom
+      // reaching over the baseline to the backboard (1.22 m inside it).
+      const PAD = 0x161616, STEEL = 0xe8e8e6;
+      for (const end of [-1, 1]) {
+        const at = (m) => FIELDHOUSE.trackCenterZ + end * m; // m from the court's center toward this end
+        const baseline = FIELDHOUSE.courtLengthM / 2;
+        const boardM = baseline - 1.22;
+        props.push(box(hx0, at(baseline + 2.4), 1.3, 2.2, 1.0, PAD));               // padded base (collides)
+        props.push(box(hx0, at(baseline + 1.55), 0.46, 0.46, 1.5, PAD, 1.0));       // padded upright
+        props.push(box(hx0, at(baseline + 1.55), 0.3, 0.3, 0.95, STEEL, 2.5));      // steel upright
+        props.push(box(hx0, at((baseline + 1.55 + boardM) / 2), 0.2, baseline + 1.55 - boardM, 0.2, STEEL, 3.3)); // boom
+        props.push(box(hx0, at(boardM + 0.25), 0.9, 0.12, 0.8, STEEL, 2.95));       // board frame behind the glass
+        props.push(box(hx0, at(boardM), 1.83, 0.05, 1.07, 0xd9e2e6, 2.9));          // backboard
+        props.push(box(hx0, at(boardM), 1.87, 0.09, 0.1, PAD, 2.82));               // bottom-edge padding
+        props.push(box(hx0, at(boardM - 0.03), 0.59, 0.051, 0.45, 0xf6f6f6, 3.05));  // shooter's square
+        const rimM = boardM - 0.38;
+        props.push(box(hx0, at(rimM - 0.225), 0.47, 0.02, 0.02, 0xe0561a, 3.05));   // rim (four bars)
+        props.push(box(hx0, at(rimM + 0.225), 0.47, 0.02, 0.02, 0xe0561a, 3.05));
+        props.push(box(hx0 - 0.225, at(rimM), 0.02, 0.47, 0.02, 0xe0561a, 3.05));
+        props.push(box(hx0 + 0.225, at(rimM), 0.02, 0.47, 0.02, 0xe0561a, 3.05));
+      }
+      // Rooms (locker rooms L103/L104 and J101/105B on the north wall, L101 in
+      // the south-east corner), wall-to-wall inside, 3.2 m tall.
+      const hx = (FIELDHOUSE_PX[2] - FIELDHOUSE_PX[0]) * MAP_SCALE / 2 - 0.45;
+      const hz = (FIELDHOUSE_PX[3] - FIELDHOUSE_PX[1]) * MAP_SCALE / 2 - 0.45;
+      props.push(box((9.5 + hx) / 2, -hz + 1.9, hx - 9.5, 3.8, 3.2, 0xc4bba9));  // L103 / L104 (north-east)
+      props.push(box(-(9.5 + hx) / 2, -hz + 1.9, hx - 9.5, 3.8, 3.2, 0xc4bba9)); // J101 / 105B (north-west)
+      props.push(box((12 + hx) / 2, hz - 1.9, hx - 12, 3.8, 3.2, 0xc4bba9));     // L101 (south-east)
+      return props;
+    }
 
     // Hollow buildings you can walk into: [x1, y1, x2, y2, height m, door(s),
     // color (optional)], each door { side: "n"|"s"|"e"|"w", at: px along that
@@ -676,12 +753,41 @@
         { side: "s", at: 714.8, width: 2, height: 2.4 },
         { side: "e", at: 306.5, width: 3, height: 2.6 },
       ]],
-      // Alex Nemzek Hall hallway (blue line in screenshot4.png): a corridor
-      // through the building from 17th St (west door) to the inlet in the
-      // building's east side, just north of the stadium stands (east door).
-      [1330, 298, 1450, 306, 7, [
-        { side: "w", at: 302, width: 2.2, height: 2.6 },
-        { side: "e", at: 302, width: 2.2, height: 2.6 },
+      // Alex Nemzek Hall hallway (blue in screenshot4.png / screenshot8nemzek.png):
+      // a wide corridor through the building from 17th St (west door) to the
+      // inlet in the building's east side (east door), as wide as the inlet --
+      // which reaches the grandstand's north end. On its south side: the
+      // Fieldhouse's C101 door, and the open area (green in
+      // screenshot8nemzek.png) along its whole width, no doors.
+      [1329.3, 297.2, 1450, 318, 7, [
+        // Entrances nearly the hallway's full width (gamenemzekentrance.jpg:
+        // a bank of glass doors under a white overhang).
+        { side: "w", at: 307.6, width: 11, height: 3.2 },
+        { side: "e", at: 307.6, width: 11, height: 3.2 },
+        { side: "s", at: 1364, width: 2.2, height: 2.6 }, // Fieldhouse C101
+        { side: "s", at: 1413.95, width: 22.3, height: 7 }, // open to the open area
+      ]],
+      // Nemzek Fieldhouse (purple in screenshot8nemzek.png; interior from the
+      // emergency plan, gamenemzekfieldhouse.jpg -- the plan's bottom is west).
+      // A 185 m indoor track (outer lane) around a basketball court, see
+      // FIELDHOUSE. Doors: V102-V105 out to the west (toward 17th St), C110 and
+      // C109 east into the open area, C101 north into the hallway.
+      [...FIELDHOUSE_PX, 16, [
+        { side: "w", at: 330.7, width: 2.4, height: 2.6 }, // V102
+        { side: "w", at: 355.1, width: 2.4, height: 2.6 }, // V103
+        { side: "w", at: 397, width: 2.4, height: 2.6 },   // V104
+        { side: "w", at: 417.6, width: 2.4, height: 2.6 }, // V105
+        { side: "e", at: 333, width: 2.4, height: 2.6 },   // C110
+        { side: "e", at: 376.8, width: 2.4, height: 2.6 }, // C109
+        { side: "n", at: 1364, width: 2.2, height: 2.6 },  // C101
+      ]],
+      // Open area east of the fieldhouse (green in screenshot8nemzek.png):
+      // the hallway's height, open to it along its north side, doors into
+      // the fieldhouse.
+      [1396.3, 318, 1431.6, 380.2, 7, [
+        { side: "n", at: 1413.95, width: 22.3, height: 7 },
+        { side: "w", at: 333, width: 2.4, height: 2.6 },   // C110
+        { side: "w", at: 376.8, width: 2.4, height: 2.6 }, // C109
       ]],
     ];
     const HOLLOW_WALL_M = 0.4;
@@ -771,7 +877,7 @@
         outline: [[1478, 234], [1504, 234], [1504, 194], [1846, 194], [1846, 480], [1697, 480],
           [1697, 664], [1317, 664], [1317, 453], [1411, 453], [1411, 440], [1478, 440]],
         gates: [[1411, 446.5], [1497, 234], [1677.5, 664]],
-        openings: [[1464, 310]], // the Nemzek hallway's east door opens (via the inlet) into the stadium
+        openings: [[1464, 307.6]], // the Nemzek hallway's east door opens (via the inlet) into the stadium
       },
       {
         name: "soccer", // two gates (dark pink in newborders.png)
@@ -1063,26 +1169,41 @@
           [1375, 228, 1375, 258, 12], // between the west wing and the fieldhouse
         ],
         trees: [[1320, 265], [1322, 290], [1490, 460], [1310, 455]],
+        props: [
+          ...fieldhouseProps(),
+          // Hallway west entrance (gamenemzekentrance.jpg): a white overhang
+          // over the doors on two tan-brick pillars at its outer corners.
+          [1322.3, 297.6, 1329.3, 317.6, 2.8, 0xe6e2d8, 3.3], // overhang
+          [1322.6, 299, 1323.9, 300.3, 3.3, 0xc99561],   // brick pillars
+          [1322.6, 314.9, 1323.9, 316.2, 3.3, 0xc99561],
+          // "NEMZEK HALL" sign (gamenemzeksign.jpg) north of the entrance
+          // walk, face to the south, square to the building: a cream panel
+          // on two brick pedestals (lettering: see the sign's face below).
+          [1313.6, 300.2, 1320.4, 300.75, 1.9, 0xe4e0d6, 0.45, "solid"],
+          [1314.5, 300.05, 1315.4, 300.9, 1.2, 0xb8714a],
+          [1318.6, 300.05, 1319.5, 300.9, 1.2, 0xb8714a],
+        ],
       },
       Z18: {
         bleachers: [
           // west grandstand (20 walkable steps), open to the sky -- press box below
-          [1485, 318, 1509, 440, 10, 20, "e", 0x9da3aa], // starts south of the NE inlet
+          [1485, 313, 1509, 440, 10, 20, "e", 0x9da3aa], // north end overlaps the NE inlet a little (screenshot8nemzek.png)
           [1637, 340, 1652, 415, 4, 8, "w", 0x9da3aa], // east bleachers
         ],
         props: [
           [1515, 195, 1528, 210, 3.5, 0xc9c2b3],      // ticket booth north of the track
           // Press box (standspressbox.png): a white two-level box perched on the
           // back rows on red steel columns, in front of a brick back wall.
-          [1483.4, 318.3, 1484.9, 439.7, 11.5, 0xa0523f], // brick back wall just behind the top row (no shared faces -> no flicker)
-          [1486, 347, 1495, 398, 3, 0xf1f1ee, 10, "solid"],    // lower level
-          [1485, 344, 1497, 401, 3.2, 0xf6f6f3, 13, "solid"],  // upper level, overhanging
-          [1497, 346, 1497.3, 399, 1.1, 0x2d3440, 14.2], // window band (east face)
-          [1495.3, 346, 1495.6, 396, 0.9, 0x2d3440, 11.2], // lower windows
-          [1495, 345, 1496, 346, 13, 0xb3302a], [1495, 360, 1496, 361, 13, 0xb3302a],
-          [1495, 384, 1496, 385, 13, 0xb3302a], [1495, 399, 1496, 400, 13, 0xb3302a], // red columns
-          [1488, 350, 1489, 351, 1, 0xdddddd, 16.2], [1488, 372, 1489, 373, 1, 0xdddddd, 16.2],
-          [1488, 394, 1489, 395, 1, 0xdddddd, 16.2], // rooftop lights
+          [1483.4, 313.3, 1484.9, 439.7, 11.5, 0xa0523f], // brick back wall just behind the top row (no shared faces -> no flicker)
+          // (north-south span from screenshot8nemzek.png: ~y 349-390)
+          [1486, 352, 1495, 387, 3, 0xf1f1ee, 10, "solid"],    // lower level
+          [1485, 349, 1497, 390, 3.2, 0xf6f6f3, 13, "solid"],  // upper level, overhanging
+          [1497, 351, 1497.3, 388, 1.1, 0x2d3440, 14.2], // window band (east face)
+          [1495.3, 353, 1495.6, 386, 0.9, 0x2d3440, 11.2], // lower windows
+          [1495, 350, 1496, 351, 13, 0xb3302a], [1495, 363, 1496, 364, 13, 0xb3302a],
+          [1495, 375, 1496, 376, 13, 0xb3302a], [1495, 388, 1496, 389, 13, 0xb3302a], // red columns
+          [1488, 355, 1489, 356, 1, 0xdddddd, 16.2], [1488, 369, 1489, 370, 1, 0xdddddd, 16.2],
+          [1488, 383, 1489, 384, 1, 0xdddddd, 16.2], // rooftop lights
           // stadium light towers: poles + raised light banks
           [1512, 262, 1514, 264, 22, 0x777777], [1512, 470, 1514, 472, 22, 0x777777],
           [1655, 262, 1657, 264, 22, 0x777777], [1655, 470, 1657, 472, 22, 0x777777],
@@ -1309,7 +1430,7 @@
           let cursor = along[0];
           for (const g of gaps) {
             seg(cursor, g.g0, height, 0);
-            seg(g.g0, g.g1, height, g.height); // lintel
+            if (g.height < height) seg(g.g0, g.g1, height, g.height); // lintel
             cursor = g.g1;
           }
           seg(cursor, along[1], height, 0);
@@ -1538,6 +1659,8 @@
       walk: 0.02, plaza: 0.025, road: 0.04, intersection: 0.045, driveway: 0.05,
       track: 0.06, dirt: 0.06, laneLine: 0.07, lot: 0.08, field: 0.09, pool: 0.09,
       lotWalk: 0.1, infield: 0.1, grassIsland: 0.11, crosswalk: 0.055,
+      // stadium infield (between the track fill and the lane lines)
+      infieldTurf: 0.064, eventArea: 0.066, infieldCover: 0.067,
     };
 
     // Merges geometries that all carry position/normal/uv. With `worldTile`
@@ -1829,7 +1952,151 @@
       addCrosswalk([ix - vFar, iy - hHalf - SIDEWALK_GAP_PX, ix - vNear, iy + hHalf + SIDEWALK_GAP_PX], "z");
       addCrosswalk([ix + vNear, iy - hHalf - SIDEWALK_GAP_PX, ix + vFar, iy + hHalf + SIDEWALK_GAP_PX], "z");
     }
+    // Mid-block crossings of a north-south street (pink marks on
+    // screenshot1.png): [street x, center y, width] in px, curb to curb
+    // plus the grass strips, lined up with the walk that meets them.
+    const MIDBLOCK_CROSSWALKS = [
+      [815, 405, 9],  // 14th St, on the central mall
+      [1297, 302, 5], // 17th St, at the walk to Nemzek's west door
+    ];
+    // A plain asphalt patch under each (like the intersections') so the
+    // road's dashed center line doesn't show between the bars.
+    const midblockPatches = [];
+    for (const [ix, iy, width] of MIDBLOCK_CROSSWALKS) {
+      const v = ROADS.find((r) => !isHorizontal(r) && r[0] === ix && Math.min(r[1], r[3]) <= iy && Math.max(r[1], r[3]) >= iy);
+      const vHalf = roadHalfWidth(v);
+      addCrosswalk([ix - vHalf - SIDEWALK_GAP_PX, iy - width / 2, ix + vHalf + SIDEWALK_GAP_PX, iy + width / 2], "x");
+      midblockPatches.push(rectGround([ix - vHalf, iy - width / 2 - 0.5, ix + vHalf, iy + width / 2 + 0.5], LIFT.intersection));
+    }
+    root.add(mergedMesh(midblockPatches, plainAsphaltMaterial));
     if (crosswalkGeometries.length > 0) root.add(mergedMesh(crosswalkGeometries, crosswalkMaterial));
+
+    // Nemzek Hall sign face (gamenemzeksign.jpg): black lettering across the
+    // top of the cream panel, facing south toward the entrance walk.
+    {
+      const left = mapToWorld(1313.6, 0).x, right = mapToWorld(1320.4, 0).x;
+      const faceZ = mapToWorld(0, 300.75).z + 0.012;
+      const panelHeight = 1.9, panelBase = 0.45;
+      const signTexture = canvasTexture(1024, Math.round(1024 * panelHeight / (right - left)), (ctx, w, h) => {
+        ctx.fillStyle = "#e4e0d6";
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "#1c2024";
+        ctx.font = `${Math.round(h * 0.22)}px "Century Gothic", "Futura", "Trebuchet MS", Arial, sans-serif`;
+        ctx.textBaseline = "middle";
+        // Wide letter spacing like the real sign, drawn letter by letter.
+        const text = "NEMZEK  HALL";
+        const spacing = h * 0.05;
+        const widths = [...text].map((c) => ctx.measureText(c).width);
+        const total = widths.reduce((a, b) => a + b, 0) + spacing * (text.length - 1);
+        let x = (w - total) / 2;
+        [...text].forEach((c, i) => { ctx.fillText(c, x, h * 0.3); x += widths[i] + spacing; });
+      });
+      signTexture.wrapS = signTexture.wrapT = THREE.ClampToEdgeWrapping;
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(right - left, panelHeight), new THREE.MeshLambertMaterial({ map: signTexture }));
+      face.position.set((left + right) / 2, panelBase + panelHeight / 2, faceZ);
+      root.add(face);
+    }
+
+    // Nemzek Fieldhouse floor: a gray concrete indoor track (outer lane 185 m)
+    // with white lane lines, around a maple basketball court.
+    {
+      const fh = FIELDHOUSE;
+      const hall = mapToWorld((FIELDHOUSE_PX[0] + FIELDHOUSE_PX[2]) / 2, (FIELDHOUSE_PX[1] + FIELDHOUSE_PX[3]) / 2);
+      const center = { x: hall.x + fh.trackCenterX, z: hall.z + fh.trackCenterZ }; // track + court center
+      const h = fh.trackHalfStraightM;
+      const R = fh.trackOuterRadiusM;
+      const innerR = R - fh.lanes * fh.laneWidthM;
+      // Point on a stadium outline of radius r (straights along z), t in [0, 4).
+      const outline = (t, r) => {
+        const seg = Math.floor(t) % 4, f = t - Math.floor(t);
+        if (seg === 0) return { x: center.x + r, z: center.z - h + 2 * h * f };             // east straight, north -> south
+        if (seg === 1) { const a = Math.PI * f; return { x: center.x + r * Math.cos(a), z: center.z + h + r * Math.sin(a) }; } // south curve
+        if (seg === 2) return { x: center.x - r, z: center.z + h - 2 * h * f };             // west straight
+        const a = Math.PI + Math.PI * f;
+        return { x: center.x + r * Math.cos(a), z: center.z - h + r * Math.sin(a) };        // north curve
+      };
+      // Flat ring between radii r0 < r1 (upward-facing triangles).
+      const ring = (r0, r1, lift, steps = 24) => {
+        const pos = [];
+        const tri = (a, b, c) => {
+          if ((b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z) < 0) [b, c] = [c, b];
+          for (const q of [a, b, c]) pos.push(q.x, lift, q.z);
+        };
+        const n = steps * 4;
+        for (let i = 0; i < n; i++) {
+          const t0 = (i / n) * 4, t1 = ((i + 1) / n) * 4;
+          const a = outline(t0, r0), b = outline(t1, r0), c = outline(t1, r1), d = outline(t0, r1);
+          tri(a, b, c);
+          tri(a, c, d);
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+        g.setAttribute("normal", new THREE.Float32BufferAttribute(pos.map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+        return g;
+      };
+      const trackMaterial = new THREE.MeshLambertMaterial({
+        map: canvasTexture(128, 128, (ctx, w, hh) => speckle(ctx, w, hh, "#8f8f8b", 1400, 0.07, 31)),
+      });
+      root.add(mergedMesh([ring(innerR, R, 0.12)], trackMaterial, 3));
+      const lineGeometries = [];
+      for (let k = 0; k <= fh.lanes; k++) {
+        const r = R - k * fh.laneWidthM;
+        lineGeometries.push(ring(r - (k === 0 ? 0.06 : 0.025), r + (k === fh.lanes ? 0.06 : 0.025), 0.125));
+      }
+      root.add(mergedMesh(lineGeometries, new THREE.MeshLambertMaterial({ color: 0xe9e9e4 }), 1));
+
+      // Court (NCAA men's markings), with a 1 m darker apron. Canvas: x across
+      // the court (west -> east), y along it (north at the top).
+      const apronM = 1;
+      const cw = fh.courtWidthM + 2 * apronM, cl = fh.courtLengthM + 2 * apronM;
+      const PPM = 40; // canvas pixels per meter
+      const courtTexture = canvasTexture(Math.round(cw * PPM), Math.round(cl * PPM), (ctx, w, hh) => {
+        const m = (v) => v * PPM;
+        ctx.fillStyle = "#8a5a31";
+        ctx.fillRect(0, 0, w, hh);
+        const x0 = m(apronM), y0 = m(apronM), W = m(fh.courtWidthM), L = m(fh.courtLengthM);
+        ctx.fillStyle = "#c99a5e";
+        ctx.fillRect(x0, y0, W, L);
+        // maple boards along the court
+        const rand = seededRandom(77);
+        for (let bx = x0; bx < x0 + W; bx += m(0.06)) {
+          ctx.fillStyle = `rgba(${rand() < 0.5 ? "90,55,20" : "255,235,200"},${0.04 + rand() * 0.06})`;
+          ctx.fillRect(bx, y0, m(0.06), L);
+        }
+        const cx = x0 + W / 2, cy = y0 + L / 2;
+        ctx.fillStyle = "rgba(166,25,46,0.85)"; // MSUM red paint in the lanes and center circle
+        const laneW = m(3.66), ftDist = m(5.79);
+        ctx.fillRect(cx - laneW / 2, y0, laneW, ftDist);
+        ctx.fillRect(cx - laneW / 2, y0 + L - ftDist, laneW, ftDist);
+        ctx.beginPath(); ctx.arc(cx, cy, m(1.83), 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "#f6f4ee";
+        ctx.lineWidth = m(0.05);
+        ctx.strokeRect(x0, y0, W, L);
+        ctx.beginPath(); ctx.moveTo(x0, cy); ctx.lineTo(x0 + W, cy); ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx, cy, m(1.83), 0, Math.PI * 2); ctx.stroke();
+        for (const end of [1, -1]) {
+          const base = end > 0 ? y0 : y0 + L;             // baseline
+          const hoop = base + end * m(1.575);              // basket center
+          // lane + free-throw circle
+          ctx.strokeRect(cx - laneW / 2, Math.min(base, base + end * ftDist), laneW, ftDist);
+          ctx.beginPath(); ctx.arc(cx, base + end * ftDist, m(1.83), 0, Math.PI * 2); ctx.stroke();
+          // three-point line: 6.75 m arc, straight 1.02 m in from each sideline
+          const r3 = m(6.75), side = m(6.6);
+          const reach = Math.sqrt(r3 * r3 - side * side);
+          ctx.beginPath();
+          ctx.moveTo(cx - side, base); ctx.lineTo(cx - side, hoop + end * reach);
+          const a0 = Math.atan2(end * reach, -side), a1 = Math.atan2(end * reach, side);
+          ctx.arc(cx, hoop, r3, a0, a1, end < 0);
+          ctx.lineTo(cx + side, base);
+          ctx.stroke();
+        }
+      });
+      const halfW = cw / 2 / MAP_SCALE, halfL = cl / 2 / MAP_SCALE;
+      const cpx = (FIELDHOUSE_PX[0] + FIELDHOUSE_PX[2]) / 2 + fh.trackCenterX / MAP_SCALE;
+      const cpy = (FIELDHOUSE_PX[1] + FIELDHOUSE_PX[3]) / 2 + fh.trackCenterZ / MAP_SCALE;
+      root.add(mergedMesh([rectGround([cpx - halfW, cpy - halfL, cpx + halfW, cpy + halfL], 0.13, { stretch: true })],
+        new THREE.MeshLambertMaterial({ map: courtTexture })));
+    }
 
     // Sidewalks (both sides of every street) and campus walkways -- the
     // same slab concrete, drawn under streets and lots so crossings and lot
@@ -1909,8 +2176,56 @@
         laneLineGeometries.push(flatArcWorld(cap.cx, cap.zBottom, rad - half, rad + half, Math.PI, Math.PI, LIFT.laneLine));
       }
     }
+    // Infield: turf over the track fill inside the lanes; the event area,
+    // then turf again over the rest so the event area stays north of its line.
+    const infieldGeometries = [];
+    const eventAreaGeometries = [];
+    const infieldCoverGeometries = [];
+    for (const r of TRACKS) {
+      const extra = r[4] || {};
+      const cap = capsuleOf(r);
+      const radiusPx = (r[2] - r[0]) / 2;
+      const lanesPx = (TRACK_LANES * TRACK_LANE_WIDTH_M) / MAP_SCALE;
+      const innerR = cap.radius - TRACK_LANES * TRACK_LANE_WIDTH_M;
+      const innerRPx = radiusPx - lanesPx;
+      infieldGeometries.push(
+        rectGround([r[0] + lanesPx, r[1] + radiusPx, r[2] - lanesPx, r[3] - radiusPx], LIFT.infieldTurf),
+        flatDiscWorld(cap.cx, cap.zTop, innerR, LIFT.infieldTurf),
+        flatDiscWorld(cap.cx, cap.zBottom, innerR, LIFT.infieldTurf),
+      );
+      if (extra.northEventAreaToY !== undefined) {
+        eventAreaGeometries.push(flatDiscWorld(cap.cx, cap.zTop, innerR, LIFT.eventArea));
+        infieldCoverGeometries.push(rectGround(
+          [r[0] + lanesPx, extra.northEventAreaToY, r[2] - lanesPx, r[1] + radiusPx + innerRPx], LIFT.infieldCover));
+      }
+      if (extra.westChuteTopY !== undefined) {
+        // The chute: the west straight's lanes squared off north of the curve.
+        trackGeometries.push(rectGround([r[0], extra.westChuteTopY, r[0] + lanesPx, r[1] + radiusPx], LIFT.track));
+        const chuteTop = mapToWorld(0, extra.westChuteTopY).z;
+        const half = LANE_LINE_WIDTH_M / 2;
+        for (let lane = 0; lane <= TRACK_LANES; lane++) {
+          const lineX = cap.cx - (cap.radius - lane * TRACK_LANE_WIDTH_M);
+          laneLineGeometries.push(groundQuad(
+            [{ x: lineX - half, z: chuteTop }, { x: lineX + half, z: chuteTop },
+              { x: lineX + half, z: cap.zTop }, { x: lineX - half, z: cap.zTop }],
+            [[0, 0], [1, 0], [1, 1], [0, 1]], LIFT.laneLine));
+        }
+        // square end line across the chute's top
+        laneLineGeometries.push(rectGround([r[0], extra.westChuteTopY, r[0] + lanesPx, extra.westChuteTopY + LANE_LINE_WIDTH_M / MAP_SCALE], LIFT.laneLine));
+      }
+    }
     for (const r of RUNWAYS) trackGeometries.push(rectGround(r, LIFT.track));
     root.add(mergedMesh(trackGeometries, trackMaterial, TRACK_TILE_M));
+    const infieldTurfMaterial = new THREE.MeshLambertMaterial({
+      map: canvasTexture(128, 128, (ctx, w, h) => speckle(ctx, w, h, "#3f7d3a", 1600, 0.08, 41)),
+    });
+    root.add(mergedMesh(infieldGeometries, infieldTurfMaterial, 3));
+    if (eventAreaGeometries.length) {
+      root.add(mergedMesh(eventAreaGeometries, new THREE.MeshLambertMaterial({
+        map: canvasTexture(128, 128, (ctx, w, h) => speckle(ctx, w, h, "#7e2f28", 1600, 0.1, 43)),
+      }), TRACK_TILE_M));
+      root.add(mergedMesh(infieldCoverGeometries, infieldTurfMaterial, 3));
+    }
     root.add(mergedMesh(laneLineGeometries, laneLineMaterial, 1));
 
     root.add(mergedMesh(TURF_AREAS.map((r) => rectGround(r, LIFT.field, { stretch: true })), turfMaterial));
@@ -3141,6 +3456,19 @@
       navChunkCount: () => navChunks.size,
       updateVisibility,
       distanceToZone,
+      // Ground layers the weather darkens when wet (asphalt most, grass least).
+      wetSurfaces: [
+        { material: roadMaterial, darken: 0.38 },
+        { material: plainAsphaltMaterial, darken: 0.38 },
+        { material: lotMaterial, darken: 0.34 },
+        { material: concreteMaterial, darken: 0.3 },
+        { material: trackMaterial, darken: 0.28 },
+        { material: dirtMaterial, darken: 0.32 },
+        { material: laneLineMaterial, darken: 0.18 },
+        { material: grassMaterial, darken: 0.16 },
+        { material: turfMaterial, darken: 0.14 },
+        { material: soccerMaterial, darken: 0.14 },
+      ],
     };
 
   }
