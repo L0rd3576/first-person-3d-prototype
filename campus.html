@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Campus Greybox</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #9aa3ab;
+    font-family: Arial, sans-serif;
+  }
+  canvas { display: block; }
+  #crosshair {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    width: 4px;
+    height: 4px;
+    margin: -2px 0 0 -2px;
+    background: #fff;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  #hud {
+    position: fixed;
+    left: 12px;
+    bottom: 12px;
+    color: #fff;
+    font-size: 13px;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    pointer-events: none;
+  }
+  #overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    text-align: center;
+  }
+  #overlay.hidden { display: none; }
+  #overlay h1 { margin: 0; font-size: 34px; }
+  #overlay p { margin: 0; line-height: 1.6; }
+  #overlay button {
+    min-width: 220px;
+    padding: 10px 18px;
+    font-size: 16px;
+    border: 2px solid #fff;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    cursor: pointer;
+  }
+  #overlay button:hover,
+  #overlay button.focused { background: rgba(255, 255, 255, 0.3); }
+</style>
+</head>
+<body>
+
+<div id="crosshair"></div>
+<div id="hud"></div>
+<div id="overlay">
+  <h1>Campus Greybox</h1>
+  <p>
+    Layout / traversal test -- no enemies, items or gameplay.<br>
+    WASD move &middot; Mouse look &middot; Shift sprint &middot; Hold Space fly up (release to fall) &middot; Esc pause<br>
+    Controller: left stick move &middot; right stick look &middot; L3 sprint &middot; hold A fly up / A resume &middot; Start pause &middot; B (paused) main menu
+  </p>
+  <button id="play-button">Click to Walk</button>
+  <button id="back-button">Back to Main Menu</button>
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="campus-world.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ------------------------------------------------------------------
+  // MOVEMENT -- same numbers as the main game (index.html), except the
+  // greybox-only testing boosts below (CAMPUS_SPEED_MULTIPLIER and the
+  // hold-Space fly-up). BASE_WALK_SPEED is the real game's walk speed.
+  // ------------------------------------------------------------------
+  const BASE_WALK_SPEED = 6.0 * 0.85 * 0.95;
+  const CAMPUS_SPEED_MULTIPLIER = 8; // explicit request: 8x movement speed on the campus map
+  const WALK_SPEED = BASE_WALK_SPEED * CAMPUS_SPEED_MULTIPLIER;
+  const SPRINT_MULTIPLIER = 1.8 * 0.85 / 0.95;
+  const EYE_HEIGHT = 1.7;
+  const GRAVITY = -18.0;
+  // Hold Space (or A) to rise straight up at this speed; let go to fall.
+  const FLY_UP_SPEED = 12;
+  const FLY_MAX_HEIGHT = 150;
+  // Horizontal moves are split into steps no longer than this, so 8x
+  // speed can't carry the player through a building in one frame.
+  const MAX_MOVE_STEP = 0.5;
+  // Ledges up to this tall (bleacher steps, curbs) are stepped onto while
+  // walking instead of blocking.
+  const STEP_UP_HEIGHT = 0.5;
+  const ACCELERATION = 45;
+  const FRICTION = 9;
+  const PLAYER_RADIUS = 0.35;
+  const PLAYER_HEIGHT = 1.85;  // for raised colliders (door lintels, roofs): the player fits under anything higher
+  const MOUSE_SENSITIVITY = 0.0022;
+  const STICK_LOOK_SPEED = 2.6;   // radians/sec at full right-stick deflection
+  const STICK_DEADZONE = 0.15;
+  const PITCH_LIMIT = Math.PI / 2 - 0.01;
+  // Stamina -- also copied from the main game. At this map's scale a full
+  // bar is ~5s of sprint (~39 m, about half a street block), then ~7s
+  // standing to refill.
+  const MAX_STAMINA = 100;
+  const STAMINA_DRAIN_PER_SECOND = 20;
+  const STAMINA_REGEN_STANDING_PER_SECOND = 14;
+  const STAMINA_REGEN_WALKING_PER_SECOND = 9;
+  const STAMINA_EXHAUSTED_RECOVER_THRESHOLD = 15;
+
+  // The campus itself (layout, scene, collision, line of sight) lives in
+  // campus-world.js, shared with the game's Campus map (index.html).
+
+  // ------------------------------------------------------------------
+  // SCENE
+  // ------------------------------------------------------------------
+  // Logarithmic depth: the ground layers are stacked centimeters apart
+  // (see GROUND GEOMETRY), which z-fights from high up with a normal
+  // depth buffer -- and the player can fly to FLY_MAX_HEIGHT.
+  const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x9aa3ab);
+  // Distance culling: a zone whose footprint is farther than RENDER_DISTANCE
+  // from the player is hidden outright. Fog reaches full density just
+  // before that so zones never visibly pop in or out.
+  const RENDER_DISTANCE = 450;
+  scene.fog = new THREE.Fog(0x9aa3ab, 200, RENDER_DISTANCE - 10);
+
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, RENDER_DISTANCE + 50);
+  camera.rotation.order = "YXZ";
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.75);
+  sun.position.set(-0.6, 1, 0.4);
+  scene.add(sun);
+
+  const world = buildCampusWorld(THREE, scene, renderer, {
+    renderDistance: RENDER_DISTANCE,
+    treeDrawDistance: 260,
+    stepUpHeight: STEP_UP_HEIGHT,
+  });
+  const { bounds, zones, mapToWorld } = world;
+
+  function updateZoneVisibility() {
+    world.updateVisibility([player]);
+  }
+
+  // ------------------------------------------------------------------
+  // PLAYER
+  // ------------------------------------------------------------------
+  const spawn = world.spawn;
+  const player = {
+    x: spawn.x, z: spawn.z, feetY: 0,
+    velX: 0, velZ: 0, velY: 0,
+    yaw: 0, pitch: 0, // facing north (toward the library / 6th Ave)
+    grounded: true,
+    stamina: MAX_STAMINA,
+    staminaExhausted: false,
+  };
+
+  const keys = new Set();
+  let paused = true;
+
+  // Collision against the campus (buildings, props, tree trunks) --
+  // world.resolveCircle only looks at colliders near the player. A box
+  // only blocks while the player's feet are below its roof, so they can fly
+  // over buildings and land on top of them (see supportHeightAt).
+  function resolveCollisions() {
+    world.resolveCircle(player, PLAYER_RADIUS, player.feetY, player.grounded, PLAYER_HEIGHT);
+    player.x = Math.max(bounds.minX + PLAYER_RADIUS, Math.min(player.x, bounds.maxX - PLAYER_RADIUS));
+    player.z = Math.max(bounds.minZ + PLAYER_RADIUS, Math.min(player.z, bounds.maxZ - PLAYER_RADIUS));
+  }
+
+  // Highest roof/step/ground under the player that their feet were at or
+  // above (`fromY`) -- the surface they land on.
+  function supportHeightAt(fromY) {
+    return world.supportHeightAt(player.x, player.z, PLAYER_RADIUS, fromY);
+  }
+
+  function readGamepad() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const pad of pads) {
+      if (pad && pad.connected) return pad;
+    }
+    return null;
+  }
+
+  function deadzone(v) {
+    return Math.abs(v) < STICK_DEADZONE ? 0 : v;
+  }
+
+  let padPrev = {};
+  function padPressed(pad, index) {
+    const down = !!(pad.buttons[index] && pad.buttons[index].pressed);
+    const was = !!padPrev[index];
+    padPrev[index] = down;
+    return down && !was;
+  }
+
+  let padSprintLatched = false;
+
+  function update(dt) {
+    const pad = readGamepad();
+
+    if (pad && padPressed(pad, 9)) { // Start
+      setPaused(!paused);
+    }
+    if (paused) {
+      if (pad && padPressed(pad, 0)) setPaused(false); // A resumes
+      if (pad && padPressed(pad, 1)) window.location.href = "index.html"; // B back to menu
+      return;
+    }
+
+    let inputForward = 0;
+    let inputRight = 0;
+    if (keys.has("KeyW")) inputForward += 1;
+    if (keys.has("KeyS")) inputForward -= 1;
+    if (keys.has("KeyD")) inputRight += 1;
+    if (keys.has("KeyA")) inputRight -= 1;
+    let sprint = keys.has("ShiftLeft") || keys.has("ShiftRight");
+    let flyUp = keys.has("Space");
+
+    if (pad) {
+      inputRight += deadzone(pad.axes[0] || 0);
+      inputForward -= deadzone(pad.axes[1] || 0);
+      player.yaw -= deadzone(pad.axes[2] || 0) * STICK_LOOK_SPEED * dt;
+      player.pitch -= deadzone(pad.axes[3] || 0) * STICK_LOOK_SPEED * dt;
+      player.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, player.pitch));
+      if (padPressed(pad, 10)) padSprintLatched = true; // L3 toggles sprint on until you stop
+      if (pad.buttons[0] && pad.buttons[0].pressed) flyUp = true;
+    }
+
+    const inputLength = Math.hypot(inputForward, inputRight);
+    if (inputLength > 1) {
+      inputForward /= inputLength;
+      inputRight /= inputLength;
+    }
+    if (inputLength < 0.1) padSprintLatched = false;
+    sprint = sprint || padSprintLatched;
+    const moving = inputLength > 0.05;
+    const sprinting = sprint && inputForward > 0 && !player.staminaExhausted;
+    if (sprinting) {
+      player.stamina = Math.max(0, player.stamina - STAMINA_DRAIN_PER_SECOND * dt);
+      if (player.stamina <= 0) player.staminaExhausted = true;
+    } else {
+      const regen = moving ? STAMINA_REGEN_WALKING_PER_SECOND : STAMINA_REGEN_STANDING_PER_SECOND;
+      player.stamina = Math.min(MAX_STAMINA, player.stamina + regen * dt);
+      if (player.stamina >= STAMINA_EXHAUSTED_RECOVER_THRESHOLD) player.staminaExhausted = false;
+    }
+
+    // Camera looks down -Z at yaw 0.
+    const sinYaw = Math.sin(player.yaw);
+    const cosYaw = Math.cos(player.yaw);
+    const wishX = -sinYaw * inputForward + cosYaw * inputRight;
+    const wishZ = -cosYaw * inputForward - sinYaw * inputRight;
+    const speed = WALK_SPEED * (sprinting ? SPRINT_MULTIPLIER : 1);
+    const targetX = wishX * speed;
+    const targetZ = wishZ * speed;
+
+    // Full steering in the air too, so the player can fly around freely.
+    // The response rate uses the real game's walk speed so the 8x boost
+    // doesn't also make acceleration 8x sluggish.
+    if (moving) {
+      const blend = 1 - Math.exp(-ACCELERATION / BASE_WALK_SPEED * dt);
+      player.velX += (targetX - player.velX) * blend;
+      player.velZ += (targetZ - player.velZ) * blend;
+    } else {
+      const decay = Math.exp(-FRICTION * dt);
+      player.velX *= decay;
+      player.velZ *= decay;
+    }
+
+    const steps = Math.max(1, Math.ceil(Math.hypot(player.velX, player.velZ) * dt / MAX_MOVE_STEP));
+    for (let i = 0; i < steps; i++) {
+      player.x += player.velX * dt / steps;
+      player.z += player.velZ * dt / steps;
+      resolveCollisions();
+    }
+
+    const prevFeetY = player.feetY;
+    if (flyUp && player.feetY < FLY_MAX_HEIGHT) {
+      player.velY = FLY_UP_SPEED;
+    } else {
+      player.velY += GRAVITY * dt;
+    }
+    player.feetY = Math.min(FLY_MAX_HEIGHT, player.feetY + player.velY * dt);
+    const support = supportHeightAt(prevFeetY + (player.grounded ? STEP_UP_HEIGHT : 0));
+    if (player.feetY <= support) {
+      player.feetY = support;
+      player.velY = 0;
+      player.grounded = true;
+    } else {
+      player.grounded = false;
+    }
+
+    updateZoneVisibility();
+  }
+
+  const hud = document.getElementById("hud");
+
+  function render() {
+    camera.position.set(player.x, player.feetY + EYE_HEIGHT, player.z);
+    camera.rotation.set(player.pitch, player.yaw, 0);
+    renderer.render(scene, camera);
+    const speed = Math.hypot(player.velX, player.velZ);
+    const zonesDrawn = `${zones.filter((z) => z.meshes.some((m) => m.visible)).length}/${zones.length}`;
+    hud.textContent =
+      `x ${player.x.toFixed(1)}  z ${player.z.toFixed(1)}  height ${player.feetY.toFixed(1)}  |  speed ${speed.toFixed(1)} m/s` +
+      `  |  stamina ${Math.round(player.stamina)}  |  zones drawn: ${zonesDrawn}` +
+      `  |  draw calls ${renderer.info.render.calls}`;
+  }
+
+  // ------------------------------------------------------------------
+  // INPUT / PAUSE
+  // ------------------------------------------------------------------
+  const overlay = document.getElementById("overlay");
+  const canvas = renderer.domElement;
+
+  function setPaused(value) {
+    paused = value;
+    overlay.classList.toggle("hidden", !paused);
+    if (paused) {
+      keys.clear();
+      if (document.pointerLockElement) document.exitPointerLock();
+    }
+  }
+
+  document.getElementById("play-button").addEventListener("click", function () {
+    canvas.requestPointerLock();
+    setPaused(false);
+  });
+  document.getElementById("back-button").addEventListener("click", function () {
+    window.location.href = "index.html";
+  });
+
+  document.addEventListener("pointerlockchange", function () {
+    // Esc releases pointer lock in the browser -- treat that as pausing,
+    // unless a controller is driving (it never had the lock).
+    if (!document.pointerLockElement && !paused && !readGamepad()) setPaused(true);
+  });
+
+  document.addEventListener("mousemove", function (e) {
+    if (paused || document.pointerLockElement !== canvas) return;
+    player.yaw -= e.movementX * MOUSE_SENSITIVITY;
+    player.pitch -= e.movementY * MOUSE_SENSITIVITY;
+    player.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, player.pitch));
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.code === "Escape") {
+      setPaused(true);
+      return;
+    }
+    if (!paused) keys.add(e.code);
+  });
+  document.addEventListener("keyup", function (e) {
+    keys.delete(e.code);
+  });
+  window.addEventListener("blur", function () {
+    keys.clear();
+  });
+
+  window.addEventListener("resize", function () {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // Debug camera for checking detail without playing:
+  // campus.html#cam=px,py,height,yawDeg,pitchDeg (screenshot px, eye height
+  // in meters, degrees; pitch -90 looks straight down). Freezes the view
+  // there with the pause overlay and HUD hidden.
+  const debugCam = /cam=([-\d.,]+)/.exec(window.location.hash || "");
+  if (debugCam) {
+    const [px, py, height, yawDeg, pitchDeg] = debugCam[1].split(",").map(Number);
+    const at = mapToWorld(px, py);
+    Object.assign(player, {
+      x: at.x, z: at.z, feetY: height - EYE_HEIGHT,
+      yaw: (yawDeg * Math.PI) / 180, pitch: (pitchDeg * Math.PI) / 180,
+    });
+    overlay.classList.add("hidden");
+    document.getElementById("hud").style.display = "none";
+    document.getElementById("crosshair").style.display = "none";
+  }
+
+  let lastTime = performance.now();
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const dt = Math.min((now - lastTime) / 1000, 0.05);
+    lastTime = now;
+    if (debugCam) updateZoneVisibility();
+    else update(dt);
+    render();
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

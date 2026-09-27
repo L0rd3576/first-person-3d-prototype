@@ -12,11 +12,16 @@ the code and re-sync this file.
 
 A first-person, wave-based survival shooter titled **"Escape From Kise."** (per the title
 screen — there's still no story/framing behind that name; see [Known Gaps](#9-known-gaps--open-design-questions)).
-The player spawns inside a small single-building floor plan, fights off escalating waves of
-block-humanoid enemies (a regular type plus fast, brute, and wave-10 boss variants), crafts
-weapons/ammo/healing from enemy drops, spends skill points earned per wave, and survives as long
-as possible, on one of three difficulty levels chosen from a pre-game setup screen. Solo or local
-split-screen co-op. There is currently no win condition.
+The player fights off escalating waves of block-humanoid enemies (a regular type plus fast,
+brute, and wave-10 boss variants), crafts weapons/ammo/healing from enemy drops, spends skill
+points earned per wave, and survives as long as possible, on one of three difficulty levels chosen
+from a pre-game setup screen. Solo or local split-screen co-op. There is currently no win
+condition.
+
+There are two maps, picked on the mode screen (§6):
+- **Classic** (the default): a small single-building floor plan with fixed enemy spawners.
+- **Campus**: a true-to-scale recreation of the MSU Moorhead campus and the surrounding blocks,
+  about 1.3 × 0.5 km. Enemies spawn procedurally around the player (§4).
 
 **Platform / tech stack:**
 - **Tauri 2 (Rust)** — native desktop window/shell, packaging. See `src-tauri/`.
@@ -26,6 +31,14 @@ split-screen co-op. There is currently no win condition.
   (the source of truth). `scripts/sync-frontend.js` copies it (and `vendor/`) into `frontend/`,
   which is what Tauri actually bundles — `frontend/index.html` is a generated copy, never edited
   directly.
+- **Shared campus scripts** (plain `<script>` files next to `index.html`, also synced to
+  `frontend/`):
+  - `campus-world.js`: the whole campus map (layout data, scene, collision, line of sight, local
+    pathfinding). Also used by the walk-only greybox page `campus.html`.
+  - `procedural-spawn.js`: the campus spawn manager and enemy recycler.
+- **Automated campus test:** `tests/campus-spawn-test.js`, run by opening `index.html#spawntest`
+  (headless-friendly). It covers spawning, recycling, fences and directional respawns, plus a
+  Classic-map sanity run.
 - No build step, no bundler, no external game-code dependencies.
 
 ---
@@ -261,7 +274,7 @@ Two separate, per-weapon-configurable systems, both firing from the same shot:
       enemy harmlessly. 6s cooldown per brute. Own animations for both (pick up / hold and wind
       up / throw; carried and thrown flailing).
   - **Boss (wave 10 only, dark orange):** exactly 2× size, 1.43× (1.3 × 1.1) the regular enemy's
-    difficulty-adjusted speed (no variance), 1,800 / 2,200 / 2,600 HP by difficulty, 1.3× head.
+    difficulty-adjusted speed (no variance), 2,200 / 2,400 / 2,600 HP by difficulty, 1.3× head.
     Spawns halfway through wave 10's spawn window. A health bar shows at the top of the screen
     while it's alive, labelled "FAT CHASE". At a third of its health it spawns 3 fast enemies around itself (once). No contact damage — two attacks, run by a state
     machine (`moving → preparingSlam → jumping → landing` and `moving → grabbing → throwing`):
@@ -296,7 +309,7 @@ Two separate, per-weapon-configurable systems, both firing from the same shot:
   It's used only for the concrete floor patch and footstep surface selection (see §6/§7). Don't
   confuse the two: pathfinding is pure A* with no notion of "inside/outside" at all; the
   inside/outside check is a separate, narrow-purpose helper for flooring/audio.
-- **Spawning:**
+- **Spawning (Classic map):**
   - 5 hand-placed spawn points ringing the building at its actual wall gaps/corners, plus 10 more
     procedurally placed on a ring outside the wall bounding box entirely (evenly spaced with a
     randomized phase per session). All spawners are validated clear of every wall collider at load.
@@ -322,6 +335,56 @@ Two separate, per-weapon-configurable systems, both firing from the same shot:
     player has ever clicked to start.
   - **25%** chance per kill to drop an ammo pickup (**30% on Normal**; brutes 50% / 55%), plus
     independent resource rolls: cloth 15%, planks 10%, scrap 6% (see §5).
+- **Spawning (Campus map)** — the wave manager above still decides *when* and *what* spawns (same
+  counts, schedules and difficulty rules). A procedural spawn manager (`procedural-spawn.js`,
+  tuned in `CAMPUS_SPAWN_CONFIG`) decides *where*. There are no fixed spawn points, and only the
+  area around the player is ever processed.
+  - **Placement:**
+    - Every 0.35s, only while something is queued, it samples 6 candidates on a **30–60 m ring**
+      around a living player.
+    - Candidates are checked cheapest-first: map bounds, distance to every player, not within
+      10 m of the last 16 spawns, walkable, and on the player's side of any fence (or within 25 m
+      of one of its gates). Last is one line-of-sight test, only for candidates inside a player's
+      60° view cone.
+    - Anything a player could see is rejected.
+    - Valid spots are weighted: behind > sides > in front but hidden behind a building, with
+      bonuses near buildings and along the player's recent trail. Good spots are cached until the
+      player moves 8 m.
+  - **Caps:** at most **40 active enemies** map-wide, and no more than 30 within 60 m of the
+    player; beyond that, requests wait in a queue.
+  - **Level of detail:**
+    - Enemies within 85 m get full AI.
+    - Farther ones repath 3× less often and skip line-of-sight checks.
+  - **Recycling** (`createEnemyRecycler`, `CAMPUS_RECYCLE_CONFIG`):
+    - Every 0.25s it checks the next 8 active enemies, round-robin.
+    - It recycles an enemy that is **far** (beyond 130 m of every player).
+    - It also recycles one that is **stuck**:
+      - it hasn't moved 1.5 m or gotten 1 m closer for 6s, or
+      - it has moved without getting closer for 18s (e.g. sliding along a fence).
+    - The stuck timers reset when the enemy gets closer, when the player moves 25 m, or while the
+      enemy is busy: in contact range, being knocked back, or mid boss/brute special move.
+    - Nothing is recycled while a player can see it. A stuck enemy in view gets one forced repath
+      first.
+    - A recycled enemy is **pooled, not destroyed**: it's hidden and parked, then handed back to
+      the spawn manager, which places it again under the same rules and cap. The wave isn't
+      counted as cleared while any are parked or queued.
+  - **Directional respawns** (recycled enemies only):
+    - Tracks each player's real world-space travel direction, not their look direction. It's
+      smoothed over about 1.5s, needs at least 1.5 m/s, and builds confidence over about 4s of
+      steady travel.
+    - While traveling, respawn spots are weighted toward the **forward arc (±75°)**, and spots near
+      where the player will be 25 m ahead score higher.
+    - Spots behind a building ahead are suggested cheaply by `spotsBehindBuildings`, one grid
+      query, and preferred.
+    - A visible spot ahead is allowed only as a fallback, at least 48 m out and at least 22° off
+      the view's center.
+    - It fades back to normal all-around spawning when the player stops or turns around.
+    - Measured on the mall route: about 70% ahead, 20% side and 10% behind, versus about 15% ahead
+      before.
+  - **Fences:** enemies can't reach, hit or explode through a fence (chain-link blocks passage but
+    not sight or shots), and they route through gates.
+  - **Debug:** F8 during a campus run shows the spawn rings, candidates, recent spawns, enemy
+    markers and stats.
 
 ### Difficulty system
 
@@ -339,7 +402,7 @@ ever run.
 | Fast enemies on wave 10 | 3 | 4 | 5 |
 | Brutes | wave 4: 1, +1 every even wave | wave 4: 2, +1 every even wave | same as Hard |
 | Brute HP | 410 | 410 | 444 |
-| Boss HP | 1,800 | 2,200 | 2,600 |
+| Boss HP | 2,200 | 2,400 | 2,600 |
 | Starting pistol reserve | +2 magazines (49) | +1 magazine (42) | +0 (35) |
 | Ammo box drop chance | +5 percentage points | — | — |
 
@@ -452,9 +515,11 @@ steps through recipes (hold to repeat), R2 clicks. The Craft button is a full-wi
 
 1 skill point per player per cleared wave (2 on boss waves), 1 point per skill. Columns:
 
-- **5k (stamina):** 22 Minute 5k (+15 max stamina) → 15 MPW (+15) and Hills (+7% stamina regen)
-  → 20 Minute 5k (+15, needs both) → Distance Runner (+25) **or** Mid Distance (+5, +5% sprint
-  speed) — mutually exclusive → 18 Minute 5k (+15, needs either one).
+- **5k (stamina):** 22 Minute 5k (+25 max stamina, +1% sprint speed) → 15 MPW (+25, +1%) and
+  Hills (+7% stamina regen, +10, +1%) → 20 Minute 5k (+25, +1%, needs both) → Distance Runner
+  (+35) **or** Mid Distance (+15, +5% sprint speed) — mutually exclusive → 18 Minute 5k (+25, +1%,
+  needs either one). Every node gives +10 max stamina over its original value; all but Distance
+  Runner and Mid Distance add +1% sprint speed (multiplicative, regular and tactical sprint).
 - **Sliding:** Sliding (unlocks sliding) → Faster Sliding (+0.2s) → Efficient Slides (sliding
   costs no stamina).
 - **Weapons:** Baseball Bat Recipe → Glock Recipe → Shotgun Recipe and SMG Recipe → Katana Recipe
@@ -464,6 +529,12 @@ steps through recipes (hold to repeat), R2 clicks. The Craft button is a full-wi
 ---
 
 ## 6. Map / Environment
+
+Two maps, chosen on the mode screen under **Map** (Classic / Campus), remembered between runs.
+Both share the same enemy, weapon and wave code; everything map-specific (collision, line of sight,
+pathfinding, spawning) is routed through `isCampusMap` checks.
+
+### Classic map
 
 - **Ground plane:** a flat `130 × 130` unit grass-green platform, sky-blue background + matching
   fog (fades in from 40 units, fully opaque by 110). A grid helper overlays the whole platform
@@ -497,9 +568,49 @@ steps through recipes (hold to repeat), R2 clicks. The Craft button is a full-wi
   spawner placement changes.
 - **Lighting:** one ambient light + one directional "sun" light with dynamic shadows (shadow
   target/position re-centered on the player every frame).
-- There is exactly **one map/level** — no level select, no second area. There is now a real
-  visual (concrete) and audible (footstep sound) distinction between inside and outside the
-  building, but still no second area/level.
+- The building has a visual (concrete) and audible (footstep) distinction between inside and
+  outside.
+
+### Campus map
+
+A true-to-scale (1 unit = 1 m) recreation of MSU Moorhead and its surrounding blocks. It's built
+in `campus-world.js` from Google Maps screenshots in `5 nights at kise/making the map/`, and shared
+with the walk-only greybox page `campus.html` (title screen → Campus Map (Greybox)). The
+zone-by-zone build log, standing decisions and placeholder flags are in
+`CAMPUS_MAP_PROGRESS.md`; edit the layout in `campus-world.js`.
+- **Extent:** about 1293 × 517 m.
+  - **North:** the house row across 5th Ave S.
+  - **West:** the house row across 10th St S.
+  - **South:** the house row across 9th Ave S.
+  - **East:** the railway fence past 20th St. The tracks are walkable.
+  - Invisible walls join the border houses to each other and to a ROAD CLOSED barricade row
+    (with SIDEWALK CLOSED panels) on every street leaving the map.
+- **Player spawn:** inside Kise (MSUM Dining).
+- **Buildings:**
+  - **Campus core** (inside 6th Ave, 9th Ave, 10th St and 20th St) is brick.
+  - **Outside the core** are single-storey houses: painted walls in 6 weighted colors (maroon is
+    rare), pitched gable roofs in 4 slopes and 5 shingle colors. Each house's look is seeded by
+    its position, so it's stable.
+  - **Special buildings:** Nelson Hall is a round tower. **MSUM Dining (Kise)** and **Alex Nemzek
+    Hall's east–west hallway** are walk-in buildings with doors. The press box is solid.
+- **Ground:** streets with center lines, sidewalks, walkways, parking lots with stall lines and
+  entrances, zebra crosswalks (lot entrances, and 14th St at 6th and 9th Ave), the football
+  field and track, soccer pitch, softball infield and the pool.
+- **6th Ave construction pit:** the torn-up stretch of 6th Ave, sunk two steps below grade and
+  ringed by decorative ROAD/SIDEWALK CLOSED barricades.
+- **Fences and gates:**
+  - Chain-link around the athletic fields (3 open gates) and the soccer field (2 gates).
+  - A pool fence, and 1311's backyard fence (2 gates).
+- **Props:** bleachers you can walk up, light towers and goalposts, and about 1,000 trees
+  (deciduous and evergreen).
+- **Performance:**
+  - 28 city-block zones, each its own chunk. Buildings, props and trees are instanced per zone,
+    frustum-culled, and hidden past 220 m (trees past 150 m).
+  - Collision, line of sight and walkability queries go through a static bucket grid, so they only
+    ever look at nearby colliders.
+  - Pathfinding rasterizes walkability lazily in 32 m chunks, and each A* search is capped to a
+    96 m window.
+  - The sky dome follows the rendering camera, so it covers the whole map.
 
 ---
 
@@ -794,9 +905,13 @@ Being direct about the distance between "a collection of working mechanics" and 
 - **A title exists ("Escape From Kise.") but no narrative/theme behind it.** No framing for who
   the player is, why the building is being attacked, what "Kise" refers to, or what the enemies
   are (they're referred to as "enemies"/"zombies" only in code comments, never in-game).
-- **Single map, no variety.** One floor plan, no second area, no procedural variation. The
-  building now has a visually/audibly distinct interior (concrete floor, different footstep
-  sound) but it's still the same one building.
+- **Campus is mostly exterior.** Only Kise and the Nemzek hallway can be entered; every other
+  campus building is a solid block. Some border houses and yards are approximate or placeholders
+  (see the Flags list in `CAMPUS_MAP_PROGRESS.md`). There are no campus-specific objectives yet.
+  Waves just play out on a bigger map.
+- **Campus spawning can place a recycled enemy in view** (far out, off-center) when no hidden
+  spot ahead of a travelling player exists. Set `aheadVisibleMinDistance` to `Infinity` to forbid
+  it.
 - **Dropped-item geometry is duplicated per instance** (each `buildModel()` call creates fresh
   geometry rather than sharing it across instances of the same weapon) — a correctness non-issue
   today (disposed on pickup/reset) but worth revisiting if dropped items become numerous or
@@ -1974,3 +2089,22 @@ worked on):**
     while dead; co-op shows one death screen when both die; co-op dead player drops both weapons if
     the teammate lives; ammo counter hides with bare hands in co-op.
   - `fathiface` added to the random face pool (45 faces).
+- **2026-09-25 → 2026-09-26** — The Campus map and procedural spawning:
+  - **Campus map** (§6): a true-to-scale MSU Moorhead campus, built zone by zone from satellite
+    screenshots, with brick campus buildings and a residential ring of pitched-roof houses.
+    - Border rows, closed-street barricades, a railway edge, fences and gates.
+    - The 6th Ave construction pit, crosswalks, and walk-in Kise and Nemzek hallway.
+    - Selected from a new **Map** picker (Classic / Campus). The Classic map is unchanged.
+    - The campus lives in `campus-world.js`, shared with the `campus.html` greybox walker.
+  - **Procedural campus spawning** (§4): a player-centered spawn manager (ring sampling, cheap
+    cheapest-first validation, never on screen, 40-enemy cap), level-of-detail AI, and an enemy
+    recycler (far and stuck enemies, pooled and re-placed).
+    - Fences block enemy reach and explosions; spawning respects fence sides and gates.
+    - Directional respawns put recycled enemies ahead along the player's travel route, preferring
+      spots hidden behind buildings.
+  - **Stamina tree:** every 5k-column node gives +10 max stamina over before (22 / 20 / 18 Minute
+    5k and 15 MPW +25, Hills +10, Distance Runner +35, Mid Distance +15). Every node except
+    Distance Runner and Mid Distance also gives +1% sprint speed.
+  - **Fixes:** co-op player bodies now rise with bleacher steps; the sky dome no longer ends
+    partway across a large map.
+  - Boss HP is 2,200 / 2,400 / 2,600 (Normal / Hard / Legendary).

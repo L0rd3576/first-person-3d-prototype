@@ -4,10 +4,10 @@ This is a first-person 3D game being built with Claude Code by a college student
 
 ## Git location
 
-The parent folder `C:\Users\qj6264sf\Desktop\3dgame-from-laptop` is NOT a git repo.
-The actual git repository (tracking `https://github.com/L0rd3576/first-person-3d-prototype`)
-lives in this directory: `C:\Users\qj6264sf\Desktop\3dgame-from-laptop\first-person-3d-prototype`.
-Run git commands from here, not the parent.
+This project is worked on from more than one computer, so the local path differs per machine.
+The git repository (tracking `https://github.com/L0rd3576/first-person-3d-prototype`) is the
+directory containing this CLAUDE.md. On some machines its parent folder is not a git repo --
+always run git commands from this directory, not the parent.
 
 ## Launching the game
 

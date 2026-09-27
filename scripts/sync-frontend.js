@@ -16,6 +16,14 @@ const htmlDest = path.join(destDir, "index.html");
 fs.copyFileSync(htmlSrc, htmlDest);
 console.log(`Synced ${htmlSrc} -> ${htmlDest}`);
 
+// The campus greybox page plus the scripts shared by it and index.html.
+for (const file of ["campus.html", "campus-world.js", "procedural-spawn.js"]) {
+  const src = path.join(root, file);
+  const dest = path.join(destDir, file);
+  fs.copyFileSync(src, dest);
+  console.log(`Synced ${src} -> ${dest}`);
+}
+
 const vendorSrc = path.join(root, "vendor");
 const vendorDest = path.join(destDir, "vendor");
 fs.cpSync(vendorSrc, vendorDest, { recursive: true });

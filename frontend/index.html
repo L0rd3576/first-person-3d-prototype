@@ -1771,6 +1771,44 @@
   .mode-option.mode-option-disabled .mode-name {
     text-decoration: line-through;
   }
+  /* Map picker under the mode list (see the CAMPUS MAP section). */
+  #map-options {
+    margin-top: 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #fff;
+  }
+  .map-label {
+    font-size: 13px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    opacity: 0.8;
+  }
+  .map-option-row {
+    display: flex;
+    gap: 8px;
+  }
+  .map-option {
+    min-width: 80px;
+    padding: 8px 14px;
+    font: bold 14px Arial, Helvetica, sans-serif;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    border-radius: 6px;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+  .map-option:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+  .map-option.active {
+    border-color: #ffd54a;
+    background: rgba(255, 213, 74, 0.25);
+  }
   #difficulty-options,
   #coop-difficulty-options {
     display: flex;
@@ -2172,6 +2210,7 @@
     <div id="title-main-buttons">
       <button id="title-play-button" class="menu-button">Play</button>
       <button id="title-settings-button" class="menu-button">Settings</button>
+      <button id="title-campus-button" class="menu-button">Campus Map (Greybox)</button>
       <button id="title-exit-button" class="menu-button">Exit</button>
     </div>
   </div>
@@ -2187,6 +2226,13 @@
       </div>
       <div class="mode-option mode-option-disabled" data-mode="custom">
         <div class="mode-name">Custom</div>
+      </div>
+    </div>
+    <div id="map-options">
+      <div class="map-label">Map</div>
+      <div class="map-option-row">
+        <button type="button" class="map-option" data-map="classic">Classic</button>
+        <button type="button" class="map-option" data-map="campus">Campus</button>
       </div>
     </div>
   </div>
@@ -2512,6 +2558,10 @@
 
 <!-- Three.js r128, vendored locally (no build step / no bundler, no network dependency) -->
 <script src="vendor/three.min.js"></script>
+<!-- The Campus map (campus-world.js) and its procedural enemy spawning
+     (procedural-spawn.js) -- see the CAMPUS MAP section in the game script. -->
+<script src="campus-world.js"></script>
+<script src="procedural-spawn.js"></script>
 
 <script>
 (function () {
@@ -2774,7 +2824,7 @@
   const BOSS_ENEMY = {
     // Explicit per-difficulty values (keyed by DIFFICULTIES[*].id) --
     // NOT run through enemyHealthMultiplier on top.
-    healthByDifficulty: { normal: 1800, hard: 2200, legendary: 2600 }, // doubled from 900/1100/1300 (explicit request)
+    healthByDifficulty: { normal: 2200, hard: 2400, legendary: 2600 },
     sizeScale: 2.0,               // exactly 2x a regular enemy -- no randomStatVariance
     speedMultiplier: 1.30 * 1.1,  // x the regular enemy's difficulty-adjusted ENEMY_SPEED (no variance) -- 10% faster than the original 1.30 (explicit request)
     slamPreparationTime: 1.0,     // seconds standing still, locked onto the target (was 2.0 -- explicit request)
@@ -7333,6 +7383,14 @@
   );
   skyDome.renderOrder = -1;
   skyDome.frustumCulled = false;
+  // Centered on whichever camera is rendering (each half in co-op), so the
+  // sky covers every direction no matter how far from the origin the player
+  // is -- the Campus map runs ~630 m out, past the dome's 450 m radius. The
+  // shader only uses direction, so moving the dome doesn't change the sky.
+  skyDome.onBeforeRender = function (_renderer, _scene, renderCamera) {
+    renderCamera.getWorldPosition(skyDome.position);
+    skyDome.updateMatrixWorld();
+  };
   scene.add(skyDome);
 
   // The sun's visible disc/glow sits lower than the light itself through
@@ -7624,7 +7682,15 @@
   // moveWithWallCollision below, the only caller). Several passes per
   // call so corners (where two walls disagree on push-out direction)
   // settle instead of oscillating.
-  function resolveWallCollisions(position, radius) {
+  function resolveWallCollisions(position, radius, feetY = 0) {
+    if (isCampusMap) {
+      // Campus: buildings/props/trunks near the point, then the playable edge.
+      const b = campusWorld.bounds;
+      campusWorld.resolveCircle(position, radius, feetY, true);
+      position.x = Math.max(b.minX + radius, Math.min(b.maxX - radius, position.x));
+      position.z = Math.max(b.minZ + radius, Math.min(b.maxZ - radius, position.z));
+      return;
+    }
     for (let pass = 0; pass < 4; pass++) {
       for (const wall of wallColliders) {
         const closest = closestPointOnWall(wall, position.x, position.z);
@@ -7655,7 +7721,7 @@
   // updateMovement) and every enemy (see updateEnemies).
   const WALL_COLLISION_MAX_STEP = 0.08; // game units
 
-  function moveWithWallCollision(position, deltaX, deltaZ, radius) {
+  function moveWithWallCollision(position, deltaX, deltaZ, radius, feetY = 0) {
     const distance = Math.hypot(deltaX, deltaZ);
     const steps = Math.max(1, Math.ceil(distance / WALL_COLLISION_MAX_STEP));
     const stepX = deltaX / steps;
@@ -7663,7 +7729,7 @@
     for (let i = 0; i < steps; i++) {
       position.x += stepX;
       position.z += stepZ;
-      resolveWallCollisions(position, radius);
+      resolveWallCollisions(position, radius, feetY);
     }
   }
 
@@ -8097,6 +8163,7 @@
   // was replaced by the A* nav grid). Used by the concrete floor patch
   // right below and by the footstep surface check (see updateFootsteps).
   function isInsideBuilding(x, z) {
+    if (isCampusMap) return campusWorld.isInsideHollowBuilding(x, z);
     return Math.abs(x) <= wallHalfWidthGame && Math.abs(z) <= wallHalfDepthGame;
   }
 
@@ -8273,6 +8340,8 @@
   // this (plus simplifyGridPath's string-pulling below) is what actually
   // makes cornering look deliberate instead of grid-snapped.
   function findGridPath(startX, startZ, goalX, goalZ) {
+    // Campus: lazily-rasterized local grid + windowed A* (campus-world.js).
+    if (isCampusMap) return campusWorld.findPath(startX, startZ, goalX, goalZ);
     const start = navWorldToCell(startX, startZ);
     const goal = navWorldToCell(goalX, goalZ);
     const startIndex = navGridIndex(start.cx, start.cz);
@@ -8340,6 +8409,9 @@
   // way (see updateEnemies).
   const LINE_OF_SIGHT_STEP = NAV_GRID_CELL_SIZE * 0.5;
   function hasLineOfSight(x1, z1, x2, z2, radius) {
+    // Campus: fences count -- nothing reaches, hits or explodes through one
+    // (bullets don't use this, so you can still shoot through chain-link).
+    if (isCampusMap) return !campusWorld.segmentBlocked(x1, z1, x2, z2, radius, true);
     const dx = x2 - x1, dz = z2 - z1;
     const distance = Math.hypot(dx, dz);
     const steps = Math.max(1, Math.ceil(distance / LINE_OF_SIGHT_STEP));
@@ -8805,6 +8877,12 @@
   const SPAWNER_PLAYER_EXCLUSION_RADIUS = 10; // game units, horizontal distance
 
   function spawnEnemyFromRandomSpawner(variant) {
+    // Campus: no fixed spawners -- queue it for the procedural spawn
+    // manager, which places it near the player (see CAMPUS MAP below).
+    if (isCampusMap) {
+      campusSpawner.request({ variant });
+      return;
+    }
     const eligibleSpawners = enemySpawners.filter((spawner) => {
       const dx = spawner.position.x - camera.position.x;
       const dz = spawner.position.z - camera.position.z;
@@ -8834,6 +8912,379 @@
     if (enemyState.boss) updateBossHealthBar();
     const meshIndex = enemyMeshes.indexOf(enemyState.mesh);
     if (meshIndex !== -1) enemyMeshes.splice(meshIndex, 1);
+  }
+
+  // ------------------------------------------------------------------
+  // CAMPUS MAP + PROCEDURAL SPAWNING. The Campus map (picked on the mode
+  // screen) swaps the tiny floor plan for the full campus from
+  // campus-world.js; the tiny map is untouched and stays the default.
+  // Everything map-specific that the rest of this file asks about --
+  // collision, line of sight, pathfinding, where enemies appear -- is
+  // routed through `isCampusMap` checks in resolveWallCollisions,
+  // hasLineOfSight, findGridPath and spawnEnemyFromRandomSpawner, so the
+  // enemy/weapon/wave code itself is shared by both maps.
+  //
+  // On the campus, enemies aren't spawned from fixed points: the wave
+  // manager still decides WHEN and WHAT spawns, and a procedural spawn
+  // manager (procedural-spawn.js) decides WHERE -- a few candidates on a
+  // ring around the player, cheap checks only, never on screen. Only the
+  // area around the player is ever processed:
+  //   - enemies within CAMPUS_ENEMY_ACTIVE_RADIUS get full AI (local A*,
+  //     line of sight); farther ones repath less often and skip line of
+  //     sight checks;
+  //   - an enemy recycler (procedural-spawn.js, CAMPUS_RECYCLE_CONFIG)
+  //     checks a few enemies at a time and parks any that are far away
+  //     (ENEMY_RECYCLE_DISTANCE) or stuck, out of sight -- hidden, no
+  //     updates -- and hands them back to the spawn manager, which places
+  //     them near the player again under the same rules and the same cap.
+  //     The same enemy object is reused (pooling), so a player exploring the
+  //     whole map never piles up enemies behind them.
+  // Fences: nothing walks, hits or explodes through a fence (you can still
+  // see and shoot through chain-link), enemies only spawn on the player's
+  // side of a fence unless near one of its gates, and they route through
+  // the gates (see FENCED_AREAS in campus-world.js).
+  // ------------------------------------------------------------------
+  const MAP_STORAGE_KEY = "escapeFromKise.map";
+  function loadStoredMapId() {
+    try {
+      return localStorage.getItem(MAP_STORAGE_KEY) === "campus" ? "campus" : "classic";
+    } catch (e) {
+      return "classic";
+    }
+  }
+  function storeMapId(id) {
+    try {
+      localStorage.setItem(MAP_STORAGE_KEY, id);
+    } catch (e) {
+      // Non-fatal -- the choice just won't persist.
+    }
+  }
+  let selectedMapId = loadStoredMapId();
+  let isCampusMap = false;   // the map of the run in progress
+  let campusWorld = null;    // built the first time a campus run starts
+  let campusSpawner = null;
+  let campusRecycler = null;
+
+  // Tunables. Distances in meters (1 game unit = 1 m on the campus).
+  const CAMPUS_SPAWN_CONFIG = {
+    minSpawnDistance: 30,     // enemy walk speed is ~3 m/s, so ~10s+ of warning
+    maxSpawnDistance: 60,     // inside the fog, so nobody spawns where it can't matter
+    candidatesPerAttempt: 6,
+    updateInterval: 0.35,
+    spawnsPerUpdate: 2,
+    maxActiveEnemies: 40,
+    nearbyRadius: 60,
+    maxNearbyEnemies: 30,
+    viewHalfAngleDeg: 60,
+    // Recycled enemies come back ahead along the player's route (see the
+    // directional settings in procedural-spawn.js' DEFAULT_CONFIG):
+    forwardSpawnBias: 2.5,           // FORWARD_SPAWN_BIAS
+    forwardSpawnAngleDeg: 75,        // FORWARD_SPAWN_ANGLE
+    rearSpawnWeight: 0.12,           // REAR_SPAWN_WEIGHT
+    movementDirectionSmoothing: 1.5, // MOVEMENT_DIRECTION_SMOOTHING (s)
+    minTravelSpeed: 1.5,             // MINIMUM_TRAVEL_SPEED_FOR_DIRECTIONAL_SPAWNING (m/s)
+    predictionDistance: 25,          // PREDICTION_DISTANCE (m)
+    debug: false,             // F8 toggles the overlay during a campus run
+  };
+  const CAMPUS_ENEMY_ACTIVE_RADIUS = 85;   // full AI (pathfinding + line of sight) inside this
+  const CAMPUS_FAR_REPATH_MULTIPLIER = 3;  // beyond it: repath this many times less often, no line of sight checks
+  const CAMPUS_SPAWN_NEAR_GATE = 25;       // m -- spawning on the other side of a fence is only OK this close to a gate
+
+  // Enemy recycling (far-away / stuck enemies). All times in seconds,
+  // distances in meters. The population cap is CAMPUS_SPAWN_CONFIG.maxActiveEnemies
+  // (MAX_ACTIVE_ENEMIES) -- recycling only ever lowers the active count; the
+  // spawn manager brings it back up within the cap.
+  const CAMPUS_RECYCLE_CONFIG = {
+    recycleDistance: 130,      // ENEMY_RECYCLE_DISTANCE -- well past the fog (~110 m)
+    checkInterval: 0.25,       // STUCK_CHECK_INTERVAL -- a batch of enemies is checked this often...
+    batchSize: 8,              // ...this many at a time (40 enemies -> each checked every ~1.25 s)
+    stuckTimeThreshold: 6,     // STUCK_TIME_THRESHOLD -- grace period before an enemy counts as stuck
+    noProgressTimeThreshold: 18, // ...or this long moving about without ever getting closer (sliding along a fence)
+    minimumMovement: 1.5,      // MINIMUM_MOVEMENT_THRESHOLD -- moving this much between checks isn't stuck
+    minimumProgress: 1.0,      // ...nor is getting this much closer to the player
+    playerMoveReset: 25,       // the player moving this far restarts every stuck timer
+    visibleDistance: 110,      // never recycle an enemy a player can see within this (the fog)
+    viewHalfAngleDeg: 65,
+  };
+  // Enemies closer than this many contact distances count as engaged in a
+  // fight (attacking / being hit) and are never flagged as stuck.
+  const CAMPUS_ENGAGED_CONTACT_MULTIPLIER = 2.5;
+  const CAMPUS_RENDER_DISTANCE = 220;      // campus blocks drawn within this (fog ends ~110)
+  const CAMPUS_TREE_DRAW_DISTANCE = 150;
+  const CAMPUS_BOUNDARY_MARGIN = 2;        // spawns stay this far inside the playable edge
+
+  function livingPlayersForCampus() {
+    return (isCoopMatchActive ? players : [players[0]]).filter((p) => !p.isDead);
+  }
+
+  function countActiveCampusEnemies() {
+    let count = 0;
+    for (const enemyState of enemies) if (!enemyState.dormant) count++;
+    return count;
+  }
+
+  function ensureCampusWorld() {
+    if (campusWorld) return;
+    campusWorld = buildCampusWorld(THREE, scene, renderer, {
+      renderDistance: CAMPUS_RENDER_DISTANCE,
+      treeDrawDistance: CAMPUS_TREE_DRAW_DISTANCE,
+    });
+    campusWorld.root.visible = false;
+    const b = campusWorld.bounds;
+    campusSpawner = createProceduralSpawnManager(CAMPUS_SPAWN_CONFIG, {
+      getPlayers: () => livingPlayersForCampus().map((p) => ({ x: p.camera.position.x, z: p.camera.position.z, yaw: p.yaw })),
+      isInsideBounds: (x, z) => x > b.minX + CAMPUS_BOUNDARY_MARGIN && x < b.maxX - CAMPUS_BOUNDARY_MARGIN &&
+        z > b.minZ + CAMPUS_BOUNDARY_MARGIN && z < b.maxZ - CAMPUS_BOUNDARY_MARGIN,
+      isWalkable: (x, z, r) => campusWorld.isWalkable(x, z, r),
+      isSightBlocked: (ax, az, bx, bz) => campusWorld.segmentBlocked(ax, az, bx, bz, 0),
+      isReachable: (px, pz, x, z) => campusWorld.isSameFenceSide(px, pz, x, z, CAMPUS_SPAWN_NEAR_GATE),
+      distanceToNearestBuilding: (x, z, max) => campusWorld.distanceToNearestBuilding(x, z, max),
+      findOccludedSpots: (x, z, dx, dz, minR, maxR, halfAngle, count) =>
+        campusWorld.spotsBehindBuildings(x, z, dx, dz, minR, maxR, halfAngle, count),
+      countActiveEnemies: countActiveCampusEnemies,
+      countEnemiesNear: (x, z, r) => {
+        let count = 0;
+        for (const enemyState of enemies) {
+          if (enemyState.dormant) continue;
+          const dx = enemyState.mesh.position.x - x, dz = enemyState.mesh.position.z - z;
+          if (dx * dx + dz * dz < r * r) count++;
+        }
+        return count;
+      },
+      spawn: (request, position) => {
+        if (request.enemy) wakeDormantEnemy(request.enemy, position);
+        else spawnEnemy(position, request.variant);
+      },
+    });
+    campusRecycler = createEnemyRecycler(CAMPUS_RECYCLE_CONFIG, {
+      getPlayers: () => livingPlayersForCampus().map((p) => ({ x: p.camera.position.x, z: p.camera.position.z, yaw: p.yaw })),
+      getEnemies: () => enemies,
+      isActive: (enemyState) => !enemyState.dormant && !enemyState.isRemoved,
+      position: (enemyState) => enemyState.mesh.position,
+      isBusy: isCampusEnemyBusy,
+      isSightBlocked: (ax, az, bx, bz) => campusWorld.segmentBlocked(ax, az, bx, bz, 0),
+      recover: (enemyState) => {
+        // Throw away the current route and plan a fresh one right away.
+        enemyState.pathWaypoints = [];
+        enemyState.repathTimer = 0;
+        enemyState.hasLineOfSightCached = false;
+      },
+      recycle: (enemyState) => {
+        makeEnemyDormant(enemyState);
+        campusSpawner.request({ enemy: enemyState, directional: true }); // placed ahead along the player's route when they're travelling
+      },
+    });
+  }
+
+  // Shows the chosen map and hides the other. Called at the start of every
+  // run (singleplayer and co-op), before players are placed.
+  function applySelectedMap() {
+    isCampusMap = selectedMapId === "campus";
+    if (isCampusMap) ensureCampusWorld();
+    ground.visible = !isCampusMap;
+    grid.visible = !isCampusMap;
+    wallGroup.visible = !isCampusMap;
+    concreteFloor.visible = !isCampusMap;
+    if (campusWorld) campusWorld.root.visible = isCampusMap;
+    // The campus ground layers paint in order without writing depth (so
+    // they never z-fight), which means the sky dome must go down first or
+    // it paints over them.
+    skyDome.renderOrder = isCampusMap ? -100000 : -1;
+    if (campusSpawner) campusSpawner.clear();
+    if (campusRecycler) campusRecycler.reset();
+    if (campusSpawnDebug) campusSpawnDebug.group.visible = isCampusMap && CAMPUS_SPAWN_CONFIG.debug;
+  }
+
+  // Campus spawn: on the mall south of the library (co-op side by side).
+  function placePlayersAtMapSpawn(list) {
+    if (!isCampusMap) return;
+    list.forEach((player, i) => {
+      const offset = list.length > 1 ? (i === 0 ? -1 : 1) : 0;
+      player.camera.position.set(campusWorld.spawn.x + offset, EYE_HEIGHT, campusWorld.spawn.z);
+      player.campusGroundY = 0;
+      applyCameraRotation(player);
+    });
+    campusWorld.updateVisibility(list.map((p) => p.camera.position));
+  }
+
+  // Standing height on the campus (0, a construction-pit step, or a
+  // bleacher step/roof reached by stepping up) for a body at `position`.
+  function campusSupportHeight(position, radius, currentGroundY) {
+    return campusWorld.supportHeightAt(position.x, position.z, radius, (currentGroundY || 0) + campusWorld.stepUpHeight);
+  }
+
+  // Dormant: hidden, parked far off the map (so no distance/raycast check
+  // anywhere can touch it), skipped by updateEnemies -- but still in
+  // `enemies`, so the wave isn't counted as cleared while it's out.
+  function makeEnemyDormant(enemyState) {
+    enemyState.dormant = true;
+    enemyState.mesh.visible = false;
+    enemyState.mesh.position.set(1e6, -1000, 1e6);
+    const meshIndex = enemyMeshes.indexOf(enemyState.mesh);
+    if (meshIndex !== -1) enemyMeshes.splice(meshIndex, 1);
+    enemyState.pathWaypoints = [];
+  }
+
+  function wakeDormantEnemy(enemyState, position) {
+    if (enemyState.isRemoved) return;
+    enemyState.dormant = false;
+    enemyState.mesh.visible = true;
+    enemyState.mesh.position.set(position.x, (ENEMY_SIZE.height / 2) * enemyState.sizeScale, position.z);
+    enemyMeshes.push(enemyState.mesh);
+    enemyState.targetPlayer = null;
+    enemyState.pathWaypoints = [];
+    enemyState.repathTimer = 0;
+    enemyState.knockbackVelocity.set(0, 0, 0);
+    enemyState.campusGroundY = 0;
+    enemyState.recyclerNearestDistance = 0;
+  }
+
+  // Per-enemy level of detail on the campus: "skip" (parked), "reduced"
+  // (repaths less often, no line-of-sight checks) or "full". Uses the
+  // distance the recycler cached on its last visit (a second or so old at
+  // most) instead of measuring every enemy every frame. Enemies
+  // mid-special-move (boss slam/grab, brute throw, carried/thrown) always
+  // get "full".
+  function campusEnemyDetail(enemyState) {
+    if (enemyState.dormant) return "skip";
+    if (enemyState.boss || enemyState.carriedBy || enemyState.thrownState ||
+      (enemyState.bruteThrow && enemyState.bruteThrow.state !== "none")) return "full";
+    return (enemyState.recyclerNearestDistance || 0) > CAMPUS_ENEMY_ACTIVE_RADIUS ? "reduced" : "full";
+  }
+
+  // Engaged in a fight or mid special move: never treated as stuck (or
+  // recycled). Pure field reads + one distance -- no queries.
+  function isCampusEnemyBusy(enemyState, nearestPlayerDistance) {
+    if (enemyState.carriedBy || enemyState.thrownState) return true;
+    if (enemyState.boss && enemyState.boss.state !== "moving") return true;
+    if (enemyState.bruteThrow && enemyState.bruteThrow.state !== "none") return true;
+    if (enemyState.knockbackVelocity.lengthSq() > KNOCKBACK_STOP_THRESHOLD_SQ) return true; // being hit
+    return nearestPlayerDistance < ENEMY_CONTACT_DISTANCE * enemyState.sizeScale * CAMPUS_ENGAGED_CONTACT_MULTIPLIER;
+  }
+
+  // A bullet can't pass through a campus building (the tiny map never
+  // checked walls for shots, so this only applies on the campus).
+  function worldBlocksShot(origin, point) {
+    return isCampusMap && campusWorld.segmentBlocked(origin.x, origin.z, point.x, point.z, 0);
+  }
+
+  // ---- Debug overlay (CAMPUS_SPAWN_CONFIG.debug / F8): spawn rings around
+  // the player, recent candidates (green = accepted, red = rejected),
+  // recent spawn spots (blue) and markers over active enemies. Built only
+  // the first time it's turned on; costs nothing while off.
+  let campusSpawnDebug = null;
+  function buildCampusSpawnDebug() {
+    const group = new THREE.Group();
+    const ringMaterial = (color) => new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true });
+    const ring = (radius, color) => {
+      const points = [];
+      for (let i = 0; i <= 64; i++) {
+        const a = (i / 64) * Math.PI * 2;
+        points.push(new THREE.Vector3(Math.cos(a) * radius, 0.3, Math.sin(a) * radius));
+      }
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), ringMaterial(color));
+      line.renderOrder = 10;
+      group.add(line);
+      return line;
+    };
+    const markerPool = (count, color, height) => {
+      const geometry = new THREE.BoxGeometry(0.5, height, 0.5);
+      geometry.translate(0, height / 2, 0);
+      const material = new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.8 });
+      return Array.from({ length: count }, () => {
+        const m = new THREE.Mesh(geometry, material);
+        m.renderOrder = 11;
+        m.visible = false;
+        group.add(m);
+        return m;
+      });
+    };
+    const hud = document.createElement("div");
+    hud.style.cssText = "position:fixed;left:8px;top:8px;z-index:50;font:12px monospace;color:#fff;" +
+      "background:rgba(0,0,0,.55);padding:4px 6px;pointer-events:none;white-space:pre;display:none";
+    document.body.appendChild(hud);
+    scene.add(group);
+    return {
+      group,
+      hud,
+      minRing: ring(CAMPUS_SPAWN_CONFIG.minSpawnDistance, 0xffcc00),
+      maxRing: ring(CAMPUS_SPAWN_CONFIG.maxSpawnDistance, 0xff6600),
+      activeRing: ring(CAMPUS_ENEMY_ACTIVE_RADIUS, 0x66ccff),
+      accepted: markerPool(48, 0x33ff66, 3),
+      rejected: markerPool(48, 0xff3333, 1.5),
+      spawned: markerPool(16, 0x3399ff, 6),
+      enemyMarkers: markerPool(64, 0xffff00, 1),
+    };
+  }
+
+  function updateCampusSpawnDebug() {
+    const show = isCampusMap && CAMPUS_SPAWN_CONFIG.debug;
+    if (!show) {
+      if (campusSpawnDebug) {
+        campusSpawnDebug.group.visible = false;
+        campusSpawnDebug.hud.style.display = "none";
+      }
+      return;
+    }
+    if (!campusSpawnDebug) campusSpawnDebug = buildCampusSpawnDebug();
+    const d = campusSpawnDebug;
+    d.group.visible = true;
+    d.hud.style.display = "block";
+    const p = players[0].camera.position;
+    for (const r of [d.minRing, d.maxRing, d.activeRing]) r.position.set(p.x, 0, p.z);
+    let a = 0, r = 0;
+    for (const c of campusSpawner.debugLog) {
+      const pool = c.ok ? d.accepted : d.rejected;
+      const i = c.ok ? a++ : r++;
+      if (i < pool.length) {
+        pool[i].position.set(c.x, 0, c.z);
+        pool[i].visible = true;
+      }
+    }
+    for (let i = a; i < d.accepted.length; i++) d.accepted[i].visible = false;
+    for (let i = r; i < d.rejected.length; i++) d.rejected[i].visible = false;
+    campusSpawner.recentSpawns.forEach((s, i) => {
+      if (i < d.spawned.length) {
+        d.spawned[i].position.set(s.x, 0, s.z);
+        d.spawned[i].visible = true;
+      }
+    });
+    for (let i = campusSpawner.recentSpawns.length; i < d.spawned.length; i++) d.spawned[i].visible = false;
+    let e = 0;
+    for (const enemyState of enemies) {
+      if (enemyState.dormant || e >= d.enemyMarkers.length) continue;
+      const m = enemyState.mesh.position;
+      d.enemyMarkers[e].position.set(m.x, 2.6 * enemyState.sizeScale, m.z);
+      d.enemyMarkers[e++].visible = true;
+    }
+    for (let i = e; i < d.enemyMarkers.length; i++) d.enemyMarkers[i].visible = false;
+    const s = campusSpawner.stats;
+    d.hud.textContent =
+      `campus spawns  active ${countActiveCampusEnemies()}/${CAMPUS_SPAWN_CONFIG.maxActiveEnemies}` +
+      `  dormant ${enemies.length - countActiveCampusEnemies()}  queued ${campusSpawner.pendingCount()}\n` +
+      `attempts ${s.attempts}  candidates ${s.candidatesTested}  accepted ${s.accepted}` +
+      `  last ${s.lastAttemptMs.toFixed(2)} ms  nav chunks ${campusWorld.navChunkCount()}\n` +
+      `rejected ${Object.entries(s.rejected).map(([k, v]) => k + " " + v).join(", ")}\n` +
+      `recycled far ${campusRecycler.stats.far}  stuck ${campusRecycler.stats.stuck}` +
+      `  recoveries ${campusRecycler.stats.recoveries}  held (in view) ${campusRecycler.stats.deferredVisible}`;
+  }
+
+  document.addEventListener("keydown", function (event) {
+    if (event.code !== "F8" || !isCampusMap) return;
+    CAMPUS_SPAWN_CONFIG.debug = !CAMPUS_SPAWN_CONFIG.debug;
+    campusSpawner.config.debug = CAMPUS_SPAWN_CONFIG.debug;
+    updateCampusSpawnDebug();
+  });
+
+  // Per-frame campus upkeep, run right after updateWaveManager while the
+  // world isn't paused. The spawn manager itself only does real work every
+  // CAMPUS_SPAWN_CONFIG.updateInterval seconds, and only with something queued.
+  function updateCampusFrame(deltaSeconds) {
+    if (!isCampusMap) return;
+    campusRecycler.update(deltaSeconds);
+    campusSpawner.update(deltaSeconds);
+    campusWorld.updateVisibility(livingPlayersForCampus().map((p) => p.camera.position));
+    if (CAMPUS_SPAWN_CONFIG.debug || campusSpawnDebug) updateCampusSpawnDebug();
   }
 
   // ------------------------------------------------------------------
@@ -10988,7 +11439,7 @@
   const SKILL_TREE_NODES = [
     {
       id: "run_24_min_5k", name: "22 Minute 5k", tier: 1, position: { x: SKILL_5K_X, y: 0 }, parentId: null,
-      description: "Increases Max Stamina by 15", effect: { maxStaminaBonus: 15 },
+      description: "Increases Max Stamina by 25 and Sprint Speed by 1%", effect: { maxStaminaBonus: 25, sprintSpeedMultiplier: 1.01 },
     },
     {
       id: "sliding", name: "Sliding", tier: 1, position: { x: 0, y: 0 }, parentId: null,
@@ -11000,16 +11451,17 @@
     },
     {
       id: "mpw_15", name: "15 MPW", tier: 2, position: { x: SKILL_5K_X - SKILL_5K_CHILD_OFFSET_X, y: SKILL_NODE_SPACING_Y }, parentId: "run_24_min_5k",
-      description: "Increases Max Stamina by 15", effect: { maxStaminaBonus: 15 },
+      description: "Increases Max Stamina by 25 and Sprint Speed by 1%", effect: { maxStaminaBonus: 25, sprintSpeedMultiplier: 1.01 },
     },
     {
       id: "hills", name: "Hills", tier: 2, position: { x: SKILL_5K_X + SKILL_5K_CHILD_OFFSET_X, y: SKILL_NODE_SPACING_Y }, parentId: "run_24_min_5k",
-      description: "Increase Stamina Regeneration by 7%", effect: { staminaRegenMultiplier: 1.07 },
+      description: "Increases Stamina Regeneration by 7%, Max Stamina by 10 and Sprint Speed by 1%",
+      effect: { staminaRegenMultiplier: 1.07, maxStaminaBonus: 10, sprintSpeedMultiplier: 1.01 },
     },
     {
       id: "run_22_min_5k", name: "20 Minute 5k", tier: 3, position: { x: SKILL_5K_X, y: SKILL_NODE_SPACING_Y * 2 },
       parentIds: ["mpw_15", "hills"], // needs BOTH unlocked -- see getSkillParentIds
-      description: "Increases Max Stamina by 15", effect: { maxStaminaBonus: 15 },
+      description: "Increases Max Stamina by 25 and Sprint Speed by 1%", effect: { maxStaminaBonus: 25, sprintSpeedMultiplier: 1.01 },
     },
     // Mutually exclusive pair (`excludes`): unlocking either one locks the
     // other out for the rest of the game -- see getSkillNodeState.
@@ -11017,21 +11469,21 @@
       id: "distance_runner", name: "Distance Runner", tier: 4,
       position: { x: SKILL_5K_X - SKILL_5K_CHILD_OFFSET_X, y: SKILL_NODE_SPACING_Y * 3 }, parentId: "run_22_min_5k",
       excludes: ["mid_distance"],
-      description: "Increases Max Stamina by 25", effect: { maxStaminaBonus: 25 },
+      description: "Increases Max Stamina by 35", effect: { maxStaminaBonus: 35 },
     },
     {
       id: "mid_distance", name: "Mid Distance", tier: 4,
       position: { x: SKILL_5K_X + SKILL_5K_CHILD_OFFSET_X, y: SKILL_NODE_SPACING_Y * 3 }, parentId: "run_22_min_5k",
       excludes: ["distance_runner"],
-      description: "+5 max stamina and +5% sprint speed.",
-      effect: { maxStaminaBonus: 5, sprintSpeedMultiplier: 1.05 },
+      description: "+15 max stamina and +5% sprint speed.",
+      effect: { maxStaminaBonus: 15, sprintSpeedMultiplier: 1.05 },
     },
     // Either Distance Runner or Mid Distance unlocks it (they're mutually
     // exclusive, so only one ever can be).
     {
       id: "run_18_min_5k", name: "18 Minute 5k", tier: 5, position: { x: SKILL_5K_X, y: SKILL_NODE_SPACING_Y * 4 },
       parentIds: ["distance_runner", "mid_distance"], parentsRequired: "any",
-      description: "Increases Max Stamina by 15", effect: { maxStaminaBonus: 15 },
+      description: "Increases Max Stamina by 25 and Sprint Speed by 1%", effect: { maxStaminaBonus: 25, sprintSpeedMultiplier: 1.01 },
     },
     {
       id: "sliding_2", name: "Faster Sliding", tier: 2, position: { x: 0, y: SKILL_NODE_SPACING_Y }, parentId: "sliding",
@@ -12353,6 +12805,7 @@
     }
     enemies.length = 0;
     enemyMeshes.length = 0;
+    if (campusSpawner) campusSpawner.clear();
     updateBossHealthBar();
 
     for (const pickup of activeAmmoPickups) {
@@ -13017,6 +13470,12 @@
     overlay.classList.remove("hidden");
   });
 
+  // Campus greybox (campus.html): a separate walk-only page for testing
+  // the campus layout -- no enemies, items or waves.
+  document.getElementById("title-campus-button").addEventListener("click", function () {
+    window.location.href = "campus.html";
+  });
+
   document.getElementById("title-exit-button").addEventListener("click", function () {
     // Tauri's window-close API, reached via the global `window.__TAURI__`
     // injection (enabled via withGlobalTauri in tauri.conf.json) since
@@ -13050,6 +13509,21 @@
       currentDifficulty = DIFFICULTIES[el.dataset.difficulty];
       storeDifficulty(currentDifficulty.id);
       updateDifficultyOptionButtons();
+    });
+  });
+
+  // Map picker (mode screen): Classic (the original floor plan) or Campus.
+  // Persisted like the difficulty; applied when the next run starts.
+  const mapOptionEls = document.querySelectorAll(".map-option");
+  function updateMapOptionButtons() {
+    mapOptionEls.forEach((el) => el.classList.toggle("active", el.dataset.map === selectedMapId));
+  }
+  updateMapOptionButtons();
+  mapOptionEls.forEach((el) => {
+    el.addEventListener("click", function () {
+      selectedMapId = el.dataset.map;
+      storeMapId(selectedMapId);
+      updateMapOptionButtons();
     });
   });
 
@@ -13293,6 +13767,8 @@
     // it here defensively guarantees a clean run regardless of anything
     // that happened while the title screen was up.
     resetGame();
+    applySelectedMap();
+    placePlayersAtMapSpawn([players[0]]);
     // Must come after resetGame() (which unconditionally clears it) --
     // see isSingleplayerMatchActive's own comment for why animate()'s
     // freeze logic needs this instead of inferring "a run is active" from
@@ -13926,6 +14402,8 @@
     players[1].camera.position.set(1, EYE_HEIGHT, 0);
     applyCameraRotation(players[0]);
     applyCameraRotation(players[1]);
+    applySelectedMap();
+    placePlayersAtMapSpawn([players[0], players[1]]);
     updateCameraAspectsForRenderMode(); // both cameras go from singleplayer's implicit full-window aspect to their own half's, immediately -- not just on the next resize event
 
     // Each solo-death spectator button's icon depends on THAT match's P1
@@ -14766,7 +15244,7 @@
       mesh.scale.y = heightScale;
       mesh.position.set(
         player.camera.position.x,
-        (ENEMY_SIZE.height * heightScale) / 2 + player.jumpOffset,
+        (ENEMY_SIZE.height * heightScale) / 2 + player.jumpOffset + (isCampusMap ? player.campusGroundY || 0 : 0), // campus: standing on a step/pit (same lift as the camera -- see updateMovement)
         player.camera.position.z
       );
       // +Math.PI (explicit bug report -- the face was showing up on the
@@ -15800,7 +16278,8 @@
       applyHipFireSpread(player, raycaster, def.gun.hipSpreadAngle);
     }
 
-    const hits = raycaster.intersectObjects(enemyMeshes, true);
+    let hits = raycaster.intersectObjects(enemyMeshes, true);
+    if (isCampusMap) hits = hits.filter((h) => !worldBlocksShot(player.camera.position, h.point));
     if (hits.length > 0) {
       const hitEnemy = hits[0].object.userData.enemyRef;
       if (def.gun.penetrationDamageFractions) {
@@ -15877,8 +16356,12 @@
     for (let i = 0; i < pellets.count; i++) {
       raycaster.setFromCamera(screenCenter, player.camera);
       applyHipFireSpread(player, raycaster, spreadAngle);
-      const hits = raycaster.intersectObjects(enemyMeshes, true);
-      const bodyHit = findNearestEnemyBodyHit(raycaster.ray);
+      let hits = raycaster.intersectObjects(enemyMeshes, true);
+      let bodyHit = findNearestEnemyBodyHit(raycaster.ray);
+      if (isCampusMap) {
+        hits = hits.filter((h) => !worldBlocksShot(player.camera.position, h.point));
+        if (bodyHit && worldBlocksShot(player.camera.position, raycaster.ray.at(bodyHit.distance, pelletBodyHitPoint))) bodyHit = null;
+      }
 
       // Whichever is nearer: an exact body-part hit (covers anything
       // poking outside the cylinder, e.g. a swung arm or the boss's big
@@ -17546,7 +18029,7 @@
     // see moveWithWallCollision above.
     const preMoveX = player.camera.position.x;
     const preMoveZ = player.camera.position.z;
-    moveWithWallCollision(player.camera.position, player.velocity.x * deltaSeconds, player.velocity.z * deltaSeconds, PLAYER_RADIUS);
+    moveWithWallCollision(player.camera.position, player.velocity.x * deltaSeconds, player.velocity.z * deltaSeconds, PLAYER_RADIUS, player.campusGroundY || 0);
     // Measured from the actual post-collision position, not from
     // velocity/deltaSeconds directly -- otherwise holding a movement key
     // while stuck against a wall would keep racking up phantom step
@@ -17562,7 +18045,8 @@
         player.camera.position,
         player.bruteKnockbackVelocity.x * deltaSeconds,
         player.bruteKnockbackVelocity.z * deltaSeconds,
-        PLAYER_RADIUS
+        PLAYER_RADIUS,
+        player.campusGroundY || 0
       );
       player.bruteKnockbackVelocity.multiplyScalar(Math.exp(-BRUTE_KNOCKBACK_DECAY_RATE * deltaSeconds));
     } else {
@@ -17604,13 +18088,25 @@
       playFootstepSound(player, isCrouching);
     }
 
-    player.camera.position.y = player.currentEyeHeight + player.jumpOffset;
+    // Campus: stand on whatever's underfoot (a construction-pit step, a
+    // bleacher step reached by stepping up) -- the tiny map is all flat.
+    if (isCampusMap) {
+      player.campusGroundY = campusSupportHeight(player.camera.position, PLAYER_RADIUS, player.campusGroundY);
+    }
+    player.camera.position.y = player.currentEyeHeight + player.jumpOffset + (isCampusMap ? player.campusGroundY : 0);
 
-    // Generous outer boundary clamp so the player can't wander off the
-    // ground plane through the floor plan's open gap.
-    const halfSize = PLATFORM_SIZE / 2 - PLAYER_MARGIN;
-    player.camera.position.x = Math.max(-halfSize, Math.min(halfSize, player.camera.position.x));
-    player.camera.position.z = Math.max(-halfSize, Math.min(halfSize, player.camera.position.z));
+    if (isCampusMap) {
+      // Campus: the playable area's edge (the grass border beyond is off limits).
+      const b = campusWorld.bounds;
+      player.camera.position.x = Math.max(b.minX + PLAYER_MARGIN, Math.min(b.maxX - PLAYER_MARGIN, player.camera.position.x));
+      player.camera.position.z = Math.max(b.minZ + PLAYER_MARGIN, Math.min(b.maxZ - PLAYER_MARGIN, player.camera.position.z));
+    } else {
+      // Generous outer boundary clamp so the player can't wander off the
+      // ground plane through the floor plan's open gap.
+      const halfSize = PLATFORM_SIZE / 2 - PLAYER_MARGIN;
+      player.camera.position.x = Math.max(-halfSize, Math.min(halfSize, player.camera.position.x));
+      player.camera.position.z = Math.max(-halfSize, Math.min(halfSize, player.camera.position.z));
+    }
   }
 
   // ------------------------------------------------------------------
@@ -18206,6 +18702,11 @@
     // elsewhere in this file.
     for (let enemyIndex = enemies.length - 1; enemyIndex >= 0; enemyIndex--) {
       const enemyState = enemies[enemyIndex];
+      // Campus: dormant enemies are skipped entirely; far ones run a
+      // reduced chase (see campusEnemyDetail in the CAMPUS MAP section).
+      const campusDetail = isCampusMap ? campusEnemyDetail(enemyState) : "full";
+      if (campusDetail === "skip") continue;
+      const lowDetail = campusDetail === "reduced";
       const mesh = enemyState.mesh;
       const frameStartX = mesh.position.x; // for the walk animation's moved distance (see updateEnemyAnimation below)
       const frameStartZ = mesh.position.z;
@@ -18290,6 +18791,7 @@
       enemyState.repathTimer -= deltaSeconds;
       if (enemyState.repathTimer <= 0) {
         enemyState.repathTimer = NAV_REPATH_INTERVAL + Math.random() * NAV_REPATH_JITTER;
+        if (lowDetail) enemyState.repathTimer *= CAMPUS_FAR_REPATH_MULTIPLIER; // far away: repath less often
         const reselected = pickNearestActivePlayer(mesh.position.x, mesh.position.z);
         if (reselected) enemyState.targetPlayer = reselected;
         targetPlayer = enemyState.targetPlayer; // resync the local reference so everything below this point (LOS check, movement, damage) targets whoever was just picked
@@ -18309,7 +18811,8 @@
       // this used to run every frame for every enemy still following
       // waypoints, which is unnecessary at 60 checks/sec.
       enemyState.losCheckTimer -= deltaSeconds;
-      if (enemyState.losCheckTimer <= 0) {
+      if (lowDetail) enemyState.hasLineOfSightCached = false; // far: keep following the planned route
+      if (enemyState.losCheckTimer <= 0 && !lowDetail) {
         enemyState.losCheckTimer = NAV_LOS_CHECK_INTERVAL + Math.random() * NAV_LOS_CHECK_JITTER;
         enemyState.hasLineOfSightCached = hasLineOfSight(
           mesh.position.x, mesh.position.z, targetPlayer.camera.position.x, targetPlayer.camera.position.z, enemyRadius
@@ -18380,7 +18883,8 @@
         // atan2(x, z) of that (already-normalized) direction vector.
         turnEnemyToward(enemyState, enemyMoveDir.x, enemyMoveDir.z, ENEMY_TURN_SPEED * deltaSeconds);
       }
-      mesh.position.y = (ENEMY_SIZE.height / 2) * enemyState.sizeScale;
+      if (isCampusMap) enemyState.campusGroundY = campusSupportHeight(mesh.position, enemyRadius, 0);
+      mesh.position.y = (ENEMY_SIZE.height / 2) * enemyState.sizeScale + (isCampusMap ? enemyState.campusGroundY : 0);
 
       // Walk only on real chase movement -- being shoved by knockback
       // slides the enemy with its limbs easing back to idle instead.
@@ -18640,6 +19144,7 @@
     // declared clear in the gap before one spawns.
     if (
       enemies.length === 0 &&
+      !(isCampusMap && campusSpawner.pendingCount() > 0) &&
       waveBruteSpawnedCount >= waveBruteSpawnTimes.length &&
       waveBossSpawnedCount >= waveBossSpawnTimes.length
     ) {
@@ -19049,6 +19554,7 @@
     if (!isMatchPaused) {
       updateEnemies(deltaSeconds);
       updateWaveManager(deltaSeconds);
+      updateCampusFrame(deltaSeconds);
       updateParticleBursts(deltaSeconds);
       updateBloodDecals(deltaSeconds);
       updateAmmoPickups(deltaSeconds);
@@ -19096,6 +19602,7 @@
       getEls: () => [
         document.getElementById("title-play-button"),
         document.getElementById("title-settings-button"),
+        document.getElementById("title-campus-button"),
         document.getElementById("title-exit-button"),
       ],
     },
@@ -19104,6 +19611,7 @@
       isActive: () => !titleScreenEl.classList.contains("hidden") && titlePanels.mode.classList.contains("active"),
       getEls: () => [
         ...document.querySelectorAll("#mode-options .mode-option:not(.mode-option-disabled)"),
+        ...document.querySelectorAll("#map-options .map-option"),
         document.getElementById("mode-back-button"),
       ],
     },
@@ -19542,6 +20050,7 @@
       if (!isWorldPaused) {
         updateEnemies(deltaSeconds);
         updateWaveManager(deltaSeconds);
+        updateCampusFrame(deltaSeconds);
         updateParticleBursts(deltaSeconds);
         updateBloodDecals(deltaSeconds);
         updateAmmoPickups(deltaSeconds);
@@ -19567,6 +20076,41 @@
   }
 
   animate();
+
+  // Automated campus-spawning check (tests/campus-spawn-test.js), only
+  // when opened as index.html#spawntest -- never in normal play.
+  if (/spawntest/.test(window.location.hash)) {
+    window.__gameTestHooks = {
+      players, enemies, EYE_HEIGHT,
+      get campusWorld() { return campusWorld; },
+      get campusSpawner() { return campusSpawner; },
+      get campusRecycler() { return campusRecycler; },
+      spawnEnemyAt(position, variant) { return spawnEnemy(position, variant); },
+      get isCampusMap() { return isCampusMap; },
+      get waveState() { return waveState; },
+      get waveNumber() { return waveNumber; },
+      setMap(id) { selectedMapId = id; },
+      startRun() {
+        resetGame();
+        applySelectedMap();
+        placePlayersAtMapSpawn([players[0]]);
+        isSingleplayerMatchActive = true;
+      },
+      step(deltaSeconds) {
+        updateEnemies(deltaSeconds);
+        updateWaveManager(deltaSeconds);
+        updateCampusFrame(deltaSeconds);
+      },
+      hasLineOfSight,
+      findGridPath,
+      resolveWallCollisions,
+      spawnEnemyFromRandomSpawner,
+      damageEnemy,
+    };
+    const script = document.createElement("script");
+    script.src = "tests/campus-spawn-test.js";
+    document.body.appendChild(script);
+  }
 })();
 </script>
 </body>
