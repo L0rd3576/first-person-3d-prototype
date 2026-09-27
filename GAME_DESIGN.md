@@ -10,7 +10,7 @@ the code and re-sync this file.
 
 ## 1. Overview
 
-A first-person, wave-based survival shooter titled **"Escape From Kise."** (per the title
+A first-person, wave-based survival shooter titled **"Kise Is Closed"** (per the title
 screen — there's still no story/framing behind that name; see [Known Gaps](#9-known-gaps--open-design-questions)).
 The player fights off escalating waves of block-humanoid enemies (a regular type plus fast,
 brute, and wave-10 boss variants), crafts weapons/ammo/healing from enemy drops, spends skill
@@ -536,6 +536,8 @@ pathfinding, spawning) is routed through `isCampusMap` checks.
 
 ### Classic map
 
+> No longer reachable (2026-09-27): the map picker was removed and every run is on the Campus map. Kept for reference; the code is still in `index.html`.
+
 - **Ground plane:** a flat `130 × 130` unit grass-green platform, sky-blue background + matching
   fog (fades in from 40 units, fully opaque by 110). A grid helper overlays the whole platform
   for motion legibility.
@@ -902,7 +904,7 @@ Being direct about the distance between "a collection of working mechanics" and 
   purpose.
 - **No melee-impact sound.** Gunfire, reload, footsteps, pickups, menu actions, sliding, and
   enemy deaths all have audio; a melee hit landing does not.
-- **A title exists ("Escape From Kise.") but no narrative/theme behind it.** No framing for who
+- **A title exists ("Kise Is Closed") but no narrative/theme behind it.** No framing for who
   the player is, why the building is being attacked, what "Kise" refers to, or what the enemies
   are (they're referred to as "enemies"/"zombies" only in code comments, never in-game).
 - **Campus is mostly exterior.** Only Kise and the Nemzek hallway can be entered; every other
@@ -2156,3 +2158,87 @@ worked on):**
     - Secondary motion scales down with animation LOD. 60 walking zombies cost ~0.3 ms/frame.
   - **Glock damage:** 25 per bullet on body shots, 32 on headshots (was a flat 30). A one-burst kill now
     needs at least one headshot on Normal/Hard. Weapons can set an optional `headshotDamage`.
+  - **Enemy footsteps:** every enemy now has footsteps. Regular zombies step in time with their walk
+    animation, at 0.8x the player's walk volume (greens stay at 2x), with a 20 m hearing range.
+    Brutes and the boss sound deeper. A shared budget caps regular steps at about 10 per second.
+  - **Co-op player models** (`player-model.js`): realistic low-poly people on the zombies' 19-bone rig.
+    - Clothing comes from 14 coordinated everyday outfits (e.g. white tee + blue jeans + white sneakers,
+      olive jacket over a white tee + dark jeans + brown boots), with only slight brightness variation.
+    - Skin, height and build vary per player (P2 always gets a different outfit from P1). Builds are always
+      athletic (lean / athletic / strong: broad shoulders, narrow waist), never heavy.
+    - Shoes: a one-color upper, a separate sole and an ankle collar (no color smearing or open ankles).
+    - A brown paper bag over each head (a little crumpled, bunched at the neck), with the PNG face
+      pasted flat over its front panel, cropped to fill it without stretching. Matte paper material, no sun glare.
+    - One continuous walk/run/sprint gait: heel-to-toe feet, knee drive, hip and torso rotation,
+      stride tied to distance. Strafing and backpedaling turn the lower body.
+    - Real crouch, slide, jump, hit flinch and death animations.
+    - A third-person weapon held in both hands (two-bone arm IK): low-ready, aiming along the look
+      pitch, sprint carry, and the game's own recoil/reload/melee motion.
+    - Distance LOD for the mesh and animation. The setup-screen previews show each player's
+      actual character.
+  - **Weapon switch sound** (`gameloadoutswitch.wav`): plays when switching to any weapon, and not for bare
+    hands. The shotgun, AK-47 and sniper play it slightly stretched and deeper.
+  - **Directional audio:** world sounds (zombie footsteps, gore, explosions, boss slams, brute and
+    thrown-enemy hits) are stereo-panned by direction and slightly quieter from behind, relative to the
+    nearest player (co-op shares one pair of speakers). Explosions and boss slams also fade with
+    distance. Players' own sounds, UI and ambience stay centered. One small stereo panner per
+    positioned sound.
+  - **Bandage sound** (`gameusebandages.wav`): plays when a bandage is used. Using another before it
+    finishes extends it seamlessly, like the slide loop. The current sound crossfades, before its tail,
+    into another copy of the clip's main bandaging section (+1.1 s per extra bandage), scheduled
+    sample-accurately on the audio clock. One chain per player.
+  - **Crafting sounds:** every gun plays `gamecraftgun.wav`, the bat `gamecraftbat.wav`, bandages
+    `gamecraftbandages.wav`. Ammo keeps its pickup sound; the medkit and katana have none yet.
+  - **Renamed to "Kise Is Closed"**: the title screen heading, the page and window titles, and the app's product name.
+    The app identifier and the saved-settings keys (`escapeFromKise.*`) are unchanged, so settings carry over.
+  - **Barricades** (COD-zombies style) on three Kise doors: the south door (starts open) and the two
+    west glass-wall doors (start fully boarded). Configure in `BARRICADE_DOORS`.
+    - 4 boards per door. Zombies that walk into a boarded doorway tear boards off middle-first (a
+      board splits into stubs, then goes), opening a central gap, one strike per zombie per second,
+      with their attack animation, splinters and a crack sound.
+    - While any board is up the doorway is solid for players and zombies. Shots stop at wood but
+      pass through the gaps.
+    - The pickup key is now **Interact / Pick Up** (F / D-pad right). Near a damaged barricade with
+      planks in the inventory, it nails a board back (1 plank each, outer boards first).
+    - Shared plank meshes/materials; no per-frame work except a brief wobble after a hit.
+- **Barricade plank health:** still up to 4 boards per doorway, but each board now has 12 HP.
+  - Zombies deal 1 per strike and brutes deal 2.
+  - A board splits at half HP and is gone at 0. Every strike chips it with a small splinter and thud.
+  - One zombie now needs ~50 s to get through a full barricade (was ~10 s).
+  - The interact prompt is now a compact key cap + "Repair x N" (or a dim "Needs planks").
+- **Atmosphere (overcast, wind, heat haze, new trees)** -- visual only, no gameplay effect:
+  - **Overcast:** new dry-cloud states in the existing weather machine.
+    - The sky goes clear -> partly cloudy -> overcast -> partly cloudy -> clear, with 30-90 s steps.
+    - Roughly one overcast spell every ~15-20 min, versus ~30 min between storms.
+    - Soft, brighter-than-storm light. Rain can still roll in on top of it.
+  - **Wind:** eases calm <-> light <-> moderate with gusts. It's stronger in rain, stiller in fog, and only drives shader uniforms, cloud drift and a quiet synthesized wind/rustle ambience.
+  - **Heat haze:** a barely visible shimmer and sky sheen on roads, lots and concrete at 18-95 m.
+    - Only on warm, dry, clear afternoons (`HEAT_HAZE_*` in `WEATHER_CONFIG`).
+  - **Trees (`tree-models.js`):** 13 procedural types (10 broadleaf, 3 conifer), 2 builds each.
+    - Each tree gets a deterministic type, size, lean, density and tint.
+    - Trees are merged into 40 m chunks with 3 LODs and two shared materials.
+    - Sway runs in the vertex shader. Tree positions and colliders are unchanged.
+  - Debug: `weatherDebug.startOvercast()`, `weatherDebug.setWind(0|1|2)`.
+- **Turrets (Basic Turret):** a new Turrets skill tree with one node, Basic Turret (2 skill points), which unlocks the recipe (6 scrap).
+  - **Carrying:** crafting puts the turret straight into your hands, never into the inventory.
+    - While carrying, you can move and look, but you can't fire, aim, reload, melee, switch or drop weapons.
+    - The prompt shows `[F] Place Turret`, and Interact places it about 1.45 m ahead on valid ground (not in walls, ledges, people or other turrets).
+  - **Deployed:** it unfolds in 0.6 s, then targets the nearest visible zombie within 18 m.
+    - Searches run 4x per second. The head turns smoothly within +/-150 deg yaw and limited pitch.
+    - It fires every 1.15 s for the pistol's damage (40), with infinite ammo for now.
+  - **Zombies vs the turret:** zombies go for it when it's closer than any player (bosses ignore it). It has 250 HP.
+    - Hits cause sparks, a shake and a clank.
+    - Below 35% HP it smokes and its light flickers red. At 0 it breaks apart and is removed.
+  - **Placed size:** a placed turret is drawn 1.55x bigger (~1.1 m, about 2/3 of a player's height; `deployedScale`). The carried one stays hand-sized.
+  - **Pick-up:** `[F] Pick Up Turret` returns the same turret, keeping its health.
+    - Any player can pick up any turret. No limit on how many (you just can't craft one while carrying one).
+  - **Death:** a player who dies while carrying a turret drops it where they fell, deployed and shooting.
+  - **Code:** tuning lives in `TURRET_CONFIG`.
+    - The co-op body carries it with both hands via `humanSystem.registerWeapon("turret")` and a new `carry` hold.
+    - Skill nodes can now have their own `cost`.
+- **Map picker removed:** the Play screen no longer asks for a map. Every run (singleplayer and co-op) is on the campus.
+  - The old small "classic" floor plan's code is still in `index.html`, but nothing in the menus reaches it any more.
+- **Co-op setup screen:** the player previews now swing 60 deg either side (was 65).
+- **Bandage sound:** 20% quieter (`BANDAGE_VOLUME` 0.8).
+- **Testing starts:** `TEMP_STARTING_SKILL_POINTS` / `TEMP_STARTING_SCRAP` exist for testing, and are both back to 0.
+- **Build:** `builds/9_27_2026_build.exe` -- a portable release binary with everything above.

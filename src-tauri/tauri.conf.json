@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "first-person-3d-prototype",
+  "productName": "Kise Is Closed",
   "version": "0.1.0",
   "identifier": "com.firstperson3dprototype.desktop",
   "build": {
@@ -12,7 +12,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "First-Person 3D Prototype",
+        "title": "Kise Is Closed",
         "width": 1280,
         "height": 720,
         "resizable": true,

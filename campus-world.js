@@ -19,6 +19,19 @@
     scene.add(root);
     const RENDER_DISTANCE = options.renderDistance !== undefined ? options.renderDistance : 450;
     const TREE_DRAW_DISTANCE = options.treeDrawDistance !== undefined ? options.treeDrawDistance : 260;
+    // Shared, purely cosmetic environment uniforms: the game's weather
+    // writes these once per frame (see WEATHER / wind / heat haze in
+    // index.html) and every tree and hot surface reads them on the GPU.
+    const environment = {
+      envTime: { value: 0 },
+      windDir: { value: new THREE.Vector2(1, 0) },
+      windStrength: { value: 0 },
+      windGust: { value: 0 },
+      heatHaze: { value: 0 },            // 0 = none .. 1 = full (still very faint)
+      hazeColor: { value: new THREE.Color(0xc9d6e0) },
+      hazeNear: { value: 18 },           // m -- no shimmer closer than this
+      hazeFar: { value: 95 },            // m -- none past this
+    };
 
     // ------------------------------------------------------------------
     // CAMPUS LAYOUT -- traced from the Google Maps satellite screenshots in
@@ -602,6 +615,11 @@
       // building there are shadows (morning sun from the east), not building.
       [668, 200, 787, 272, 12],   // Comstock Memorial Union (north part)
       [674.3, 272, 787, 283.6, 12], // Comstock -- down to where MSUM Dining joins
+      // Kise's closed-off parts (no longer walk-in): north of the dining room,
+      // east of the hallway, and the kitchen side east of the new interior wall.
+      [726.4, 283.5, 772, 325.4, 9],
+      [756.7, 325.4, 772, 391, 9],
+      [725.8, 334.7, 726.4, 336.4, 3.7], // (KISE_CEILING_M) brick end of the interior glass partition (red)
       [666.9, 272, 674.3, 279.7, 4], // Comstock west entrance vestibule (door on its south face)
       [674.3, 283.6, 701, 289.2, 6], // Comstock's angled one-storey south-west wing...
       [701, 283.6, 706.2, 296, 6],
@@ -739,14 +757,45 @@
     // color (optional)], each door { side: "n"|"s"|"e"|"w", at: px along that
     // wall, width m, height m }. Built from walls + a roof, with a concrete
     // floor and door-size gaps.
+    // Kise (MSUM Dining) is single storey inside: the ceiling (underside of
+    // the roof slab) sits a little above a normal room's, and above the
+    // tallest jump (~3.2 m head height).
+    const KISE_CEILING_M = 3.7;
+    const KISE_ROOF_THICK_M = 0.9; // thick slabs, so the roof reads as solid through the glass
+    const KISE_ROOF_M = KISE_CEILING_M + KISE_ROOF_THICK_M;
     const HOLLOW_BUILDINGS = [
-      // MSUM Dining (Kise Commons), joined to Comstock's south side. Doors: the
-      // yellow dot in firstedits.png (south wall), and through from the glass
-      // entrance link on its west side (blue in screenshot5B.png).
-      [718.5, 283.5, 772, 391, 9, [
-        { side: "s", at: 752, width: 1.8, height: 2.4 },
-        { side: "w", at: 306.5, width: 3, height: 2.6 },
-      ]],
+      // MSUM Dining (Kise Commons), joined to Comstock's south side, laid out
+      // from the annotations on screenshot5.png (fitted to the building's own
+      // edges: map x = 718.5 + (px - 980) x 0.1486, y = 283.5 + (py - 138) x
+      // 0.1631) and insidekiselookingnorth.png:
+      //   - a hallway (pink) down the west side from the north wall, reached
+      //     through the glass entrance link (the northmost doorway), opening
+      //     into the dining room;
+      //   - the dining room, walled off from the kitchen side by a new
+      //     interior wall (green) -- the rest of the building is solid, see
+      //     BUILDINGS;
+      //   - glass walls (light blue) on the dining room's west side and most
+      //     of its south side, with two new doors (purple) in the west glass,
+      //     plus a short glass partition inside (see GLASS_WALLS);
+      //   - brick (red): the hallway's north/east walls, the dining room's
+      //     north wall, the west wall between the two doors and at its south
+      //     end, and the south end of the interior glass partition;
+      //   - ceilings: the hallway and dining room are a single storey
+      //     (KISE_CEILING_M), except the raised block outlined in yellow,
+      //     a clerestory a little under the old 9 m roof (8th value: raised
+      //     [x1, y1, x2, y2, height]; 9th: roof slab thickness m, default 0.3).
+      [718.5, 283.5, 726.4, 325.4, KISE_ROOF_M, [
+        { side: "w", at: 306.5, width: 3, height: 2.6 },          // through from the glass entrance link
+        { side: "s", at: 722.45, width: 4.4, height: 9 },         // open into the dining room
+      ], undefined, undefined, KISE_ROOF_THICK_M],
+      [718.5, 325.4, 756.7, 391, KISE_ROOF_M, [
+        { side: "n", at: 722.45, width: 4.4, height: 9 },         // open to the hallway
+        { side: "s", at: 752, width: 1.8, height: 2.4 },          // the south door (yellow in firstedits.png)
+        // West side: glass, door, brick, door, glass, brick to the corner.
+        { side: "w", from: 334.4, to: 351.55, height: KISE_CEILING_M, glass: true, doors: [349.9] },
+        { side: "w", from: 365.33, to: 383.4, height: KISE_CEILING_M, glass: true, doors: [367.0] },
+        { side: "s", from: 718.5, to: 750.4, height: KISE_CEILING_M, glass: true },         // glass wall
+      ], undefined, [725.8, 336.4, 748.2, 379.6, 8.5], KISE_ROOF_THICK_M], // raised roof (yellow): ceiling 8.5 - 0.9 = 7.6 m
       // Glass entrance link on Dining's west side: door on its south face (blue
       // in screenshot5B.png), open straight through into Dining on its east side.
       [711.8, 300.2, 718.5, 313.3, 4.5, [
@@ -791,6 +840,13 @@
       ]],
     ];
     const HOLLOW_WALL_M = 0.4;
+    const GLASS_PANE_M = 0.06;      // glass thickness
+    const GLASS_DOOR_WIDTH_M = 2.2; // doors set into a glass wall
+    const GLASS_DOOR_HEIGHT_M = 2.6;
+    // Free-standing interior glass walls: [x1, y1, x2, y2, height m] (axis-aligned px).
+    const GLASS_WALLS = [
+      [726.1, 325.4, 726.1, 334.7, KISE_CEILING_M], // Kise: the hallway's glass side where it meets the dining room (insidekiselookingnorth.png); brick end: BUILDINGS
+    ];
 
     // Round buildings: [centerX, centerY, radius px, height in meters].
     const CYLINDER_BUILDINGS = [
@@ -1414,24 +1470,48 @@
         const w = rectToWorld([x1, y1, x2, y2]);
         const t = HOLLOW_WALL_M;
         const pieces = [];
-        const wall = (minX, maxX, minZ, maxZ, top, base) => pieces.push({ minX, maxX, minZ, maxZ, top, base });
+        const wall = (minX, maxX, minZ, maxZ, top, base, glass) => pieces.push({ minX, maxX, minZ, maxZ, top, base, glass });
         // One side: `along` is its long-axis extent; gaps come from the doors on it.
         const side = (name, fixedMin, fixedMax, along) => {
           const horizontal = name === "n" || name === "s";
           const seg = (a0, a1, top, base) => {
+            a0 = Math.max(a0, along[0]); a1 = Math.min(a1, along[1]);
             if (a1 - a0 < 0.01) return;
             if (horizontal) wall(a0, a1, fixedMin, fixedMax, top, base);
             else wall(fixedMin, fixedMax, a0, a1, top, base);
           };
+          // A glass pane, thin, in the middle of the wall's thickness.
+          const mid = (fixedMin + fixedMax) / 2;
+          const glassSeg = (a0, a1, top, base) => {
+            a0 = Math.max(a0, along[0]); a1 = Math.min(a1, along[1]);
+            if (a1 - a0 < 0.01) return;
+            if (horizontal) wall(a0, a1, mid - GLASS_PANE_M / 2, mid + GLASS_PANE_M / 2, top, base, true);
+            else wall(mid - GLASS_PANE_M / 2, mid + GLASS_PANE_M / 2, a0, a1, top, base, true);
+          };
+          const toAlong = (px) => (horizontal ? mapToWorld(px, 0).x : mapToWorld(0, px).z);
+          // Doors ({ at, width }) and glass spans ({ from, to, glass, doors }).
           const gaps = doors.filter((d) => d.side === name).map((d) => {
-            const at = horizontal ? mapToWorld(d.at, 0).x : mapToWorld(0, d.at).z;
+            if (d.from !== undefined) return { g0: toAlong(d.from), g1: toAlong(d.to), height: d.height, glass: d.glass, doors: d.doors };
+            const at = toAlong(d.at);
             return { g0: at - d.width / 2, g1: at + d.width / 2, height: d.height };
           }).sort((a, b) => a.g0 - b.g0);
           let cursor = along[0];
           for (const g of gaps) {
             seg(cursor, g.g0, height, 0);
             if (g.height < height) seg(g.g0, g.g1, height, g.height); // lintel
-            cursor = g.g1;
+            if (g.glass) {
+              // Storefront glass up to the lintel, with door openings in it
+              // (glass above each door).
+              let at = g.g0;
+              for (const doorPx of (g.doors || []).slice().sort((a, b) => a - b)) {
+                const d0 = toAlong(doorPx) - GLASS_DOOR_WIDTH_M / 2, d1 = d0 + GLASS_DOOR_WIDTH_M;
+                glassSeg(at, d0, g.height, 0);
+                glassSeg(d0, d1, g.height, GLASS_DOOR_HEIGHT_M);
+                at = d1;
+              }
+              glassSeg(at, g.g1, g.height, 0);
+            }
+            cursor = Math.max(cursor, g.g1);
           }
           seg(cursor, along[1], height, 0);
         };
@@ -1439,7 +1519,26 @@
         side("s", w.maxZ - t, w.maxZ, [w.minX, w.maxX]);
         side("w", w.minX, w.minX + t, [w.minZ + t, w.maxZ - t]);
         side("e", w.maxX - t, w.maxX, [w.minZ + t, w.maxZ - t]);
-        wall(w.minX, w.maxX, w.minZ, w.maxZ, height, height - 0.3); // roof slab
+        const raised = b[7];
+        const slab = b[8] ?? 0.3; // roof slab thickness
+        if (!raised) {
+          wall(w.minX, w.maxX, w.minZ, w.maxZ, height, height - slab); // roof slab
+        } else {
+          // A raised block (clerestory): the roof slab around it, brick
+          // walls standing on the roof up to its own roof slab.
+          const r = rectToWorld(raised);
+          const top = raised[4];
+          wall(w.minX, w.maxX, w.minZ, r.minZ, height, height - slab);
+          wall(w.minX, w.maxX, r.maxZ, w.maxZ, height, height - slab);
+          wall(w.minX, r.minX, r.minZ, r.maxZ, height, height - slab);
+          wall(r.maxX, w.maxX, r.minZ, r.maxZ, height, height - slab);
+          const rt = Math.max(0.3, slab / 2);
+          wall(r.minX, r.maxX, r.minZ, r.minZ + rt, top, height - slab);
+          wall(r.minX, r.maxX, r.maxZ - rt, r.maxZ, top, height - slab);
+          wall(r.minX, r.minX + rt, r.minZ + rt, r.maxZ - rt, top, height - slab);
+          wall(r.maxX - rt, r.maxX, r.minZ + rt, r.maxZ - rt, top, height - slab);
+          wall(r.minX, r.maxX, r.minZ, r.maxZ, top, top - slab); // raised roof slab
+        }
         for (const piece of pieces) {
           const c = makeCollider((piece.minX + piece.maxX) / 2, (piece.minZ + piece.maxZ) / 2,
             (piece.maxX - piece.minX) / 2, (piece.maxZ - piece.minZ) / 2, piece.top, 0);
@@ -1448,10 +1547,24 @@
             c.halfHeight = true;
           }
           if (b[6] !== undefined) c.color = b[6];
+          if (piece.glass) {
+            c.glass = true;
+            c.seeThrough = true; // you (and enemies) can see through it
+          }
           c.px = (x1 + x2) / 2;
           c.py = (y1 + y2) / 2;
           list.push(c);
         }
+      }
+      for (const g of GLASS_WALLS) {
+        const a = mapToWorld(g[0], g[1]), b = mapToWorld(g[2], g[3]);
+        const c = makeCollider((a.x + b.x) / 2, (a.z + b.z) / 2,
+          Math.max(GLASS_PANE_M / 2, Math.abs(b.x - a.x) / 2), Math.max(GLASS_PANE_M / 2, Math.abs(b.z - a.z) / 2), g[4], 0);
+        c.glass = true;
+        c.seeThrough = true;
+        c.px = (g[0] + g[2]) / 2;
+        c.py = (g[1] + g[3]) / 2;
+        list.push(c);
       }
       for (const b of CYLINDER_BUILDINGS) {
         const center = mapToWorld(b[0], b[1]);
@@ -1648,6 +1761,47 @@
     const poolMaterial = surfaceMaterial(poolTexture);
     const laneLineMaterial = new THREE.MeshLambertMaterial({ color: 0xf2f2f2 });
     const plainAsphaltMaterial = new THREE.MeshLambertMaterial({ color: 0x4a4a4c });
+
+    // Heat haze (cosmetic): on hot, dark, open surfaces -- roads, lots,
+    // concrete -- a barely-there shimmer at a distance: the surface's own
+    // texture wobbles by about a pixel (a screen-space offset of the
+    // lookup, so no extra render pass) and, at low grazing angles, a faint
+    // wavering sheen of sky color (the "wet road" look of hot air). Off
+    // (zero cost beyond one uniform test) whenever heatHaze is 0.
+    function addHeatHaze(material) {
+      material.extensions = { derivatives: true };
+      material.onBeforeCompile = (shader) => {
+        shader.uniforms.envTime = environment.envTime;
+        shader.uniforms.heatHaze = environment.heatHaze;
+        shader.uniforms.hazeColor = environment.hazeColor;
+        shader.uniforms.hazeNear = environment.hazeNear;
+        shader.uniforms.hazeFar = environment.hazeFar;
+        shader.vertexShader = shader.vertexShader
+          .replace("#include <common>", "#include <common>\nvarying vec3 vHazeWorld;")
+          .replace("#include <project_vertex>", "#include <project_vertex>\nvHazeWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+        shader.fragmentShader = shader.fragmentShader
+          .replace("#include <common>", "#include <common>\nvarying vec3 vHazeWorld;\nuniform float envTime;\nuniform float heatHaze;\nuniform vec3 hazeColor;\nuniform float hazeNear;\nuniform float hazeFar;")
+          .replace("#include <map_fragment>", [
+            "float hazeK = 0.0;",
+            "float hazeRipple = 0.0;",
+            "if (heatHaze > 0.001) {",
+            "  vec3 hazeTo = vHazeWorld - cameraPosition;",
+            "  float hazeDist = length(hazeTo.xz);",
+            "  float grazing = 1.0 - clamp(abs(hazeTo.y) / max(hazeDist, 0.001) * 3.5, 0.0, 1.0);",
+            "  float band = smoothstep(hazeNear, hazeNear + 20.0, hazeDist) * (1.0 - smoothstep(hazeFar * 0.75, hazeFar, hazeDist));",
+            "  hazeK = heatHaze * band * grazing;",
+            "  hazeRipple = sin(vHazeWorld.x * 0.8 + envTime * 2.1 + sin(vHazeWorld.z * 0.6 + envTime * 0.9) * 2.0) * sin(vHazeWorld.z * 1.1 - envTime * 1.7 + vHazeWorld.x * 0.3);",
+            "}",
+            "#ifdef USE_MAP",
+            "  vec2 hazeUv = vUv;",
+            "  if (hazeK > 0.0) hazeUv += dFdy(vUv) * hazeRipple * hazeK * 1.4 + dFdx(vUv) * hazeRipple * hazeK * 0.4;",
+            "  vec4 texelColor = texture2D( map, hazeUv );\n  texelColor = mapTexelToLinear( texelColor );\n  diffuseColor *= texelColor;",
+            "#endif",
+          ].join("\n"))
+          .replace("#include <fog_fragment>", "gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeColor, hazeK * (0.035 + 0.035 * hazeRipple));\n#include <fog_fragment>");
+      };
+    }
+    for (const m of [roadMaterial, lotMaterial, concreteMaterial, plainAsphaltMaterial]) addHeatHaze(m);
 
     // ------------------------------------------------------------------
     // GROUND GEOMETRY. Every flat layer is one merged mesh per material
@@ -2269,6 +2423,8 @@
 
 
     const buildingMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    // Storefront glass (Kise): pale, mostly clear; one shared material.
+    const glassMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, depthWrite: false });
 
     // Brick: one small tiling canvas texture, projected in world space in the
     // shader (walls take it by their facing, flat roofs get gravel gray), so
@@ -2482,15 +2638,17 @@
         let canopyRadius = evergreen ? 1.8 + rand() * 0.8 : 2.4 + rand() * 1.6;
         // Keep canopies out of buildings you can walk into (they'd show
         // through the walls inside): shrink to fit, or drop the tree.
+        let maxCrownR;
         for (const hb of HOLLOW_BUILDINGS) {
           const w = rectToWorld(hb);
           const d = Math.hypot(Math.max(w.minX - pos.x, 0, pos.x - w.maxX), Math.max(w.minZ - pos.z, 0, pos.z - w.maxZ));
           if (d < 1.4) return;
           canopyRadius = Math.min(canopyRadius, d - 0.3);
+          if (d - 0.3 < 8) maxCrownR = Math.min(maxCrownR === undefined ? Infinity : maxCrownR, d - 0.3);
         }
         const canopyHeight = evergreen ? 6 + rand() * 4 : canopyRadius * (0.8 + rand() * 0.2);
         const shade = 0.75 + rand() * 0.35;
-        trees.push({ x: pos.x, z: pos.z, evergreen, trunkHeight, canopyRadius, canopyHeight, shade });
+        trees.push({ x: pos.x, z: pos.z, evergreen, trunkHeight, canopyRadius, canopyHeight, shade, maxCrownR });
         const c = makeCollider(pos.x, pos.z, TREE_TRUNK_RADIUS, TREE_TRUNK_RADIUS,
           trunkHeight + (evergreen ? canopyHeight : canopyHeight * 1.8), 0);
         c.shape = "cylinder";
@@ -2532,6 +2690,12 @@
     }
 
     const allColliders = buildingColliders();
+    // Trees (visual only -- their colliders are the zones' own, above):
+    // tree-models.js when loaded, else the old simple instanced shapes.
+    const treeSystem = window.createTreeSystem
+      ? window.createTreeSystem(THREE, root, environment, { drawDistance: TREE_DRAW_DISTANCE })
+      : null;
+    const allTrees = [];
     const zones = ZONES.map((def) => {
       const colliders = allColliders.filter((c) => zoneAt(c.px, c.py) === def);
       const detail = zoneDetailContents(def.id);
@@ -2561,12 +2725,13 @@
       const color = new THREE.Color();
       const meshes = [];
       const drawn = colliders.filter((c) => c.render !== false);
-      const isBrick = (c) => c.style === "brick" && c.color === undefined;
+      const isBrick = (c) => c.style === "brick" && c.color === undefined && !c.glass;
       for (const [shapeGeometry, material, members] of [
         [unitBox, brickMaterial, drawn.filter((c) => c.shape !== "cylinder" && isBrick(c))],
         [unitCylinder, brickMaterial, drawn.filter((c) => c.shape === "cylinder" && isBrick(c))],
-        [unitBox, buildingMaterial, drawn.filter((c) => c.shape !== "cylinder" && !isBrick(c))],
+        [unitBox, buildingMaterial, drawn.filter((c) => c.shape !== "cylinder" && !isBrick(c) && !c.glass)],
         [unitCylinder, buildingMaterial, drawn.filter((c) => c.shape === "cylinder" && !isBrick(c))],
+        [unitBox, glassMaterial, drawn.filter((c) => c.glass)],
       ]) {
         if (members.length === 0) continue;
         const mesh = instancedMesh(shapeGeometry, material, members.length, sphere);
@@ -2577,7 +2742,7 @@
           matrix.compose(new THREE.Vector3(c.cx, bottom, c.cz), rotation,
             new THREE.Vector3(c.halfX * 2, size, c.halfZ * 2));
           mesh.setMatrixAt(i, matrix);
-          mesh.setColorAt(i, color.set(isBrick(c) ? 0xffffff : c.color !== undefined ? c.color : BUILDING_COLOR));
+          mesh.setColorAt(i, color.set(c.glass ? 0xb9d6e4 : isBrick(c) ? 0xffffff : c.color !== undefined ? c.color : BUILDING_COLOR));
         });
         mesh.instanceMatrix.needsUpdate = true;
         mesh.instanceColor.needsUpdate = true;
@@ -2602,7 +2767,9 @@
 
       const treeMeshes = [];
       const trees = detail.trees;
-      if (trees.length > 0) {
+      if (treeSystem) {
+        allTrees.push(...trees); // drawn by tree-models.js, chunked across zones
+      } else if (trees.length > 0) {
         const trunks = instancedMesh(trunkGeometry, treeMaterial, trees.length, sphere);
         const leafy = trees.filter((t) => !t.evergreen);
         const conifers = trees.filter((t) => t.evergreen);
@@ -2639,6 +2806,7 @@
 
       return { id: def.id, name: def.name, colliders, box, meshes, treeMeshes };
     });
+    if (treeSystem) treeSystem.addTrees(allTrees);
 
     function distanceToZone(zone, x, z) {
       const dx = Math.max(zone.box.minX - x, 0, x - zone.box.maxX);
@@ -3431,6 +3599,7 @@
         for (const mesh of zone.meshes) mesh.visible = distance <= RENDER_DISTANCE;
         for (const mesh of zone.treeMeshes) mesh.visible = distance <= TREE_DRAW_DISTANCE;
       }
+      if (treeSystem) treeSystem.updateVisibility(viewers);
     }
 
     const spawnWorld = mapToWorld(SPAWN_PX.x, SPAWN_PX.y);
@@ -3456,6 +3625,9 @@
       navChunkCount: () => navChunks.size,
       updateVisibility,
       distanceToZone,
+      environment,
+      treeDensityNear: (x, z, r) => (treeSystem ? treeSystem.treeDensityNear(x, z, r) : 0),
+      treeStats: () => (treeSystem ? treeSystem.stats() : null),
       // Ground layers the weather darkens when wet (asphalt most, grass least).
       wetSurfaces: [
         { material: roadMaterial, darken: 0.38 },

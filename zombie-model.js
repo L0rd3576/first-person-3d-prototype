@@ -195,8 +195,11 @@
         const s = ringStarts[ringIndex];
         for (let k = 0; k < radial; k++) {
           const k1 = (k + 1) % radial;
-          if (reverse) g.index.push(c, s + k1, s + k);
-          else g.index.push(c, s + k, s + k1);
+          // Wound to face out of the tube, matching its sides (the start cap
+          // faces back along the tube, the end cap forward) -- toes and
+          // fingertips were culled into holes before.
+          if (reverse) g.index.push(c, s + k, s + k1);
+          else g.index.push(c, s + k1, s + k);
         }
       };
       if (spec.capStart) capAt(0, true);

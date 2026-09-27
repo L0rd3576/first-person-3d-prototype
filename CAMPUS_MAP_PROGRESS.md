@@ -410,6 +410,28 @@ All of these live in `campus.html`.
   - A "NEMZEK HALL" sign (`gamenemzeksign.jpg`) sits north of the entrance walk, facing south
     and square to the building: a cream panel on two brick pedestals.
 
+- **2026-09-27 (5):** Kise (MSUM Dining) re-laid out from the annotations on `screenshot5.png`
+  (fitted to the building's edges: map x = 718.5 + (px - 980) × 0.1486, y = 283.5 + (py - 138) × 0.1631)
+  and `insidekiselookingnorth.png`:
+  - A hallway (pink) runs down the west side from the north wall, reached through the glass entrance
+    link (the northmost doorway), and opens into the dining room.
+  - A new interior wall (green) closes off the kitchen side. The kitchen and the block north of the
+    dining room are now solid (not walk-in).
+  - Glass walls (light blue): the dining room's west side and most of its south side, clear up to
+    3.4 m, with two new doors (purple) in the west glass. A short glass partition stands where the
+    hallway meets the dining room. Glass is its own shared transparent material; it blocks
+    movement but not sight.
+
+- **2026-09-27 (6):** Kise second pass from the new `screenshot5.png` annotations:
+  - Brick (red): the west wall between its two doors and at its south end.
+    The interior glass partition is longer (to y 334.7) and ends in a short brick piece.
+  - The hallway and dining room are single storey (ceiling 3.5 m, `KISE_CEILING_M`), and the glass runs up to it.
+  - The yellow block is a raised clerestory (roof 8.2 m, ceiling ~7.9 m) built on the low roof.
+    This uses the new optional raised-rect value on hollow buildings.
+  - Adjusted:
+    - The low ceiling is now 3.7 m and the raised ceiling 7.6 m (roof 8.5 m).
+    - Kise roof slabs are now 0.9 m thick (new 9th hollow-building value), so they read as solid through the glass.
+
 ## Flags (not enough detail in the image; placeholder used)
 - Z03 South House: footprint hidden under the Google Maps label. Placeholder 7 m house south of the lawn.
 - Z03 service yard contents are unclear (containers or equipment). Two placeholder containers.

@@ -1,4 +1,4 @@
-# First-Person 3D Prototype
+# Kise Is Closed
 
 A small first-person 3D prototype game, built as a desktop app with
 [Tauri](https://tauri.app) (Rust) wrapping a single-file
