@@ -541,7 +541,7 @@
         geometry.computeVertexNormals();
       }
       if (spot.tilt) geometry.rotateX(-spot.tilt);
-      geometry.translate(0, spot.cy, spot.z + 0.003);
+      geometry.translate(0, spot.cy, spot.z + (spot.lift || 0.003));
       faceGeometryCache[cacheKey] = geometry;
       return geometry;
     }
@@ -587,16 +587,23 @@
     // Radius of a tapered helmet (bottom radius r0 at y0, top r1 at y1) at height y.
     const taperedRadius = (r0, r1, y0, y1, y) => r0 + (r1 - r0) * (y - y0) / (y1 - y0);
 
-    const BUCKET = { r0: 0.166, r1: 0.136, y0: -0.1, y1: 0.26, cz: 0.012 };
-    const BOX = { w: 0.3, h: 0.32, d: 0.3, y0: -0.095, cz: 0.012 };
-    const CONE = { r0: 0.166, r1: 0.024, y0: -0.1, y1: 0.47, cz: 0.012 };
+    // Every helmet's face picture is the paper bag's size (FACE_W x FACE_H,
+    // explicit request), so the helmets are sized around it: the box is
+    // tall enough to take it flat, and the bucket and cone are wide enough
+    // (the cone also tall enough -- its taper is what forces the wrap)
+    // that it only bends part way round them.
+    const FACE_W = BAG.w - 2 * FACE_MARGIN;
+    const FACE_H = BAG.top - BAG.bottom - 0.03 - 2 * FACE_MARGIN;
+    const BUCKET = { r0: 0.18, r1: 0.15, y0: -0.1, y1: 0.28, cz: 0.012 };
+    const BOX = { w: 0.3, h: 0.36, d: 0.3, y0: -0.095, cz: 0.012 };
+    const CONE = { r0: 0.2, r1: 0.024, y0: -0.1, y1: 0.75, cz: 0.012 };
 
     const HELMETS = {
       // Brown kraft grocery bag, crumpled a little (the original look).
       bag: {
         name: "Paper Bag",
         face: {
-          w: BAG.w - 2 * FACE_MARGIN, h: BAG.top - BAG.bottom - 0.03 - 2 * FACE_MARGIN, // clear of the bunched bottom edge
+          w: FACE_W, h: FACE_H, // clear of the bunched bottom edge
           cy: (BAG.top + BAG.bottom + 0.03) / 2, z: BAG.cz + BAG.d / 2, tilt: 0, curve: 0,
         },
         build(ap) {
@@ -617,9 +624,10 @@
       bucket: {
         name: "Bucket",
         face: (() => {
-          const cy = 0.07;
+          const cy = 0.085; // between the rolled rim and the top
           return {
-            w: 0.17, h: 0.19, cy, z: BUCKET.cz + taperedRadius(BUCKET.r0, BUCKET.r1, BUCKET.y0, BUCKET.y1, cy),
+            w: FACE_W, h: FACE_H, cy, z: BUCKET.cz + taperedRadius(BUCKET.r0, BUCKET.r1, BUCKET.y0, BUCKET.y1, cy),
+            lift: 0.007, // stands just proud of the pressed ridges it crosses
             tilt: Math.atan((BUCKET.r0 - BUCKET.r1) / (BUCKET.y1 - BUCKET.y0)),
             curve: taperedRadius(BUCKET.r0, BUCKET.r1, BUCKET.y0, BUCKET.y1, cy),
           };
@@ -646,7 +654,7 @@
       // sticking up and a strip of packing tape across them.
       box: {
         name: "Cardboard Box",
-        face: { w: 0.25, h: 0.25, cy: BOX.y0 + BOX.h / 2, z: BOX.cz + BOX.d / 2, tilt: 0, curve: 0 },
+        face: { w: FACE_W, h: FACE_H, cy: BOX.y0 + BOX.h / 2, z: BOX.cz + BOX.d / 2, tilt: 0, curve: 0 },
         build() {
           const group = new THREE.Group();
           const kraft = helmetMaterial(0xae8250, 0.9);
@@ -678,9 +686,9 @@
       cone: {
         name: "Traffic Cone",
         face: (() => {
-          const cy = 0.055;
+          const cy = 0.09; // just above the base frame, where the cone is widest
           return {
-            w: 0.15, h: 0.18, cy, z: CONE.cz + taperedRadius(CONE.r0, CONE.r1, CONE.y0, CONE.y1, cy),
+            w: FACE_W, h: FACE_H, cy, z: CONE.cz + taperedRadius(CONE.r0, CONE.r1, CONE.y0, CONE.y1, cy),
             tilt: Math.atan((CONE.r0 - CONE.r1) / (CONE.y1 - CONE.y0)),
             curve: taperedRadius(CONE.r0, CONE.r1, CONE.y0, CONE.y1, cy),
           };
@@ -693,12 +701,12 @@
           const { r0, r1, y0, y1, cz } = CONE;
           helmetPart(group, new THREE.CylinderGeometry(r1, r0, y1 - y0, 28, 1, true), orange, 0, (y0 + y1) / 2, cz);
           helmetPart(group, new THREE.SphereGeometry(r1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), orange, 0, y1, cz); // rounded tip
-          for (const [a, b] of [[0.2, 0.26], [0.31, 0.35]]) {
+          for (const [a, b] of [[0.34, 0.42], [0.48, 0.54]]) {
             const ra = taperedRadius(r0, r1, y0, y1, a) + 0.0015, rb = taperedRadius(r0, r1, y0, y1, b) + 0.0015;
             helmetPart(group, new THREE.CylinderGeometry(rb, ra, b - a, 28, 1, true), white, 0, (a + b) / 2, cz);
           }
           // Square base frame (a ring, so it never cuts through the neck).
-          const outer = 0.36, rim = 0.035, thick = 0.02;
+          const outer = 0.46, rim = 0.04, thick = 0.02;
           for (const [x, z, wx, wz] of [
             [0, (outer - rim) / 2, outer, rim], [0, -(outer - rim) / 2, outer, rim],
             [(outer - rim) / 2, 0, rim, outer - 2 * rim], [-(outer - rim) / 2, 0, rim, outer - 2 * rim],
@@ -941,6 +949,7 @@
         lowerYaw: 0,
         time: Math.random() * 50,
         crouch: 0, slide: 0, air: 0, dead: 0, deadTime: 0, aim: 0, sprintHold: 0,
+        downed: 0, crawlPhase: 0, crawlMove: 0, diedProne: false,
         flinch: null,
         springs: new Float32Array(10),
         accum: 0, frame: 0,
@@ -983,7 +992,10 @@
 
     // state: { vx, vz, yaw, pitch, grounded, crouch, sliding, aim, reload,
     //   kickZ, kickPitch, weaponDelta {px,py,pz,rx,ry,rz}, melee: {kind, t, fist} | null,
-    //   dead, hurt, distance }
+    //   dead, downed, hurt, distance }
+    // downed: low on hands and knees, crawling (velocity drives the crawl
+    // cycle). Dying while downed flops flat onto the stomach instead of
+    // playing the standing topple.
     function update(character, deltaSeconds, st) {
       const anim = character.anim;
       // LOD by distance to the viewing player.
@@ -1024,6 +1036,12 @@
       anim.air = approach(anim.air, st.grounded ? 0 : 1, 10, dt);
       anim.aim = st.aim || 0;
       anim.dead = approach(anim.dead, st.dead ? 1 : 0, st.dead ? 1.8 : 6, dt);
+      if (!st.dead) anim.diedProne = false;
+      else if (anim.downed > 0.5) anim.diedProne = true;
+      anim.downed = approach(anim.downed, st.downed || anim.diedProne ? 1 : 0, 3, dt);
+      const crawlSpeed = Math.hypot(st.vx, st.vz);
+      anim.crawlMove = approach(anim.crawlMove, st.downed && !st.dead ? Math.min(1, crawlSpeed / 0.4) : 0, 6, dt);
+      anim.crawlPhase = (anim.crawlPhase + (fs < -0.05 ? -1 : 1) * (crawlSpeed * dt / 0.7) * Math.PI * 2) % (Math.PI * 2); // one arm-over-arm cycle per 0.7 m
       if (st.hurt && !st.dead) anim.flinch = { t: 0, side: Math.random() < 0.5 ? -1 : 1 };
 
       // ---- Legs ----
@@ -1122,6 +1140,59 @@
         blendTo(B.spine, -0.25, 0, 0); blendTo(B.chest, -0.1, 0, 0);
         anim.hipsTarget.y = anim.hipsTarget.y * (1 - k) - 0.55 * k;
       }
+      // ---- Downed: low on hands and knees -- knees planted under the hips,
+      // hands pressed into the ground ahead of the shoulders (elbows soft),
+      // back and hips raised, torso tipped forward, head up to look ahead.
+      // Crawls diagonal limbs together (left hand with right knee).
+      // Bleeding out from here flops flat onto the stomach (limp). ----
+      const pk = smooth01(anim.downed);
+      if (pk > 0.001) {
+        const blendTo = (b, x, y, z) => { pose[b * 3] += (x - pose[b * 3]) * pk; pose[b * 3 + 1] += (y - pose[b * 3 + 1]) * pk; pose[b * 3 + 2] += (z - pose[b * 3 + 2]) * pk; };
+        const m = anim.crawlMove, cp = anim.crawlPhase;
+        const limp = anim.diedProne;
+        const sway = Math.sin(cp) * m;
+        const pitchUp = Math.max(-0.5, Math.min(0.5, st.pitch || 0));
+        if (limp) {
+          blendTo(B.hips, 1.55, 0, 0);                 // lying face down
+          blendTo(B.spine, 0, 0, 0); blendTo(B.chest, 0, 0, 0);
+          blendTo(B.neck, -0.2, 0.3, 0);
+          blendTo(B.head, -0.2, 1.1, 0.1);             // cheek on the ground
+          for (const side of [1, -1]) {
+            const Lft = side > 0;
+            blendTo(Lft ? B.clavL : B.clavR, 0, 0, 0);
+            blendTo(Lft ? B.upperArmL : B.upperArmR, -0.1, 0, side * 0.2);
+            blendTo(Lft ? B.forearmL : B.forearmR, -0.15, 0, 0);
+            blendTo(Lft ? B.handL : B.handR, 0, 0, 0);
+            blendTo(Lft ? B.thighL : B.thighR, -0.08, 0, side * 0.1);
+            blendTo(Lft ? B.shinL : B.shinR, 0.1, 0, 0);
+            blendTo(Lft ? B.footL : B.footR, 0.9, 0, 0);
+          }
+          anim.hipsTarget.set(anim.hipsTarget.x * (1 - pk), anim.hipsTarget.y * (1 - pk) - 0.83 * pk, anim.hipsTarget.z * (1 - pk));
+        } else {
+          // Hips tipped forward 1.45 rad; the thighs undo it (hanging
+          // straight down to the knees) and the shins fold back flat.
+          blendTo(B.hips, 1.45, 0.08 * sway, 0.04 * sway);
+          blendTo(B.spine, -0.03, -0.05 * sway, -0.03 * sway);
+          blendTo(B.chest, -0.02, -0.04 * sway, 0);
+          blendTo(B.neck, -0.6 - pitchUp * 0.2, 0, 0);          // head raised, eyes ahead
+          blendTo(B.head, -0.7 - pitchUp * 0.3, 0.05 * sway, 0);
+          for (const side of [1, -1]) {
+            const Lft = side > 0;
+            const arm = Math.sin(Lft ? cp : cp + Math.PI) * m;   // +1 = this hand planted furthest ahead
+            const armLift = Math.max(0, Math.cos(Lft ? cp : cp + Math.PI)) * m; // swinging forward: hand clears the ground
+            const leg = Math.sin(Lft ? cp + Math.PI : cp) * m;   // the opposite knee moves with it
+            blendTo(Lft ? B.clavL : B.clavR, 0, 0, 0);
+            blendTo(Lft ? B.upperArmL : B.upperArmR, -1.65 - 0.28 * arm, 0, side * 0.12);
+            blendTo(Lft ? B.forearmL : B.forearmR, -0.3 - 0.35 * armLift, 0, 0);   // elbows slightly bent
+            blendTo(Lft ? B.handL : B.handR, -1.0, 0, 0);                          // palm flat, fingers ahead
+            blendTo(Lft ? B.thighL : B.thighR, -1.45 - 0.22 * leg, 0, side * 0.06);
+            blendTo(Lft ? B.shinL : B.shinR, 1.57, 0, 0);
+            blendTo(Lft ? B.footL : B.footR, 1.2, 0, 0);          // tops of the feet on the ground
+          }
+          // Hips at thigh height above the planted knees.
+          anim.hipsTarget.set(anim.hipsTarget.x * (1 - pk), anim.hipsTarget.y * (1 - pk) + (-0.435 + 0.015 * Math.abs(sway)) * pk, anim.hipsTarget.z * (1 - pk));
+        }
+      }
       // ---- Hit flinch ----
       if (anim.flinch) {
         const f = anim.flinch;
@@ -1134,7 +1205,7 @@
         if (f.t > 0.5) anim.flinch = null;
       }
       // ---- Death: knees give, then a forward topple (the whole rig pivots at the feet) ----
-      const dk = smooth01(anim.dead);
+      const dk = anim.diedProne ? 0 : smooth01(anim.dead);
       if (dk > 0.001) {
         const blendTo = (b, x, y, z) => { pose[b * 3] += (x - pose[b * 3]) * dk; pose[b * 3 + 1] += (y - pose[b * 3 + 1]) * dk; pose[b * 3 + 2] += (z - pose[b * 3 + 2]) * dk; };
         blendTo(B.thighL, -0.9, 0, 0.1); blendTo(B.shinL, 1.4, 0, 0); blendTo(B.thighR, -0.5, 0, -0.1); blendTo(B.shinR, 0.9, 0, 0);
@@ -1142,8 +1213,12 @@
         blendTo(B.upperArmL, -0.8, 0, 0.5); blendTo(B.upperArmR, -1.1, 0, -0.3); blendTo(B.forearmL, -0.4, 0, 0); blendTo(B.forearmR, -0.2, 0, 0);
         anim.hipsTarget.y = anim.hipsTarget.y * (1 - dk) - 0.35 * dk;
       }
-      character.rig.rotation.x = 1.35 * smooth01((anim.dead - 0.35) / 0.65);
-      character.rig.position.z = 0.25 * smooth01((anim.dead - 0.35) / 0.65);
+      // Death topples the rig forward about the feet. Downed, the bones do
+      // all the work; the rig only slides back so the raised head sits
+      // near the player's actual position.
+      const topple = anim.diedProne ? 0 : smooth01((anim.dead - 0.35) / 0.65);
+      character.rig.rotation.x = 1.35 * topple;
+      character.rig.position.z = 0.25 * topple - 0.45 * pk;
 
       // ---- Apply to bones (quick easing; the timing is in the pose) ----
       const blend = 1 - Math.exp(-18 * dt);

@@ -86,6 +86,21 @@
   }
   .interact-prompt .interact-count { opacity: 0.65; margin-left: 5px; font-weight: 400; }
   .interact-prompt.dim { opacity: 0.6; font-weight: 400; }
+  /* Revive hold progress, under "Hold [key] to Revive". */
+  .interact-prompt .revive-bar {
+    display: block;
+    width: 140px;
+    height: 5px;
+    margin: 6px auto 0;
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .interact-prompt .revive-bar span {
+    display: block;
+    height: 100%;
+    background: #4cd964;
+  }
   #interact-prompt-p1 { top: 35%; }
   #interact-prompt-p2 { top: 85%; }
   body.coop-mode #interact-prompt { display: none; }
@@ -943,6 +958,119 @@
     transform: translateY(-50%);
   }
 
+  /* Downed bleed-out timer (see DOWNED STATE): a ring that empties as
+     the timer runs down, seconds left inside. JS positions it (left/top =
+     its center) inside the player's own view. */
+  .downed-hud {
+    display: none;
+    position: fixed;
+    width: 104px;
+    height: 104px;
+    margin: -52px 0 0 -52px;
+    pointer-events: none;
+    z-index: 12; /* above the crosshair, under every menu/inventory layer */
+    font-family: Arial, Helvetica, sans-serif;
+    color: #fff;
+    text-align: center;
+  }
+  .downed-hud.visible {
+    display: block;
+  }
+  .downed-hud.reviving .downed-ring-fill {
+    stroke: #4cd964;
+    filter: drop-shadow(0 0 3px rgba(60, 220, 90, 0.8));
+  }
+  .downed-hud svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg); /* ring starts (and empties toward) 12 o'clock */
+  }
+  .downed-ring-track,
+  .downed-ring-fill {
+    fill: none;
+    stroke-width: 7;
+  }
+  .downed-ring-track {
+    fill: rgba(40, 0, 0, 0.55);
+    stroke: rgba(255, 255, 255, 0.18);
+  }
+  .downed-ring-fill {
+    stroke: #ff3b30;
+    stroke-linecap: round;
+    stroke-dasharray: 276.46; /* 2 * pi * r (r = 44) -- DOWNED_RING_CIRCUMFERENCE */
+    stroke-dashoffset: 0;
+    filter: drop-shadow(0 0 3px rgba(255, 40, 30, 0.8));
+  }
+  .downed-label {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 27px;
+    font-size: 11px;
+    letter-spacing: 2px;
+    opacity: 0.85;
+  }
+  .downed-time {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 39px;
+    font-size: 30px;
+    font-weight: bold;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Revive Player selection (see openReviveSelection): above every HUD
+     and menu layer, the Skills panel already closed underneath. */
+  #revive-select-screen {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+    font-family: Arial, Helvetica, sans-serif;
+    color: #fff;
+    user-select: none;
+  }
+  #revive-select-screen.visible {
+    display: flex;
+  }
+  .revive-select-panel {
+    min-width: 340px;
+    padding: 22px 28px 24px;
+    text-align: center;
+    background: radial-gradient(ellipse at center, rgba(52, 38, 12, 0.97) 0%, rgba(20, 14, 4, 0.97) 100%);
+    border: 3px double #f0cf6a;
+    border-radius: 12px;
+    box-shadow: 0 0 0 1px #5e430d, 0 0 0 4px #d4af37, 0 0 24px rgba(255, 205, 100, 0.45);
+  }
+  .revive-select-panel h2 {
+    margin: 0 0 4px;
+    font-size: 26px;
+    letter-spacing: 2px;
+    color: #ffe9a8;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+  }
+  .revive-select-sub {
+    margin-bottom: 16px;
+    font-size: 14px;
+    opacity: 0.8;
+  }
+  #revive-select-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  #revive-select-options .revive-select-option {
+    margin: 0;
+    width: 100%;
+  }
+
   /* Co-op solo-death prompt (see triggerDeath): a death-screen-styled
      box, but confined to just the dead player's own half instead of the
      full viewport, so their still-alive teammate's half stays fully
@@ -1513,6 +1641,50 @@
   }
   .skill-tree-node.locked {
     opacity: 0.5;
+  }
+  /* Special nodes (Revive Player): an ornate gilt frame -- a double gold
+     rim with a dark inner line, like a French rococo picture frame, and a
+     fleur-de-lis crowning the top and hanging from the bottom. */
+  .skill-tree-node.skill-special {
+    color: #ffe9a8;
+    font-weight: bold;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+    background: radial-gradient(ellipse at center, rgba(78, 58, 20, 0.96) 0%, rgba(30, 21, 6, 0.96) 100%);
+    border: 3px double #f0cf6a;
+    border-radius: 9px;
+    box-shadow:
+      0 0 0 1px #5e430d,
+      0 0 0 3px #d4af37,
+      0 0 0 4px #7a5a14,
+      0 0 12px rgba(255, 205, 100, 0.55),
+      inset 0 0 7px rgba(255, 215, 120, 0.35);
+  }
+  .skill-tree-node.skill-special::before,
+  .skill-tree-node.skill-special::after {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    line-height: 1;
+    color: #f3d27a;
+    text-shadow: 0 0 3px rgba(0, 0, 0, 0.9), 0 0 5px rgba(255, 200, 90, 0.6);
+    pointer-events: none;
+  }
+  .skill-tree-node.skill-special::before {
+    content: "\269C"; /* fleur-de-lis */
+    top: -12px;
+  }
+  .skill-tree-node.skill-special::after {
+    content: "\2767"; /* rotated floral heart */
+    bottom: -12px;
+    transform: translateX(-50%) rotate(90deg);
+  }
+  .skill-tree-node.skill-special:hover {
+    border-color: #fff0b0;
+  }
+  .skill-tree-node.skill-special.unlocked {
+    background: radial-gradient(ellipse at center, rgba(160, 125, 45, 0.97) 0%, rgba(90, 66, 18, 0.97) 100%);
+    color: #fff8dc;
   }
   /* Small badge sitting between two mutually exclusive nodes (see
      `excludes` on SKILL_TREE_NODES / buildSkillTreeDom); hovering it shows
@@ -2297,8 +2469,8 @@
   }
   .coop-setup-model-canvas {
     display: block;
-    width: 240px; /* SETUP_MODEL_BASE_WIDTH -- actual size set in JS (updateCoopSetupModelScale), this is just its scale-1 fallback */
-    height: 340px; /* SETUP_MODEL_BASE_HEIGHT */
+    width: 324px; /* SETUP_MODEL_BASE_WIDTH -- actual size set in JS (updateCoopSetupModelScale), this is just its scale-1 fallback */
+    height: 459px; /* SETUP_MODEL_BASE_HEIGHT */
   }
   /* Arrows are positioned independently of the canvas now (explicit
      follow-up), not a centered flex sibling of it -- .coop-setup-model-row
@@ -2312,7 +2484,7 @@
      ratio), so the arrows never shift between faces. */
   .coop-setup-face-arrow {
     position: absolute;
-    top: 18%; /* head center of the humanoid preview model (see createSetupModelPreview) -- was 23% for the old box body */
+    top: 27%; /* head center of the humanoid preview model (see createSetupModelPreview's camera framing) */
     padding: 10px 14px;
     font-size: 22px;
     font-family: inherit;
@@ -2411,7 +2583,7 @@
      connected yet, so all four boxes stay lined up. */
   .quad-setup-model {
     position: relative;
-    height: 36vh;
+    height: 46vh;
     aspect-ratio: 240 / 340;
   }
   .quad-setup-model.hidden {
@@ -2424,7 +2596,7 @@
   }
   .quad-setup-face-arrow {
     position: absolute;
-    top: 18%; /* head height, same as .coop-setup-face-arrow */
+    top: 27%; /* head height, same as .coop-setup-face-arrow */
     transform: translateY(-50%);
     padding: 0.8vh 1.1vh;
     font-size: 1.8vh;
@@ -2882,6 +3054,25 @@
   <div class="coop-ammo-text"><span id="ammo-loaded-p2">13</span> / <span id="ammo-reserve-p2" class="coop-ammo-reserve">36</span></div>
 </div>
 
+<!-- Downed bleed-out timer (see DOWNED STATE / updateDownedHud): the ring
+     empties as downedTimeLeft runs out; placed in the player's own view. -->
+<div id="downed-hud-p1" class="downed-hud coop-p1">
+  <svg viewBox="0 0 100 100" aria-hidden="true">
+    <circle class="downed-ring-track" cx="50" cy="50" r="44"></circle>
+    <circle class="downed-ring-fill" cx="50" cy="50" r="44"></circle>
+  </svg>
+  <div class="downed-label">DOWN</div>
+  <div class="downed-time">45</div>
+</div>
+<div id="downed-hud-p2" class="downed-hud coop-p2">
+  <svg viewBox="0 0 100 100" aria-hidden="true">
+    <circle class="downed-ring-track" cx="50" cy="50" r="44"></circle>
+    <circle class="downed-ring-fill" cx="50" cy="50" r="44"></circle>
+  </svg>
+  <div class="downed-label">DOWN</div>
+  <div class="downed-time">45</div>
+</div>
+
 <div id="inventory-panel" class="hidden">
   <div class="inventory-tab-bar">
     <button type="button" class="inventory-tab-button active" data-side="p1" data-tab="inventory">Inventory</button>
@@ -2926,6 +3117,16 @@
 <div id="inventory-cursor-p2" class="inventory-cursor"></div>
 <div id="inventory-tooltip-p1" class="inventory-tooltip"></div>
 <div id="inventory-tooltip-p2" class="inventory-tooltip"></div>
+
+<!-- Revive Player skill, several teammates dead: pick one (see
+     openReviveSelection). The game is paused underneath. -->
+<div id="revive-select-screen">
+  <div class="revive-select-panel">
+    <h2>Revive a Player</h2>
+    <div class="revive-select-sub">Choose one teammate to bring back</div>
+    <div id="revive-select-options"></div>
+  </div>
+</div>
 
 <div id="death-screen">
   <h1>YOU DIED</h1>
@@ -2979,7 +3180,7 @@
   // ------------------------------------------------------------------
   const PER_PLAYER_HUD_IDS = [
     "interact-prompt", "scope-overlay", "crosshair", "hit-marker", "health-hud", "ammo-hud",
-    "inventory-panel", "inventory-cursor", "inventory-tooltip", "coop-spectator-screen",
+    "inventory-panel", "inventory-cursor", "inventory-tooltip", "coop-spectator-screen", "downed-hud",
   ];
   for (const baseId of PER_PLAYER_HUD_IDS) {
     const source = document.getElementById(baseId + "-p2");
@@ -3064,6 +3265,21 @@
   const CROUCH_EYE_HEIGHT = 1.0;
   const CROUCH_SPEED_MULTIPLIER = 0.5;   // crouch-walk speed, relative to WALK_SPEED
   const CROUCH_TRANSITION_SPEED = 10;    // how fast eye height lerps in/out of crouch
+  // Downed (explicit request -- see DOWNED STATE): a co-op player at 0 HP
+  // with a teammate still up crawls on the ground until they bleed out.
+  const DOWNED_BLEEDOUT_SECONDS = 45;    // downed -> dead (a difficulty's downedBleedoutSeconds overrides it -- see getDownedBleedoutSeconds)
+  const DOWNED_CRAWL_SPEED = 0.8;        // m/s -- about a sixth of walking; no sprint
+  const DOWNED_EYE_HEIGHT = 0.45;        // camera height while crawling
+  // Enemy hits on a downed player take this many seconds per damage point
+  // off their bleed-out clock (health stays at 0) -- so staying near a
+  // horde still matters, and crawling away is worth it.
+  const DOWNED_BLEEDOUT_SECONDS_PER_DAMAGE = 0.5;
+  // Reviving: a teammate who's up holds Interact within REVIVE_RANGE of
+  // a downed player for REVIVE_HOLD_SECONDS (the bleed-out clock pauses
+  // meanwhile). Comes back with REVIVE_HEALTH_FRACTION of max health.
+  const REVIVE_RANGE = 1.8;              // m, horizontal, camera to camera
+  const REVIVE_HOLD_SECONDS = 4;
+  const REVIVE_HEALTH_FRACTION = 0.25;
 
   // Rest of the slide tuning (see SLIDE_PEAK_SPEED_MULTIPLIER/SLIDE_DECAY_DURATION
   // above, next to WALK_SPEED/SPRINT_MULTIPLIER). Sliding shares the crouch's
@@ -3369,6 +3585,7 @@
       startingExtraMagazines: 2, // extra starting-pistol magazines in reserve -- see resetPlayerState
       ammoDropChanceBonus: 0.05, // added to every enemy's ammo-box drop chance (32% -> 37%, brutes 47% -> 52%) -- see damageEnemy
       enemyContactDamage: 8, // a normal (red) enemy's contact hit on a player or turret -- overrides ENEMY_DAMAGE_PER_HIT (explicit request)
+      greenExplosionDamage: GREEN_ENEMY_EXPLOSION_DAMAGE - 5, // explicit request: 5 less on Normal -- Hard/Legendary keep GREEN_ENEMY_EXPLOSION_DAMAGE
       enemyCountFormula: (wave) => 8 + 4 * wave,
       waveSpawnSecondsPerEnemy: 1.15, // spawn phase lasts 1.15 s per regular enemy (explicit request) -- Hard/Legendary keep WAVE_SPAWN_DURATION_MULTIPLIER
       bandageHealAmount: 20, // explicit request (Normal and Hard) -- Legendary keeps BANDAGE_HEAL_AMOUNT
@@ -3384,6 +3601,7 @@
       bruteThrowSpeedMultiplier: 1.08,
       startingExtraMagazines: 1,
       ammoDropChanceBonus: 0,
+      downedBleedoutSeconds: 35, // explicit request -- Normal keeps DOWNED_BLEEDOUT_SECONDS
       enemyCountFormula: (wave) => 10 + 5 * wave,
       bandageHealAmount: 20, // same as Normal (explicit request)
       roundClearScore: 150,
@@ -3398,6 +3616,7 @@
       bruteThrowSpeedMultiplier: 1.15, // relative to Normal directly, like enemySpeedMultiplier
       startingExtraMagazines: 0,
       ammoDropChanceBonus: 0,
+      downedBleedoutSeconds: 35, // same as Hard
       enemyCountFormula: (wave) => 10 + 5 * wave, // same count formula as Hard
       roundClearScore: 200,
     },
@@ -3944,6 +4163,14 @@
       // Life-cycle -- see takeDamage/triggerDeath/updateHealthUI.
       health: MAX_HEALTH,
       isDead: false,
+      // Downed (co-op only -- see DOWNED STATE): at 0 HP with a teammate
+      // still up, a player crawls instead of dying. downedTimeLeft is the
+      // one bleed-out clock; the HUD ring just reads it.
+      isDowned: false,
+      downedTimeLeft: 0,
+      // As the reviver: who they're reviving right now, and for how long.
+      reviveTarget: null,
+      reviveProgress: 0,
 
       // Tracks isPlayerFrozen (animate()'s own per-frame concept) across
       // frames so animate() can mute/resume this player's slide loop
@@ -7573,7 +7800,7 @@
       const player = players[i];
       const def = getActiveWeaponDef(player);
       const inMatch = i === 0 ? (isSingleplayerMatchActive || isCoopMatchActive) : isCoopMatchActive;
-      const scoped = inMatch && !player.isDead && !player.isInventoryOpen &&
+      const scoped = inMatch && !player.isDead && !player.isDowned && !player.isInventoryOpen &&
         !!def && !!def.gun.scopeOverlay && player.aimProgress >= SNIPER_SCOPE_OVERLAY_AT;
       player.scopeKick *= Math.exp(-SNIPER_SCOPE_KICK_DECAY * deltaSeconds);
       if (scoped) {
@@ -7590,7 +7817,7 @@
       el.style.transform = scoped && kick > 0.002
         ? "translate(" + (kick * 0.8).toFixed(2) + "vh, " + (-kick * 6).toFixed(2) + "vh) rotate(" + (kick * 1.4).toFixed(2) + "deg)"
         : "";
-      player.viewModelRoot.visible = !scoped;
+      player.viewModelRoot.visible = !scoped && !player.isDead && !player.isDowned; // hands off the gun while dead or downed (see triggerDeath / DOWNED STATE)
     }
   }
 
@@ -11139,7 +11366,7 @@
   // ------------------------------------------------------------------
   const BARRICADE_ROWS = 4;
   const BARRICADE_HIT_INTERVAL = 1.0;     // s between one zombie's strikes on the boards
-  const BARRICADE_PLANK_HP = 12 * 1.1;    // strikes to fully destroy one board (half of it splits it); brutes hit for 2 -- +10% (explicit request)
+  const BARRICADE_PLANK_HP = 12 * 1.1 * 1.15; // strikes to fully destroy one board (half of it splits it); brutes hit for 2 -- +10%, then +15% (explicit requests)
   const BARRICADE_REPAIR_RANGE = 2.2;     // m from the doorway's center
   // Zombies break the middle boards first (split, then the stubs), then the outer ones.
   const BARRICADE_BREAK_ORDER = [[1, 1], [2, 1], [1, 0], [2, 0], [0, 1], [3, 1], [0, 0], [3, 0]];
@@ -11386,6 +11613,7 @@
       placeCarriedTurret(player);
       return;
     }
+    if (findRevivableTeammate(player)) return; // Interact is held to revive (see updateReviving), not pressed
     if (tryPickUpTurret(player)) return;
     if (tryRepairBarricade(player)) return;
     tryPickUpNearbyItem(player);
@@ -11437,9 +11665,15 @@
       : codeToLabel(keybinds.interact);
   }
   function interactPromptFor(player) {
+    const reviveTarget = findRevivableTeammate(player);
+    if (reviveTarget) {
+      const pct = player.reviveTarget === reviveTarget ? Math.min(100, Math.floor(player.reviveProgress / REVIVE_HOLD_SECONDS * 50) * 2) : 0;
+      return 'Hold <span class="interact-key">' + interactKeyLabel(player) + "</span>to Revive" +
+        (pct > 0 ? '<span class="revive-bar"><span style="width:' + pct + '%"></span></span>' : "");
+    }
     const turretPrompt = turretPromptFor(player);
     if (turretPrompt !== null) return turretPrompt;
-    if (!barricades || !isCampusMap || player.isDead) return "";
+    if (!barricades || !isCampusMap || player.isDead || player.isDowned) return "";
     for (const b of barricades) {
       if (Math.hypot(player.camera.position.x - b.center.x, player.camera.position.z - b.center.z) > BARRICADE_REPAIR_RANGE) continue;
       if (!b.rows.some((r) => r < 2)) continue;
@@ -11706,7 +11940,7 @@
   // --- Crafting / carrying ----------------------------------------------------
   // No limit on how many -- just not while your hands are already full.
   function canCraftTurret(player) {
-    return !player.isDead && !player.carriedTurret;
+    return !player.isDead && !player.isDowned && !player.carriedTurret;
   }
   function giveNewTurret(player) {
     startCarryingTurret(player, createTurret(player), false);
@@ -11862,7 +12096,7 @@
   }
   // The interact prompt's turret line (see interactPromptFor), or null.
   function turretPromptFor(player) {
-    if (player.isDead) return null;
+    if (player.isDead || player.isDowned) return null;
     const key = '<span class="interact-key">' + interactKeyLabel(player) + "</span>";
     if (player.carriedTurret) return findTurretPlacement(player) ? key + "Place Turret" : "~Can't place here";
     if (nearbyTurret(player)) return key + "Pick Up Turret";
@@ -11932,7 +12166,6 @@
 
   // --- Targeting and firing -----------------------------------------------------
   const turretCandidates = [];
-  const turretRay = new THREE.Raycaster();
   const turretRayDir = new THREE.Vector3();
   const turretMuzzle = new THREE.Vector3();
   const turretAimPoint = new THREE.Vector3();
@@ -11977,16 +12210,11 @@
     turret.model.muzzleTip.getWorldPosition(turretMuzzle);
     turretAimPoint.copy(e.mesh.position);
     turretAimPoint.y += 0.15 * (e.sizeScale || 1);
-    // Blocked by a wall or boards in the way: hold fire and look again.
-    const blockedByWall = isCampusMap && campusWorld.segmentBlocked(turretMuzzle.x, turretMuzzle.z, turretAimPoint.x, turretAimPoint.z, 0);
-    let blocked = blockedByWall;
-    if (!blocked && barricadePlankMeshes.length) {
-      turretRayDir.subVectors(turretAimPoint, turretMuzzle);
-      const dist = turretRayDir.length();
-      turretRay.set(turretMuzzle, turretRayDir.normalize());
-      turretRay.far = dist;
-      blocked = turretRay.intersectObjects(barricadePlankMeshes, false).length > 0;
-    }
+    // Blocked by a wall in the way: hold fire and look again. Barricade
+    // boards and glass don't block it -- turrets see and shoot straight
+    // through both (explicit request; glass colliders are seeThrough, so
+    // segmentBlocked already skips them).
+    const blocked = isCampusMap && campusWorld.segmentBlocked(turretMuzzle.x, turretMuzzle.z, turretAimPoint.x, turretAimPoint.z, 0);
     if (blocked) {
       turret.enemy = null;
       turret.searchTimer = 0;
@@ -14237,6 +14465,7 @@
     statusEl.className = "inventory-tooltip-status";
     if (state === "unlocked") statusEl.textContent = "Unlocked";
     else if (state === "unavailable") statusEl.textContent = "Coming soon";
+    else if (state === "nodead") statusEl.textContent = "No dead players to revive";
     else if (state === "excluded") {
       statusEl.textContent =
         "Can't be taken with " + node.excludes.map((id) => SKILL_TREE_NODES_BY_ID[id].name).join(" or ");
@@ -14426,7 +14655,19 @@
   // below it for upgrades).
   const SKILL_TURRET_X = SKILL_HEALTH_X + SKILL_NODE_SPACING_X * 1.2;
   const SKILL_AMMO_X = SKILL_TURRET_X + SKILL_NODE_SPACING_X;
+  // Revive Player: alone on the far left, clear of 15 MPW (the 5k tree's
+  // leftmost child).
+  const SKILL_REVIVE_X = SKILL_5K_X - SKILL_5K_CHILD_OFFSET_X - SKILL_NODE_SPACING_X;
   const SKILL_TREE_NODES = [
+    // Special (gold rim): brings a DEAD teammate back (not a downed one) --
+    // see startRevivePlayerSkill. Only buyable while a teammate is dead
+    // (getSkillNodeState's "nodead"); once bought it stays bought for the
+    // rest of the game, like every other node.
+    {
+      id: "revive_player", name: "Revive Player", tier: 1, position: { x: SKILL_REVIVE_X, y: 0 }, parentId: null, cost: 2, special: true,
+      description: "Brings a dead teammate back where they fell, with the inventory they died with. Can be Bought Once per Player",
+      effect: { revivesDeadPlayer: true },
+    },
     {
       id: "run_24_min_5k", name: "22 Minute 5k", tier: 1, position: { x: SKILL_5K_X, y: 0 }, parentId: null,
       description: "Increases Max Stamina by 25 and Sprint Speed by 1%", effect: { maxStaminaBonus: 25, sprintSpeedMultiplier: 1.01 },
@@ -14573,10 +14814,12 @@
   // "unlocked" | "available" (can be bought: every parent unlocked, has
   // an effect) | "locked" (a parent not unlocked yet) | "unavailable"
   // (placeholder with no effect yet) | "excluded" (a node it's mutually
-  // exclusive with -- see `excludes` -- is already unlocked).
+  // exclusive with -- see `excludes` -- is already unlocked) | "nodead"
+  // (Revive Player with no dead teammate to bring back).
   function getSkillNodeState(player, node) {
     if (player.unlockedSkillIds.has(node.id)) return "unlocked";
     if (!node.effect) return "unavailable";
+    if (node.effect.revivesDeadPlayer && getDeadTeammates(player).length === 0) return "nodead";
     if (node.excludes && node.excludes.some((id) => player.unlockedSkillIds.has(id))) return "excluded";
     if (!areSkillParentsMet(player, node)) return "locked";
     return "available";
@@ -14595,6 +14838,7 @@
       player.health += node.effect.maxHealthBonus;
       updateHealthUI(player);
     }
+    if (node.effect.revivesDeadPlayer) startRevivePlayerSkill(player);
     return true;
   }
 
@@ -14745,7 +14989,7 @@
 
     for (const node of SKILL_TREE_NODES) {
       const nodeEl = document.createElement("div");
-      nodeEl.className = "skill-tree-node";
+      nodeEl.className = node.special ? "skill-tree-node skill-special" : "skill-tree-node";
       nodeEl.dataset.nodeId = node.id;
       nodeEl.textContent = node.name;
       nodeEl.style.width = SKILL_NODE_WIDTH + "px";
@@ -14841,7 +15085,7 @@
     els.skillTreeLayer.querySelectorAll(".skill-tree-node").forEach((el) => {
       const state = getSkillNodeState(player, SKILL_TREE_NODES_BY_ID[el.dataset.nodeId]);
       el.classList.toggle("unlocked", state === "unlocked");
-      el.classList.toggle("locked", state === "locked" || state === "unavailable" || state === "excluded");
+      el.classList.toggle("locked", state === "locked" || state === "unavailable" || state === "excluded" || state === "nodead");
     });
   }
 
@@ -15451,7 +15695,7 @@
     const maxHealth = getMaxHealth(player);
     // Compared as the HUD shows it (rounded up), so 99.6 HP -- displayed
     // as a full 100 -- also counts as full and never wastes an item.
-    if (player.isDead || Math.ceil(player.health) >= maxHealth) return false;
+    if (player.isDead || player.isDowned || Math.ceil(player.health) >= maxHealth) return false;
     if (getInventoryItemQuantity(player, itemId) <= 0) return false;
     removeItemFromInventory(player, itemId, 1);
     if (itemId === "bandages") playBandageSound(player);
@@ -15482,18 +15726,314 @@
     // and if the boss dies mid-grab, releaseBossGrab clears grabbedBy
     // the same moment, so they're never left stuck invulnerable.
     if (player.grabbedBy) return;
+    // Already down: health stays at 0, hits eat into the bleed-out clock instead.
+    if (player.isDowned) {
+      player.downedTimeLeft = Math.max(0, player.downedTimeLeft - amount * DOWNED_BLEEDOUT_SECONDS_PER_DAMAGE);
+      return;
+    }
     player.health -= amount;
     if (player.health <= 0) {
       player.health = 0;
       updateHealthUI(player);
-      triggerDeath(player);
+      if (canPlayerBeDowned(player)) enterDownedState(player);
+      else triggerDeath(player);
       return;
     }
     updateHealthUI(player);
   }
 
+  // ------------------------------------------------------------------
+  // DOWNED STATE (explicit request): Alive -> Downed -> Dead, or (with a
+  // future revive) Downed -> Alive. Co-op only: a player hitting 0 HP
+  // while at least one OTHER player is up (alive and not downed) goes
+  // down instead of dying -- crawling slowly, no weapons, no sprint --
+  // and bleeds out after getDownedBleedoutSeconds() (per difficulty). Everything lives on the
+  // same player object: isDowned + downedTimeLeft, advanced only by
+  // updateDownedPlayers in the shared world update (the one clock the HUD
+  // ring and the body's crawl pose both read). Inventory, weapons and
+  // skills are untouched while down, so reviveDownedPlayer can just hand
+  // them back.
+  // ------------------------------------------------------------------
+  const isPlayerUp = (p) => !p.isDead && !p.isDowned;
+  const getDownedBleedoutSeconds = () => currentDifficulty.downedBleedoutSeconds ?? DOWNED_BLEEDOUT_SECONDS;
+  function canPlayerBeDowned(player) {
+    return isCoopMatchActive && players.some((p) => p !== player && isPlayerUp(p));
+  }
+
+  function enterDownedState(player) {
+    player.isDowned = true;
+    player.downedTimeLeft = getDownedBleedoutSeconds();
+    if (player.carriedTurret) dropCarriedTurretOnDeath(player); // set down where they fell, working (see TURRETS)
+    if (player.isSliding) endSlide(player);
+    player.isSprinting = false;
+    player.isTacticalSprinting = false;
+    // Hands off the weapon: stop any reload/swing/ADS and hide the view
+    // model (the gun stays in its slot for a revive).
+    cancelReload(player);
+    endMeleeSwing(player);
+    player.isAiming = false;
+    player.aimProgress = 0;
+    player.viewModelRoot.visible = false;
+    coopCrosshairEls[players.indexOf(player)].classList.add("aim-hidden");
+    if (player.isInventoryOpen) setInventoryOpen(player, false);
+    updateDownedHud(player);
+  }
+
+  // Downed -> Alive (a teammate's finished revive -- see updateReviving).
+  // Health comes back at `health` (default: REVIVE_HEALTH_FRACTION).
+  function reviveDownedPlayer(player, health = Math.ceil(getMaxHealth(player) * REVIVE_HEALTH_FRACTION)) {
+    if (!player.isDowned || player.isDead) return;
+    clearDownedState(player);
+    player.health = Math.min(getMaxHealth(player), health);
+    updateHealthUI(player);
+    player.viewModelRoot.visible = true;
+    setActiveViewModel(player); // re-raises the active weapon and syncs the ammo HUD
+  }
+
+  function clearDownedState(player) {
+    player.isDowned = false;
+    player.downedTimeLeft = 0;
+    updateDownedHud(player);
+  }
+
+  // The downed teammate `player` could revive right now: they're up, hands
+  // free, and a downed player is within REVIVE_RANGE (nearest wins).
+  function findRevivableTeammate(player) {
+    if (!isCoopMatchActive || !isPlayerUp(player) || player.carriedTurret) return null;
+    let best = null, bestD = REVIVE_RANGE;
+    for (const other of players) {
+      if (other === player || !other.isDowned) continue;
+      const d = Math.hypot(other.camera.position.x - player.camera.position.x, other.camera.position.z - player.camera.position.z);
+      if (d <= bestD) { bestD = d; best = other; }
+    }
+    return best;
+  }
+  // Per frame for each co-op player: holding Interact next to a downed
+  // teammate fills reviveProgress; letting go, walking off, or the
+  // target changing starts it over.
+  function updateReviving(player, deltaSeconds) {
+    const hasControl = !(playerNeedsPointerLock(player) && document.pointerLockElement !== canvas) && !player.isInventoryOpen;
+    const target = hasControl && player.input.isActionHeld("interact") ? findRevivableTeammate(player) : null;
+    if (!target) {
+      player.reviveTarget = null;
+      player.reviveProgress = 0;
+      return;
+    }
+    if (target !== player.reviveTarget) {
+      player.reviveTarget = target;
+      player.reviveProgress = 0;
+    }
+    player.reviveProgress += deltaSeconds;
+    if (player.reviveProgress >= REVIVE_HOLD_SECONDS) {
+      player.reviveTarget = null;
+      player.reviveProgress = 0;
+      reviveDownedPlayer(target);
+    }
+  }
+  const isBeingRevived = (player) => players.some((p) => p.reviveTarget === player);
+
+  // ------------------------------------------------------------------
+  // REVIVE PLAYER SKILL (explicit request): Dead -> Alive, never Downed
+  // -> Alive (that's a teammate's hold-to-revive above). Buying the skill
+  // (see tryUnlockSkill) brings back the one dead teammate outright, or
+  // with several dead in a 3/4-player match pauses on a pick-one screen
+  // (reviveSelection). Revived players come back at full health where
+  // they died, holding the weapons they died with.
+  // ------------------------------------------------------------------
+  let reviveSelection = null; // { buyer } while the pick-one screen is up -- the world is frozen then
+  const reviveSelectScreenEl = document.getElementById("revive-select-screen");
+  const reviveSelectOptionsEl = document.getElementById("revive-select-options");
+
+  function getDeadTeammates(player) {
+    return isCoopMatchActive ? players.filter((p) => p !== player && p.isDead) : [];
+  }
+
+  // Which part of the screen a player's view fills: "Top", "Bottom Left", ...
+  function getPlayerScreenCornerLabel(index) {
+    const rect = getPlayerViewportRect(index);
+    const vertical = rect.y === 0 ? "Top" : "Bottom";
+    if (rect.width >= window.innerWidth) return vertical;
+    return vertical + (rect.x === 0 ? " Left" : " Right");
+  }
+
+  // Called once the skill's been paid for.
+  function startRevivePlayerSkill(buyer) {
+    const dead = getDeadTeammates(buyer);
+    setInventoryOpen(buyer, false); // the Skills UI goes away either way
+    if (dead.length === 1) {
+      reviveDeadPlayer(dead[0]);
+      if (playerNeedsPointerLock(buyer)) canvas.requestPointerLock();
+      return;
+    }
+    openReviveSelection(buyer, dead);
+  }
+
+  function openReviveSelection(buyer, dead) {
+    reviveSelection = { buyer };
+    reviveSelectOptionsEl.innerHTML = "";
+    for (const target of dead) {
+      const index = players.indexOf(target);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "menu-button revive-select-option";
+      button.textContent = `Revive Player ${index + 1} \u2014 ${getPlayerScreenCornerLabel(index)}`;
+      button.addEventListener("click", function (event) {
+        event.stopPropagation();
+        chooseReviveTarget(target);
+      });
+      reviveSelectOptionsEl.appendChild(button);
+    }
+    reviveSelectScreenEl.classList.add("visible");
+    // The Square press that bought the skill may still be held -- don't
+    // let menu nav read it as picking the first option.
+    menuNavStickInput.squareWasPressed = true;
+    // A keyboard+mouse P1 needs a real cursor to click with (without the
+    // pause menu an unlock would normally bring up).
+    if (matchP1Scheme === "keyboard" && document.pointerLockElement === canvas) {
+      suppressNextPauseOnUnlock = true;
+      document.exitPointerLock();
+    }
+    if (matchP1Scheme === "keyboard") setCursorHidden(false);
+  }
+
+  function chooseReviveTarget(target) {
+    if (!reviveSelection || !target.isDead) return;
+    playClip("menu_click_01");
+    reviveSelection = null;
+    reviveSelectScreenEl.classList.remove("visible");
+    reviveSelectOptionsEl.innerHTML = "";
+    reviveDeadPlayer(target);
+    setCursorHidden(true);
+    if (matchP1Scheme === "keyboard" && document.pointerLockElement !== canvas && !players[0].isDead) {
+      canvas.requestPointerLock(); // works from a real click; a controller pick falls back to the next click/keypress
+      document.addEventListener("click", retryCoopPointerLockOnce);
+      document.addEventListener("keydown", retryCoopPointerLockOnce);
+    }
+  }
+
+  function closeReviveSelection() {
+    reviveSelection = null;
+    reviveSelectScreenEl.classList.remove("visible");
+    reviveSelectOptionsEl.innerHTML = "";
+  }
+
+  // Dead -> Alive: back where they fell (pushed clear of anything now in
+  // the way -- walls, barricades, turrets), full health, weapon slots as
+  // they were (the guns their death dropped are taken back off the
+  // floor), and out of spectating.
+  function reviveDeadPlayer(player) {
+    if (!player.isDead || !isCoopMatchActive) return;
+    const index = players.indexOf(player);
+    const snap = player.deathSnapshot;
+    if (snap) {
+      player.camera.position.x = snap.x;
+      player.camera.position.z = snap.z;
+      player.campusGroundY = snap.groundY;
+      player.yaw = snap.yaw;
+      for (const item of snap.droppedItems) {
+        const i = droppedItems.indexOf(item);
+        if (i === -1) continue; // already picked up by someone
+        scene.remove(item.group);
+        disposeDroppedItemGeometry(item.group);
+        droppedItems.splice(i, 1);
+      }
+      player.inventorySlots[0] = snap.slots[0] ? { ...snap.slots[0] } : null;
+      player.inventorySlots[1] = snap.slots[1] ? { ...snap.slots[1] } : null;
+      player.activeSlotIndex = snap.activeSlotIndex;
+    }
+    player.deathSnapshot = null;
+    player.pitch = 0;
+    player.velocity.set(0, 0, 0);
+    player.bruteKnockbackVelocity.set(0, 0, 0);
+    player.verticalVelocity = 0;
+    player.jumpOffset = 0;
+    player.isGrounded = true;
+    player.fallPeakY = null;
+    player.pendingThrowLandingDamage = 0;
+    player.isSliding = false;
+    player.currentEyeHeight = EYE_HEIGHT;
+    moveWithWallCollision(player.camera.position, 0, 0, PLAYER_RADIUS, player.campusGroundY || 0); // still a valid spot?
+    player.camera.position.y = player.currentEyeHeight + (isCampusMap ? player.campusGroundY || 0 : 0);
+
+    player.isDead = false;
+    player.health = getMaxHealth(player);
+    updateHealthUI(player);
+    player.viewModelRoot.visible = true;
+    setActiveViewModel(player); // raises the restored weapon and syncs the ammo HUD
+
+    // Out of spectating: their own half/quadrant is theirs again.
+    coopSpectatorScreenEls[index].classList.remove("visible");
+    document.body.classList.remove(`spectating-p${index + 1}`);
+    player.spectateIndex = null;
+    coopSpectatingLabelEls[index].textContent = "";
+    if (coopFullscreenSurvivorIndex !== null) {
+      coopFullscreenSurvivorIndex = null;
+      document.body.classList.remove("coop-spectator-fullscreen", "coop-spectator-fullscreen-p1", "coop-spectator-fullscreen-p2");
+      updateCameraAspectsForRenderMode();
+    }
+    if (typeof player.input.poll === "function") {
+      player.input.poll(); // fresh edges -- a still-held button isn't a new press
+      player.input.endFrame();
+    }
+    playClip("skill_bought_01", { position: player.camera.position });
+  }
+
+  // Downed -> Dead: the normal death, as if they'd been killed outright.
+  function bleedOutDownedPlayer(player) {
+    clearDownedState(player);
+    triggerDeath(player);
+  }
+
+  // Runs with the shared world update (paused with it).
+  function updateDownedPlayers(deltaSeconds) {
+    for (const player of players) {
+      if (!player.isDowned) continue;
+      if (!isBeingRevived(player)) player.downedTimeLeft = Math.max(0, player.downedTimeLeft - deltaSeconds); // paused while a teammate revives them
+      if (player.downedTimeLeft <= 0) bleedOutDownedPlayer(player);
+      else updateDownedHud(player);
+    }
+  }
+
+  // Circular bleed-out timer, centered in the player's own view (placed
+  // from getPlayerViewportRect, so it follows every split-screen layout).
+  const downedHudEls = [1, 2, 3, 4].map((n) => {
+    const root = document.getElementById(`downed-hud-p${n}`);
+    return { root, ring: root.querySelector(".downed-ring-fill"), time: root.querySelector(".downed-time"), label: root.querySelector(".downed-label") };
+  });
+  const DOWNED_RING_CIRCUMFERENCE = 2 * Math.PI * 44; // matches the SVG circles' r
+  function updateDownedHud(player) {
+    const index = players.indexOf(player);
+    const els = downedHudEls[index];
+    if (!els) return;
+    const show = isCoopMatchActive && player.isDowned && !isMatchPaused; // never over the pause/settings menus
+    els.root.classList.toggle("visible", show);
+    if (!show) return;
+    const rect = getPlayerViewportRect(index);
+    els.root.style.left = rect.x + rect.width / 2 + "px";
+    els.root.style.top = rect.y + rect.height * 0.62 + "px";
+    const fraction = Math.max(0, Math.min(1, player.downedTimeLeft / getDownedBleedoutSeconds()));
+    els.ring.style.strokeDashoffset = (DOWNED_RING_CIRCUMFERENCE * (1 - fraction)).toFixed(2);
+    const seconds = String(Math.ceil(player.downedTimeLeft));
+    if (els.time.textContent !== seconds) els.time.textContent = seconds;
+    const label = isBeingRevived(player) ? "REVIVING" : "DOWN";
+    if (els.label.textContent !== label) els.label.textContent = label;
+    els.root.classList.toggle("reviving", label === "REVIVING");
+  }
+
   function triggerDeath(player) {
+    // Everything a Revive Player skill needs to bring them back as they
+    // were (see reviveDeadPlayer): where they fell, and their weapon slots
+    // before the drops below.
+    player.deathSnapshot = {
+      x: player.camera.position.x, z: player.camera.position.z,
+      groundY: player.campusGroundY || 0, yaw: player.yaw,
+      slots: player.inventorySlots.map((slot) => (slot ? { ...slot, isReloading: false, reloadElapsed: 0 } : null)),
+      activeSlotIndex: player.activeSlotIndex,
+      droppedItems: [],
+    };
+    const droppedCountBefore = droppedItems.length;
     player.isDead = true;
+    if (player.isDowned) clearDownedState(player);
     if (player.carriedTurret) dropCarriedTurretOnDeath(player); // goes down where they fell, working (see TURRETS)
 
     // Explicit bug report (co-op): a dead player's gun used to just hang
@@ -15520,6 +16060,7 @@
     } else {
       dropActiveSlotItem(player);
     }
+    player.deathSnapshot.droppedItems = droppedItems.slice(droppedCountBefore); // taken back off the floor on a revive
     player.viewModelRoot.visible = false;
 
     // A dead player can't open their inventory again (processToggleInventoryAction
@@ -15527,6 +16068,14 @@
     // instant they died, closing it here stops its panel/cursor from
     // just sitting there uselessly on top of the death/spectator screen.
     if (player.isInventoryOpen) setInventoryOpen(player, false);
+
+    // Co-op, nobody left standing: anyone still downed can never be
+    // revived now, so they bleed out on the spot (the last of those calls
+    // shows the real death screen below).
+    if (isCoopMatchActive && !players.some(isPlayerUp) && players.some((p) => p.isDowned)) {
+      for (const p of players) if (p.isDowned) bleedOutDownedPlayer(p);
+      return;
+    }
 
     // Co-op: a solo death doesn't end the round -- that player becomes a
     // spectator (no revive) until EVERY player is dead, per the original
@@ -15643,6 +16192,7 @@
   // matters.
   function setMatchPaused(paused, options) {
     isMatchPaused = paused;
+    for (const p of players) if (p.isDowned) updateDownedHud(p); // hidden under the pause menu (see DOWNED STATE)
     if (paused) {
       showOverlayView("pause");
       overlay.classList.remove("hidden");
@@ -15712,6 +16262,7 @@
   const coopPauseButtonWasPressed = {}; // gamepad index -> was Start pressed last poll, for edge detection
 
   function pollCoopMatchPauseGamepads() {
+    if (reviveSelection) return; // already paused on the Revive Player screen -- it has to be answered first
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const pad of pads) {
       if (!pad) continue;
@@ -15800,6 +16351,12 @@
   function resetPlayerState(player) {
     player.health = MAX_HEALTH;
     player.isDead = false;
+    player.isDowned = false; // see DOWNED STATE
+    player.downedTimeLeft = 0;
+    player.reviveTarget = null;
+    player.reviveProgress = 0;
+    player.deathSnapshot = null; // see REVIVE PLAYER SKILL
+    closeReviveSelection();
 
     player.inventorySlots[0] = createWeaponSlotState("pistol");
     // Per-difficulty head start (explicit request): Normal +2 magazines,
@@ -15949,6 +16506,7 @@
     document.body.classList.remove("coop-spectator-fullscreen", "coop-spectator-fullscreen-p1", "coop-spectator-fullscreen-p2");
     document.body.classList.remove("quad-mode", "trio-mode", "spectating-p1", "spectating-p2", "spectating-p3", "spectating-p4");
     coopSpectatorScreenEls.forEach((el) => el.classList.remove("visible"));
+    document.querySelectorAll(".downed-hud").forEach((el) => el.classList.remove("visible"));
     // A 3/4-player match ending: Players 3/4 leave the roster (back to
     // [P1, P2] -- see allPlayers), with their inventory panels closed and
     // bodies/guns hidden so nothing of theirs lingers in the next game.
@@ -15958,6 +16516,10 @@
       extra.viewModelRoot.visible = false;
       extra.human.root.visible = false;
       extra.isDead = false;
+      extra.isDowned = false;
+      extra.downedTimeLeft = 0;
+      extra.reviveTarget = null;
+      extra.reviveProgress = 0;
       extra.spectateIndex = null;
     }
     players.length = 2;
@@ -18493,7 +19055,7 @@
       human.root.rotation.y = bodyYaw;
 
       const carrying = !player.isDead && !!player.carriedTurret; // see TURRETS
-      const def = player.isDead || carrying ? null : getActiveWeaponDef(player);
+      const def = player.isDead || player.isDowned || carrying ? null : getActiveWeaponDef(player); // downed: hands on the ground
       humanSystem.setWeapon(human, carrying ? "turret" : def ? def.id : null);
       const slot = getActiveSlot(player);
       const isBladed = player.meleeSwingIsBat || player.meleeSwingIsKatana;
@@ -18523,6 +19085,7 @@
         },
         melee: player.isMeleeSwinging ? { t: Math.min(1, player.meleeSwingElapsed / HUMAN_MELEE_DURATION), fist: player.meleeSwingFist } : null,
         dead: player.isDead,
+        downed: player.isDowned, // prone crawl (see DOWNED STATE)
         hurt,
         // Only the other players ever see this body -- LOD by the nearest one.
         distance: nearestViewerDistance,
@@ -18555,8 +19118,9 @@
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(35, width / height, 0.1, 10);
-    camera.position.set(0, 0, 3.3);
-    camera.lookAt(0, 0, 0);
+    // Framed feet to the tip of the tallest helmet (the traffic cone).
+    camera.position.set(0, 0.12, 3.6);
+    camera.lookAt(0, 0.12, 0);
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.8));
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
@@ -18635,8 +19199,8 @@
     coopEls.p2ModelRow.style.right = (panelRect.right - p2BoxRect.right) / 2 + "px";
   }
 
-  const SETUP_MODEL_BASE_WIDTH = 240; // canvas size (and arrow scale/offset) at SETUP_MODEL_SCALE_REFERENCE_HEIGHT
-  const SETUP_MODEL_BASE_HEIGHT = 340;
+  const SETUP_MODEL_BASE_WIDTH = 324; // canvas size (and arrow scale/offset) at SETUP_MODEL_SCALE_REFERENCE_HEIGHT -- 1.35x the old 240x340 (explicit request: bigger)
+  const SETUP_MODEL_BASE_HEIGHT = 459;
   const SETUP_MODEL_ARROW_EDGE_OFFSET = 3; // px, at scale 1 -- how far the arrows overlap into the canvas (see their own CSS comment) -- explicit follow-up: nudged toward the true edge (was 8), further from the model itself
   // Explicit request: the model's SIZE (not just position) should scale
   // with the window -- this window height is the one the current
@@ -19766,7 +20330,7 @@
   // more slots are added later. Works alongside the number keys, not
   // instead of them.
   document.addEventListener("wheel", function (event) {
-    if (document.pointerLockElement !== canvas || players[0].isDead) return;
+    if (document.pointerLockElement !== canvas || players[0].isDead || players[0].isDowned) return;
     cycleActiveSlot(players[0], event.deltaY > 0 ? 1 : -1);
   });
 
@@ -21615,7 +22179,9 @@
     // Hoisted above the hasControl block -- also needed unconditionally
     // below for the landing-footstep sound, which (like gravity) still
     // has to fire even without control.
-    const isCrouching = player.input.isActionHeld("crouchSlide");
+    // Downed (see DOWNED STATE): crawling only -- no crouch toggle, no sprint.
+    const isDowned = player.isDowned;
+    const isCrouching = !isDowned && player.input.isActionHeld("crouchSlide");
 
     // Bug fix: an open inventory used to skip this whole block, so a
     // slide (or any leftover momentum) froze in place until it closed.
@@ -21641,7 +22207,7 @@
     }
     if (wishDirection.lengthSq() > 0) wishDirection.normalize();
 
-    const isSprintKeyHeld = hasControl && player.input.isActionHeld("sprint");
+    const isSprintKeyHeld = hasControl && !isDowned && player.input.isActionHeld("sprint");
     // Backward input (S alone, or a back-diagonal like S+A) has a negative
     // component along forwardVector -- pure strafing (A/D with no W/S)
     // dots to ~0 and isn't considered "backward", so sprint-strafing is
@@ -21662,7 +22228,7 @@
     // to cancel ADS, and playFootstepSound/updateFootsteps read it for
     // sprint-paced footstep audio, so a backward sprint attempt is
     // treated as an ordinary walk everywhere, not just capped in top speed.
-    const isTacticalSprintHeld = hasControl && player.input.isActionHeld("tacticalSprint");
+    const isTacticalSprintHeld = hasControl && !isDowned && player.input.isActionHeld("tacticalSprint");
     player.isSprinting =
       (isSprintKeyHeld || isTacticalSprintHeld) && !isCrouching && wishDirection.lengthSq() > 0 && !hasBackwardInput &&
       !player.isStaminaExhausted;
@@ -21676,7 +22242,9 @@
     }
 
     let maxSpeed = WALK_SPEED;
-    if (isCrouching) {
+    if (isDowned) {
+      maxSpeed = DOWNED_CRAWL_SPEED;
+    } else if (isCrouching) {
       maxSpeed = WALK_SPEED * CROUCH_SPEED_MULTIPLIER;
     } else if (player.isTacticalSprinting) {
       maxSpeed = TACTICAL_SPRINT_SPEED * getSprintSpeedMultiplier(player);
@@ -21695,13 +22263,13 @@
     }
     // Heavy weapons slow you a little (gun.moveSpeedMultiplier -- the sniper).
     const heldDef = getActiveWeaponDef(player);
-    if (heldDef && heldDef.gun.moveSpeedMultiplier) maxSpeed *= heldDef.gun.moveSpeedMultiplier;
+    if (heldDef && heldDef.gun.moveSpeedMultiplier && !isDowned) maxSpeed *= heldDef.gun.moveSpeedMultiplier;
 
     // Smoothly lerp eye height toward the standing or crouching target.
     // Sliding shares the crouched pose, so this also covers sliding --
     // using isSliding rather than isCrouching here so the lowered pose
     // holds for the whole slide even though Ctrl is only tapped, not held.
-    const targetEyeHeight = (isCrouching || player.isSliding) ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
+    const targetEyeHeight = isDowned ? DOWNED_EYE_HEIGHT : (isCrouching || player.isSliding) ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
     player.currentEyeHeight +=
       (targetEyeHeight - player.currentEyeHeight) *
       Math.min(1, CROUCH_TRANSITION_SPEED * deltaSeconds);
@@ -21765,7 +22333,7 @@
     // velocity/deltaSeconds directly -- otherwise holding a movement key
     // while stuck against a wall would keep racking up phantom step
     // distance despite barely moving.
-    updateFootsteps(player, Math.hypot(player.camera.position.x - preMoveX, player.camera.position.z - preMoveZ), isCrouching);
+    updateFootsteps(player, Math.hypot(player.camera.position.x - preMoveX, player.camera.position.z - preMoveZ), isCrouching || isDowned); // a crawl is as quiet as a crouch-walk
     } // end hasControl/inventory-open -- gravity below runs regardless
 
     // Brute-hit knockback: applied outside hasControl so it still carries
@@ -21895,7 +22463,7 @@
     let nearest = null;
     let nearestDistSq = Infinity;
     for (const player of players) {
-      if (player.isDead) continue;
+      if (player.isDead || player.isDowned) continue; // downed players are ignored (see DOWNED STATE)
       if (player !== players[0] && !isCoopMatchActive) continue;
       const dx = player.camera.position.x - x;
       const dz = player.camera.position.z - z;
@@ -22024,7 +22592,7 @@
     const target = enemyState.targetPlayer;
     if (boss.grabCooldownTimer > 0) return false;
     if (distanceToTarget > BOSS_ENEMY.grabRange || !enemyState.hasLineOfSightCached) return false;
-    if (!target || target.isDead || target.grabbedBy) return false;
+    if (!target || target.isDead || target.isDowned || target.grabbedBy) return false;
 
     boss.grabbedPlayer = target;
     boss.grabStart.set(target.camera.position.x, target.camera.position.z);
@@ -22347,7 +22915,7 @@
         finishBruteThrow(enemyState);
         return;
       }
-      if (!enemyState.targetPlayer || enemyState.targetPlayer.isDead) {
+      if (!enemyState.targetPlayer || enemyState.targetPlayer.isDead || enemyState.targetPlayer.isDowned) {
         enemyState.targetPlayer = pickNearestActivePlayer(enemyState.mesh.position.x, enemyState.mesh.position.z);
       }
       const target = enemyState.targetPlayer;
@@ -22578,7 +23146,9 @@
       // other.
       // (A deployed turret closer than any player can be the target too --
       // see TURRETS / pickNearestEnemyTarget. Bosses only go for players.)
-      if (!enemyState.targetPlayer || enemyState.targetPlayer.isDead) {
+      // Same the moment a target goes down: downed players are ignored,
+      // so it switches to the nearest player still up (see DOWNED STATE).
+      if (!enemyState.targetPlayer || enemyState.targetPlayer.isDead || enemyState.targetPlayer.isDowned) {
         enemyState.targetPlayer = boss ? pickNearestActivePlayer(mesh.position.x, mesh.position.z) : pickNearestEnemyTarget(mesh.position.x, mesh.position.z);
         if (!enemyState.targetPlayer) continue; // no living player left for this enemy to target this frame
       }
@@ -22765,7 +23335,7 @@
           // health<=0 branch), forced by passing its own current health
           // as the damage amount, with EXPLOSION_PARTICLE_OPTIONS swapped
           // in for the usual death-particle burst.
-          takeDamage(targetPlayer, GREEN_ENEMY_EXPLOSION_DAMAGE); // explosion sound is played by damageEnemy's green-death branch
+          takeDamage(targetPlayer, currentDifficulty.greenExplosionDamage ?? GREEN_ENEMY_EXPLOSION_DAMAGE); // explosion sound is played by damageEnemy's green-death branch
           damageEnemy(enemyState, enemyState.health, null, EXPLOSION_PARTICLE_OPTIONS);
           continue; // enemyState/mesh are gone -- removeEnemy() already ran
         }
@@ -23177,6 +23747,9 @@
     // caller (animate()'s co-op branch) already only calls this once its
     // own freeze check has passed for that player.
     if ((playerNeedsPointerLock(player) && document.pointerLockElement !== canvas) || player.isDead) return;
+    // Downed (see DOWNED STATE): crawl and look only -- no jump, slide,
+    // weapons, melee, interact or item drops until revived.
+    if (player.isDowned) return;
 
     // Held by a boss (see tryStartBossGrab): no jumping or sliding out of
     // it -- shooting/reloading/weapon swaps below still work.
@@ -23266,7 +23839,7 @@
   // everyone/them frozen (a genuine pause, singleplayer's own Start-button
   // pause).
   function processToggleInventoryAction(player) {
-    if (player.isDead || !player.input.wasActionJustPressed("toggleInventory")) return;
+    if (player.isDead || player.isDowned || !player.input.wasActionJustPressed("toggleInventory")) return;
     if (player.isInventoryOpen) {
       toggleInventory(player); // closing is always allowed
       return;
@@ -23338,7 +23911,7 @@
     // reaching across into the other player's half of this shared flag.
     const p1NeedsClick =
       matchP1Scheme === "keyboard" && document.pointerLockElement !== canvas && !players[0].isInventoryOpen;
-    const isFrozen = isMatchPaused || p1NeedsClick;
+    const isFrozen = isMatchPaused || p1NeedsClick || reviveSelection !== null; // the Revive Player pick-one screen pauses everyone
 
     for (const player of players) {
       // Same slide-loop mute/resume fix as singleplayer, per player --
@@ -23390,6 +23963,7 @@
 
         processToggleInventoryAction(player);
         processInventoryDropAction(player);
+        updateReviving(player, deltaSeconds); // see DOWNED STATE
         if (player.isInventoryOpen) {
           updateInventoryCursorForController(player, deltaSeconds);
           // Bug fix: gravity/falling used to stop dead the instant this
@@ -23427,6 +24001,14 @@
 
         processEdgeTriggeredActions(player);
         updateMovement(player, deltaSeconds);
+        if (player.isDowned) {
+          // Crawling (see DOWNED STATE): weapon state is left exactly as it
+          // was for a revive -- only the camera and hit marker keep going.
+          updateRecoil(player, deltaSeconds);
+          applyCameraRotation(player);
+          updateHitMarker(player, deltaSeconds);
+          continue;
+        }
         updateReload(player, deltaSeconds);
         updateFireCooldown(player, deltaSeconds);
         updateAim(player, deltaSeconds);
@@ -23466,7 +24048,8 @@
     // the inventory-open case back OUT of its own isPlayerFrozen), so
     // there's nothing to exclude -- a genuine pause is the one and only
     // thing that stops it.
-    if (!isMatchPaused) {
+    if (!isMatchPaused && !reviveSelection) {
+      updateDownedPlayers(deltaSeconds); // the authoritative bleed-out clock (see DOWNED STATE)
       updateEnemies(deltaSeconds);
       updateWaveManager(deltaSeconds);
       updateCampusFrame(deltaSeconds);
@@ -23579,6 +24162,11 @@
       key: "overlay-pause",
       isActive: () => overlayIsVisible("pause"),
       getEls: () => [resumeButtonEl, settingsButtonEl, exitToMenuButtonEl],
+    },
+    {
+      key: "revive-select",
+      isActive: () => reviveSelection !== null,
+      getEls: () => [...reviveSelectOptionsEl.children],
     },
     {
       key: "death-screen",

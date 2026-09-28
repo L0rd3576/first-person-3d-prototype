@@ -2323,3 +2323,26 @@ and runs the vertical divider down the bottom half only.
   - It's an ordered-dither cross-fade using cached per-step material copies, with no per-frame cost (`LOD_FADE_TIME` in `tree-models.js`).
 - **Taller trees:** trunks are ~10% of the tree's height longer (`TRUNK_LIFT`). Crowns keep their size, conifers get a bit more bare trunk, and colliders are unchanged.
 - **Kise door frames:** the two doors in Kise's west glass wall have thin brick frames (0.14 m jambs, 0.2 m header).
+- **Tougher boards:** each barricade plank has 15% more HP (`BARRICADE_PLANK_HP` 12 x 1.1 x 1.15, ~15.2).
+- **Turrets shoot through barricades and glass:** boards no longer block a turret's shot (it used to hold fire), and glass walls never block its sight or shots. Solid walls still do.
+- **Downed state (co-op):** a player who hits 0 HP while at least one other player is up (alive and not downed) goes down instead of dying.
+  - **While downed:** crawls at 0.8 m/s with a 0.45 m camera. No sprint, jump, slide, weapons, melee, interact, inventory or healing. The gun is hidden but stays in its slot; a carried turret is set down, deployed.
+  - **Bleed-out:** 45 s on Normal (`DOWNED_BLEEDOUT_SECONDS`), 35 s on Hard and Legendary (`downedBleedoutSeconds`), then the normal death. Enemies ignore downed players: the moment you go down, anything chasing you switches to the nearest player still up (bosses too). Stray damage (explosions, thrown bodies) doesn't lower health; it takes 0.5 s per damage point off the timer (`DOWNED_BLEEDOUT_SECONDS_PER_DAMAGE`).
+  - **Nobody left up:** if the last standing player dies, everyone still downed bleeds out at once and the run ends.
+  - **HUD:** a circular timer in the downed player's own view. The red ring empties as the seconds count down, and it reads the same `downedTimeLeft` the game uses. It sits under every menu layer and hides while paused. It turns green and reads REVIVING while a teammate revives you.
+  - **Body:** teammates see them crawling low on hands and knees: knees under the hips, hands planted ahead of the shoulders, head up (`downed` state in `player-model.js`). Bleeding out flops them flat onto their stomach instead of playing the standing death topple.
+  - **Reviving:** a teammate who's up and not carrying a turret sees "Hold [Interact] to Revive" within 1.8 m (`REVIVE_RANGE`). Holding Interact for 4 s (`REVIVE_HOLD_SECONDS`) fills a bar under the prompt and revives them at 25% health (`REVIVE_HEALTH_FRACTION`). Letting go or walking off resets it. The bleed-out clock pauses while someone is reviving. Near a downed teammate, Interact revives instead of picking up or repairing.
+- **Setup screens:** the player models are bigger. 2-player canvases are 1.35x (324x459 at 1080p); 3/4-player ones went from 36vh to 46vh. The preview camera is reframed so the taller cone fits.
+- **Headwear faces:** the face picture is the paper bag's size on every helmet (`FACE_W` x `FACE_H`). To fit it with minimal bending:
+  - **Box:** 0.36 m tall (was 0.32).
+  - **Bucket:** wider and taller.
+  - **Traffic cone:** wider and taller. Its reflective bands moved up above the picture.
+- **Green enemies, Normal:** their explosion does 25 damage on Normal (`greenExplosionDamage`, was 30). Hard and Legendary stay at 30.
+- **Revive Player skill (co-op):** a gold-framed node on the far left of the Skills tree (fleur-de-lis ornaments). It costs 2 SP and can be bought once per player per game. The description says "Can be Bought Once per Player".
+  - **When it can be bought:** only while at least one teammate is fully dead; downed doesn't count. Otherwise it's greyed out, with "No dead players to revive" in its tooltip, and clicking it spends nothing.
+  - **Who it revives:**
+    - With exactly one dead teammate (always the case with 2 players), buying it closes the Skills panel and revives them right away.
+    - With more than one dead (3/4 players), the game pauses and a separate "Revive a Player" screen lists one stacked button per dead teammate, e.g. "Revive Player 3 — Bottom Left" (their screen corner). Picking one revives them and resumes play.
+    - Controllers can pick an option too, via the normal menu navigation.
+  - **Revived state:** back at the spot they died (pushed clear of any wall, barricade or turret now in the way), at full health. Their weapon slots and active slot are restored exactly; the guns their death dropped are removed from the floor if still there. Their item inventory and skills were never lost.
+  - **After reviving:** they leave spectating, and a 2-player Full Screen survivor view goes back to split screen. Code: `reviveDeadPlayer` and `deathSnapshot`, taken in `triggerDeath`.
