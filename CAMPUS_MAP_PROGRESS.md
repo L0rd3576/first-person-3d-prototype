@@ -432,6 +432,95 @@ All of these live in `campus.html`.
     - The low ceiling is now 3.7 m and the raised ceiling 7.6 m (roof 8.5 m).
     - Kise roof slabs are now 0.9 m thick (new 9th hollow-building value), so they read as solid through the glass.
 
+- **2026-09-28, walk-in first floors** from the plan photos `gamehagen1st.JPG`,
+  `gamelangseth1st.JPG`, `gamelibrary1st.JPG` and `gamecmu1st2nd.JPG`. They're built by the
+  new `FLOOR_PLANS` system in campus-world.js. Each plan is written in its photo's pixels and
+  mapped onto the footprint by per-axis knots.
+  - Walk-in areas are the corridors, lobbies, open areas, classrooms and stairwells. Every other
+    room (offices, restrooms, closets, elevators, mechanical rooms, the Comstock shops and
+    offices) is a solid block. A door the plan shows into one of these rooms is a closed
+    cosmetic door panel with a frame and handle. The plans' exterior doors are real openings.
+  - Hagen and Langseth are one building. Hagen's east branch opens into Langseth's C105, and
+    Hagen's north strip opens into Langseth's north corridor. Langseth was placed so both
+    openings line up, and its old solid pieces (main block, glass connector, curved wing) were
+    replaced by the plan. Langseth's 104 is the curved lecture hall, with a 6.5 m ceiling.
+  - Library: the reading room with its pillars, C105 along the lower roof, C108, and the
+    classrooms 103, 110, 113, 132 and 134. The annex (100) is joined by the C101 passage
+    between the V101 and V102 doors. The north-east door (V108) replaces the old door panel.
+  - Comstock and Kise are one building. Kise's west hallway opens north into Comstock. A new
+    corridor runs along Kise's north end, from the hallway to a door out to the service yard.
+    That corridor was cut out of Kise's solid north block.
+  - Comstock is walk-in with its lounges, the food court seating and meeting room 105. The west
+    vestibule and the Sun Garden Lounge wing are walk-in too, and the wing has a door on its east
+    end.
+  - Comstock's second floor is built at 4.5 m, with the 200 Ballroom walk-in and the other
+    meeting rooms solid. It has "Open to 1st Floor" openings with glass rails. You reach it by
+    the two atrium stairs beside the Main Lounge or the north-west stairwell.
+  - Every other stairwell is a switchback up to a second-floor landing, which ends at a closed
+    door. Those floors aren't built.
+  - Interiors have painted block walls, off-white ceilings, vinyl-tile floors and carpet
+    upstairs. Ceilings are 3.8 m in Hagen and Langseth, 4.2 m in the library, and 4.1 m / 9 m
+    in Comstock. The building mass above each ceiling keeps the old roof heights.
+
+- **2026-09-28 (2), CMU from `gamecmu1st2nd - edits.JPG`**, plus fixes across all four
+  interiors:
+  - The Sun Garden wing's east, south and slanted walls are all glass (blue), and its east door
+    is gone.
+  - The Comstock south wall between the two stair pockets is gone (purple). The Main Lounge,
+    Kise's west hallway and Kise's north corridor are now one open space.
+  - The second-floor rail along the restrooms is gone (pink).
+  - Most of the first floor is 3 steps (0.48 m) down: the Lower, Rec and Welcome lounges, the
+    food court seating, the north hallways, 105 and the north-west stairwell. The Main Lounge
+    stays at ground level as a platform with a glass balcony on its west, north and east sides
+    (light blue), open south to Kise. The west entrance stays at ground level too. New
+    `level` / `raisedFloors` fields; the sunken floors come from `FLOOR_PLAN_SUNKEN`, and
+    `groundHeightAt` sinks them.
+  - The two north doors open onto a 1 m sunken landing outside, with 3 steps up to the ground.
+  - Stairs:
+    - big stairs from the pockets up to the second floor (yellow)
+    - short stairs from the Main Lounge and Kise's corridor down into the pockets, and from the
+      west entrance down into the Welcome Lounge (red)
+    - a ramp with glass rails from the west entrance down into the lounges (orange)
+  - A glass rail runs between the Sun Garden and the Rec Lounge. The walls beside the stair
+    pockets are brick to the ceiling (black).
+  - Ceilings: slab pieces now meet flush. Before, a 4 cm gap between pieces showed the brick
+    mass. The Sun Garden's roof hole by its slanted wall is closed.
+  - Floors:
+    - All interior floors are concrete, level with Kise's. The raised floors had shown a sliver
+      of lawn at the step.
+    - Comstock's west vestibule got a floor.
+    - No 3D grass grows on the angled floor pieces any more (the Sun Garden, Langseth's
+      curved 104).
+  - Kise: the south glass wall now starts past the west wall, so brick fills the south-west
+    corner (it had a see-through gap).
+
+- **2026-09-28 (3)**, from the re-annotated `gamelibrary1st.JPG` and `gamecmu1st2nd - edits.JPG`:
+  - Library: exits V103, V104 and V105 (circled) are closed glass doors, a pane in a dark frame.
+    You can see through them, but nothing passes (new door kind `"glass"`).
+  - CMU:
+    - New walkway (green): ground level, from the Sun Garden east to Kise's west hallway,
+      south of the Rec Lounge's brick wall. It's a hollow building with a painted ceiling (new
+      optional 10th hollow value: ceiling color). The tree that stood there is gone.
+    - The stair pairs beside the Main Lounge are placed as on the plan and run north–south. The
+      big stairs go up from ground level; the short stairs go down north into the lounge.
+    - The entrance short stair now runs from the west vestibule's north door down into the
+      Welcome Lounge.
+    - The north-door wells and their steps are exactly as wide as the doorways.
+    - The ramp is a smooth slope (`FLOOR_PLAN_RAMPS`, part of `groundHeightAt`), not small steps.
+  - Sunken floors are real depth-tested geometry, and their edges are drawn from both sides. The
+    steps and floors below ground no longer show through the ground outside.
+  - Stair steps no longer leave 4 cm gaps between them. Nav-grid cells that landed in a gap
+    read the floor below.
+  - Enemy navigation between floors uses stair portals (`portals` in `FLOOR_PLANS` →
+    `FLOOR_PLAN_PORTALS`). Each portal is a walking line up an existing stair.
+    - `findPath` takes optional standing heights and routes through a portal when the two ends
+      are on different floors.
+    - Upper floors get a small lazy nav grid of their own, only inside that building.
+    - Line of sight is floor-aware when either end is up off the ground floor.
+    - In `index.html`: enemies don't beeline at a target on another floor, and the recycler
+      treats stair climbing as progress while the enemy's height keeps changing.
+    - Ground-only navigation is unchanged.
+
 ## Flags (not enough detail in the image; placeholder used)
 - Z03 South House: footprint hidden under the Google Maps label. Placeholder 7 m house south of the lawn.
 - Z03 service yard contents are unclear (containers or equipment). Two placeholder containers.
@@ -446,3 +535,21 @@ All of these live in `campus.html`.
   layout inside the hall. C109 falls just south of the green box, so the open area runs a few
   meters past it to include that door. C111 (south-east on the plan) opens into an unbuilt
   part of the interior, so it's left out.
+- Floor plans (2026-09-28). Rooms were sorted into classrooms and non-walk-in rooms by size and
+  label: plain-numbered rooms big enough to teach in are classrooms, and lettered rooms, suites,
+  L/J/E/P rooms and small rooms are not.
+  - Hagen: 114's east double door would open against Langseth's wall, so it's left out.
+  - Langseth: V105 (the south-west exit past S103) is left out, because the stair fills that
+    strip. Langseth's footprint moved to meet Hagen: its north edge is about 6 px south of the
+    old trace and its south end about 9 px further south.
+  - Library: S107 is solid behind 124 and 139, and its outside door is cosmetic. S106 is a flat
+    passage out to V106, with no stair.
+  - Comstock: the Sun Garden's stair up to the Overlook Lounge is left out, because the wing is
+    single storey (6 m) in the aerial. Several parts of the plan conflict with the aerial and
+    follow the aerial:
+    - the second floor reaching a little south over Kise
+    - the west elevator and "You are here" bump
+    - the angled vestibule south of the Sun Garden
+  - Comstock (edits pass): the edits didn't mark where the lower level meets the food court
+    seating or where the ramp starts, so those are my placement. The pocket stairs up to the
+    second floor are steep (about 47 degrees), because the plan gives them little room.

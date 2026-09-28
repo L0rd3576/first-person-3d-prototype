@@ -92,8 +92,7 @@ transitions, and knockback all blend naturally.
   `0.75s` cooldown after any slide ends before another can start. Plays a looping slide sound
   for the slide's whole duration, fading in/out rather than starting/stopping abruptly — see §7.
 - **Jump:** initial upward velocity `7.0`, gravity `-18.0`/sec². Landing (not jumping) also
-  immediately triggers the next footstep sound rather than waiting for movement distance to
-  accumulate — see §7.
+  immediately plays a footstep and dips the camera — see §7 and §11 "Running form".
 - **Aim down sights also reduces gun bob by 80%** (to 20% of its normal hip-fire amplitude),
   eased in/out over the same transition the ADS pose/FOV already use — see §3.
 - **Mouse look:** base sensitivity `0.0022` rad/pixel (`MOUSE_SENSITIVITY_BASE`), pitch clamped to
@@ -675,20 +674,21 @@ numbers against except where explicitly noted.
 
 ### Footsteps
 
-- **Left/right alternation:** a single `steppingFoot` flag flips every time a step actually
-  plays — no separate timer or gait simulation.
+- **Driven by the gait clock** (`gaitPhase`, see §11 "Running form"): a foot lands every half
+  stride, right on even multiples of π, left on odd ones — the same clock the camera motion, gun
+  bob and running arms use, so every footfall lines up with the dip of the view and the arm swing.
 - **Surface:** grass or concrete, decided per-step at the player's (or enemy's) position. On the
   campus it's `campusWorld.surfaceAt(x, z, feetY)`: concrete on streets, sidewalks, walks, plazas,
   lots, driveways, the running track, indoors, or standing up on a structure (bleachers, steps,
   roofs); grass on grass, dirt, turf and the construction pit. The tiny map still uses
   `isInsideBuilding()` (see §4/§6).
-- **Cadence is distance-based, not timer-based:** the player's actual post-wall-collision
-  horizontal movement is accumulated each frame; once it crosses a threshold, the next step
-  plays and the accumulator resets. This is what makes sprinting naturally produce a faster
-  footstep rate than walking without any separate per-state timing logic. Thresholds (all
-  user-tuned by ear, not derived from a formula): **2.8** units walking, **3.0** sprinting,
-  **1.4** crouching (crouch is a fixed distance, not a fraction of the walk one, since crouch
-  speed is much slower and a proportional distance made crouched steps sound too sparse).
+- **Cadence is a real runner's:** steps per second come from the player's actual
+  post-wall-collision speed (`GAIT_CADENCE`): ~108 steps/min walking, ~177 at the normal running
+  pace (4.85 m/s), ~192 sprinting, up to ~228 at a tactical sprint. Faster mostly means longer
+  steps, with cadence only creeping up, the way trained runners run. Crouch-walking and crawling
+  use a slower, shorter-stepped cadence (~120 steps/min crouched). Stuck against a wall = no steps.
+  (Replaced the old distance thresholds — 2.8 / 3.0 / 1.4 units per step — which gave only ~104
+  steps/min at running speed.)
 - **Volume** also varies by movement state — crouch quietest, then walk, then sprint loudest —
   and separately by surface:
 
@@ -700,8 +700,8 @@ numbers against except where explicitly noted.
 
 - **No footsteps** while airborne, while standing still, or while sliding (a slide is a
   momentum-driven ground-scrape with its own looping sound, not a walking gait — see above).
-- **Landing** from a jump plays the next due step immediately (and resets the distance
-  accumulator) rather than waiting for movement distance to build back up after touching down.
+- **Landing** from a jump plays a step immediately and sets the gait clock to that contact, so
+  the next step comes a full step later.
 
 ### Particle bursts (muzzle flash, blood splash, death, explosion)
 
@@ -914,8 +914,8 @@ Being direct about the distance between "a collection of working mechanics" and 
   non-positional (played at a flat volume regardless of world position); gore audio is the only
   exception, and only partially.
 - **Several tuned numbers are flagged guesses, not measured/balanced values** — worth a real
-  playtesting pass rather than trusting them as final: footstep step-distances/volumes (chosen by
-  ear), the particle-burst/blood-decal pool caps (40 and 20 — generous estimates, not stress-
+  playtesting pass rather than trusting them as final: footstep volumes (chosen by ear, at the
+  old slower step rate — steps are now ~1.7x as frequent, so they may want another listen), the particle-burst/blood-decal pool caps (40 and 20 — generous estimates, not stress-
   tested at a genuinely high wave count), the gore-audio reference/max distances (4 and 25 units),
   and the Glock's starting reserve ammo (51, never specified up front).
 - **No weapon draw/holster sound.** Switching weapons (`switchToSlot`) is deliberately silent as
@@ -2344,5 +2344,47 @@ and runs the vertical divider down the bottom half only.
     - With exactly one dead teammate (always the case with 2 players), buying it closes the Skills panel and revives them right away.
     - With more than one dead (3/4 players), the game pauses and a separate "Revive a Player" screen lists one stacked button per dead teammate, e.g. "Revive Player 3 — Bottom Left" (their screen corner). Picking one revives them and resumes play.
     - Controllers can pick an option too, via the normal menu navigation.
-  - **Revived state:** back at the spot they died (pushed clear of any wall, barricade or turret now in the way), at full health. Their weapon slots and active slot are restored exactly; the guns their death dropped are removed from the floor if still there. Their item inventory and skills were never lost.
+  - **Revived state:** back at the spot they died (pushed clear of any wall, barricade or turret now in the way), at full health.
+  - **Weapons:** each gun their death dropped is picked back up only if it's still on the floor within 3 m of the body (`REVIVE_WEAPON_PICKUP_RANGE`). A gun a teammate took, or that ended up elsewhere, isn't given back, so nothing is duplicated. Their item inventory and skills were never lost.
   - **After reviving:** they leave spectating, and a 2-player Full Screen survivor view goes back to split screen. Code: `reviveDeadPlayer` and `deathSnapshot`, taken in `triggerDeath`.
+- **Bare hands (empty slot):** the box fists are replaced by jointed human hands on forearms rising in from the bottom corners (`fp-hands.js`).
+  - **Model:** each arm is one skinned mesh (upper arm, forearm, palm with a thenar pad, four three-segment fingers of different lengths on a knuckle arc, and an opposable thumb) in the reload hands' skin tone. The skin blends across every joint, so fingers bend smoothly and grow out of the palm, and the wrist flows into the forearm.
+  - **Upper arm:** runs from the elbow back to an off-screen shoulder, so a punching forearm never floats.
+  - **Poses:** left and right deliberately differ in height, depth, angle and finger curl.
+  - **Animation:**
+    - **Idle:** breathing plus slight wrist and finger drift.
+    - **Walk / crouch-walk:** a counter-swing from the shoulders, hands kept up in the guard.
+    - **Run / sprint:** the running carriage -- see "Running form" below. The gun sprint-carry pose is skipped for bare hands.
+    - **Air:** going up, the hands lag low; coming down, they lift and the fingers open. Landing gives a damped dip.
+    - **Raise:** the hands ease up into view when switching to an empty slot.
+  - **Punches:** alternate right -> left -> right, starting with the right. Each is a short wind-up, a fast strike to the screen center, a brief impact hold and a smooth recovery. The forearm turns palm-down, the torso turns slightly into it, and the other hand tightens its guard.
+    - **Fist:** the fingers curl in a pinky-first cascade and the thumb folds across the index and middle fingers last. Opening reverses the order.
+    - **Tuning:** thumb angles were fitted numerically, and the full punch was simulated to keep the thumb from passing through the fingers.
+  - **Timing and gameplay:** the punch still uses `MELEE_SWING_DURATION` (0.45 s) and `MELEE_COOLDOWN`; damage and range are unchanged.
+- **Running form** (most playtesters run cross-country/track, so it's built to a trained distance runner's mechanics, not a game sprint):
+  - **One gait clock** (`gaitPhase`, `updateGait` in index.html): the right foot lands at 0, the left at π. Footsteps, camera motion, gun bob and the running arms all read it, so nothing drifts out of step.
+  - **Cadence** (`GAIT_CADENCE`): steps per second from actual speed: ~108/min walking, ~177 at the normal running pace, ~192 sprinting, ~228 at a tactical sprint. Going faster mostly lengthens the step. Footsteps now follow it (see §7); they used to be every 2.8-3.0 m, only ~104/min at running speed.
+  - **Arms** (`fp-hands.js`, bare hands): past ~2-3 m/s the guard pose hands over to a running carriage built joint by joint (shoulder -> upper arm -> elbow -> forearm -> wrist -> hand, `RUN_CARRIAGE`/`SPRINT_CARRIAGE`).
+    - Carried low: elbows ~90 deg (closing at the front, opening past the hip), swing mostly fore-aft from hip to lower chest, hands toward the midline but never across it. Thumb up, palm in, turning slightly palm-down at the front, with the wrist trailing. Hands loosely cupped, not fists.
+    - Arm-leg opposition: each arm is furthest forward just after the other foot lands.
+    - Visibility (checked numerically at the 75 deg FOV): running, only the knuckles reach ~8% into the bottom of the screen at the front of each swing (on screen ~27% of the time). Sprinting, ~14%. The wrists never show.
+    - Sprint (blended by actual speed, `gaitEffort`) swings bigger and a little higher. The swing size varies slightly from stride to stride so it never loops mechanically. A running jump keeps the arms low with the swing frozen and damped. Punches still start from and return to whatever pose the arm is in.
+  - **Camera** (`updateGaitCamera`, visual only): offsets are applied just around the draw (`renderFrame`), and small rotations go in `applyCameraRotation`, so movement, collision and aim never see them.
+    - Running: a ~1.1 cm dip at each mid-stance (1.6 cm sprinting). Walking: the reverse, highest over the planted leg. The two blend by speed.
+    - A 0.4 cm drift toward the planted foot with ~0.2 deg of roll, a 0.3 cm brake-and-push each contact, a slight nod after each footfall and a trace of shoulder yaw.
+    - Landing from a jump: a damped ~2 cm dip and nod.
+    - Aiming cuts it 80% (like the gun bob), crouching 40%. Amplitudes are in `GAIT_CAMERA`.
+  - **Gun bob:** now once per footstep on the gait clock, trailing the camera's dip (`BOB_AMPLITUDE` 0.02 -> 0.009, since it's twice as fast and the camera carries the body's motion now). The sprint sway swings once per stride on the same clock.
+- **3D grass** (`grass-system.js`, campus map): low-poly grass clumps on every lawn, swaying in the weather's wind.
+  - **Where:** the base lawn and the planted islands in lots (11 cm up) only. It's never on streets, sidewalks, walks, lots, driveways, plazas, the track and its infield, turf and soccer fields, pools, dirt or the pits, never inside or under a building, house, bleacher, fence, prop or tree trunk (the movement colliders), and never indoors (`grassTesterForArea` in campus-world.js, from the same layout lists as `surfaceAt`). An audit of ~5,000 placed clumps found none on a hard surface or inside a collider.
+  - **Clumps:** NEAR has 8 tapered, curved blades (40 triangles); MID has 4 wider blades (12 triangles). Placement is on a jittered grid, deterministic per chunk (the same grass every visit). Each clump varies in rotation, size, height, tint and wind phase. Broad noise thins, heightens and tints the field in patches so it doesn't tile.
+  - **Wind:** GPU only, from the shared `envTime`/`windDir`/`windStrength`/`windGust` uniforms the trees use. The root stays put and the bend grows with height squared. It layers a broad wave rolling downwind, a faster flutter and a per-clump phase. A light breeze (`breeze` 0.22) is always there, so calm days still move. `grassDisplace()` in the shader is the hook for footsteps/explosions later.
+  - **LOD / chunks:**
+    - NEAR: 16 m chunks, 6.25 clumps/m², full out to ~21 m, then sinking into the ground by ~30 m.
+    - MID: 32 m chunks, ~1.2/m², growing in from ~17 m and sinking away by ~48-68 m, where the lawn texture takes over before the fog.
+    - Each clump's fade distance is jittered, and a fading clump takes on the ground's color, so there's no visible ring.
+    - Chunks are built lazily near each viewer: the closest at once, the rest 2 per frame (~0.5-0.9 ms each). They're hidden past range and freed 30 m further out. Each chunk is one instanced draw.
+    - The fade is computed per drawing camera, so each split-screen view fades its own grass.
+  - **Shadows:** none cast or received (the campus ground receives none either). Wet weather darkens it with the lawn.
+  - **Tuning:** `GRASS_SETTINGS` at the top of grass-system.js (density, ranges, fades, breeze, bend, build budget).
+  - **Cost (headless, this machine's GPU):** on the densest lawn +0.7-0.8 ms/frame (~565k triangles, ~25 draws). In the benchmark scenes it adds +0.15-0.6 ms and ~15-20 draws; the live-loop average went 4.26 -> 4.30 ms.

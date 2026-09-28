@@ -210,6 +210,8 @@
       [1396.3, 318, 1431.6, 380.2], // Nemzek: open area east of the fieldhouse
       [1478, 318, 1485, 440], // Nemzek: concrete alley between the building and the back of the grandstand
       [718.5, 283.5, 772, 391], // Z07: MSUM Dining's floor
+      [706.2, 283.6, 718.5, 291.5], // Z07: walkway from the Sun Garden to Kise
+      [666.9, 272, 674.3, 279.7], // Z07: Comstock's west entrance vestibule floor
       [711.8, 300.2, 718.5, 313.3], // Z07: entrance link floor
       [633, 272, 668, 297],   // Z07: paved plaza between the library, M-5 and Comstock's west door
       [633, 296, 638, 307.2], // Z07: plaza down to the library's north-east door
@@ -611,10 +613,7 @@
       [107, 445, 198, 490, 12],   // Center for Business
       [98, 628, 118, 646, 7],     // South House -- placeholder, footprint hidden under the map label
       // central campus (11th -> 14th Street)
-      [266, 201, 300, 310, 16],   // Hagen Hall (4 storeys)
-      [300, 201, 354, 244, 13],   // Langseth Hall
-      [354, 204, 371, 237, 9],    // Langseth Hall -- curved east wing
-      [300, 244, 350, 289, 8],    // Langseth / Hagen glass-roofed connector
+      // (Hagen Hall and Langseth Hall -- one building -- are walk-in: FLOOR_PLANS)
       [370, 243, 424, 271, 13],   // Weld Hall (main block)
       [381, 206, 410, 243, 16],   // Weld Hall (north wing, taller)
       [425, 201, 484, 271, 12],   // Lommen Hall (west)
@@ -622,22 +621,14 @@
       // Comstock + library corner re-traced from screenshot5B.png (the closest
       // view; A = px * 0.08732 + (624.1, 272.2)). The dark bands west of each
       // building there are shadows (morning sun from the east), not building.
-      [668, 200, 787, 272, 12],   // Comstock Memorial Union (north part)
-      [674.3, 272, 787, 283.6, 12], // Comstock -- down to where MSUM Dining joins
-      // Kise's closed-off parts (no longer walk-in): north of the dining room,
-      // east of the hallway, and the kitchen side east of the new interior wall.
-      [726.4, 283.5, 772, 325.4, 9],
+      // (Comstock Memorial Union, its Sun Garden wing and the library are
+      // walk-in: FLOOR_PLANS; its west vestibule is in HOLLOW_BUILDINGS)
+      // Kise's closed-off parts (no longer walk-in): north of the dining room
+      // (below the corridor along its north end), east of the hallway, and
+      // the kitchen side east of the new interior wall.
+      [726.4, 291.5, 772, 325.4, 9],
       [756.7, 325.4, 772, 391, 9],
       [725.8, 334.7, 726.4, 336.4, 3.7], // (KISE_CEILING_M) brick end of the interior glass partition (red)
-      [666.9, 272, 674.3, 279.7, 4], // Comstock west entrance vestibule (door on its south face)
-      [674.3, 283.6, 701, 289.2, 6], // Comstock's angled one-storey south-west wing...
-      [701, 283.6, 706.2, 296, 6],
-      [558, 306, 622, 393, 14],   // Livingston Lord Library (west block)
-      [622, 309, 633.3, 393, 8],  // lower roof between the two blocks (in the east block's shadow)
-      [633.3, 307.2, 664.3, 393, 14], // Livingston Lord Library (east block)
-      [638.1, 300.2, 660.8, 307.2, 14], // ...its north bump
-      [664.3, 307.2, 669.5, 393, 5],  // ...and the low strip along its east side
-      [539, 333, 558, 367, 8],    // Livingston Lord Library (lower west annex)
       [255, 377, 295, 462, 12],   // MacLean Hall (west wing)
       [295, 417, 400, 453, 12],   // MacLean Hall (main block)
       [400, 423, 440, 455, 8],    // MSUM Bookstore
@@ -795,16 +786,44 @@
       //     [x1, y1, x2, y2, height]; 9th: roof slab thickness m, default 0.3).
       [718.5, 283.5, 726.4, 325.4, KISE_ROOF_M, [
         { side: "w", at: 306.5, width: 3, height: 2.6 },          // through from the glass entrance link
+        { side: "w", at: 287.5, width: 5.2, height: KISE_CEILING_M }, // the walkway to the Sun Garden
         { side: "s", at: 722.45, width: 4.4, height: 9 },         // open into the dining room
+        { side: "n", at: 722.45, width: 5.3, height: 9 },          // open into Comstock's Main Lounge (gamecmu1st2nd - edits.JPG)
+        { side: "e", at: 287.5, width: 5.3, height: KISE_CEILING_M }, // into the corridor along Kise's north end
       ], undefined, undefined, KISE_ROOF_THICK_M],
+      // The corridor along Kise's north end, from the hallway east to a door
+      // out to the service yard (gamecmu1st2nd.JPG: the passage south of
+      // Comstock with the exit arrow). Single storey inside; its roof slab
+      // runs up to the 9 m roof of the block south of it.
+      [726.4, 283.5, 772, 291.5, 9, [
+        { side: "n", at: 743.55, width: 22.6, height: 9 },       // no wall: it's part of Comstock's Main Lounge (purple on the edits)
+        { side: "w", at: 287.5, width: 5.3, height: KISE_CEILING_M },
+        { side: "e", at: 287.5, width: 2.2, height: 2.6 },
+      ], undefined, undefined, 9 - KISE_CEILING_M],
       [718.5, 325.4, 756.7, 391, KISE_ROOF_M, [
         { side: "n", at: 722.45, width: 4.4, height: 9 },         // open to the hallway
         { side: "s", at: 752, width: 1.8, height: 2.4 },          // the south door (yellow in firstedits.png)
         // West side: glass, door, brick, door, glass, brick to the corner.
         { side: "w", from: 334.4, to: 351.55, height: KISE_CEILING_M, glass: true, doors: [349.9] },
         { side: "w", from: 365.33, to: 383.4, height: KISE_CEILING_M, glass: true, doors: [367.0] },
-        { side: "s", from: 718.5, to: 750.4, height: KISE_CEILING_M, glass: true },         // glass wall
+        { side: "s", from: 719.1, to: 750.4, height: KISE_CEILING_M, glass: true }, // glass wall (starts past the west wall, so brick fills the corner)
       ], undefined, [725.8, 336.4, 748.2, 379.6, 8.5], KISE_ROOF_THICK_M], // raised roof (yellow): ceiling 8.5 - 0.9 = 7.6 m
+      // Comstock's west entrance vestibule: door on its south face (blue in
+      // screenshot5B.png), and through to the Welcome Lounge on its east side.
+      [666.9, 272, 674.3, 279.7, 4, [
+        { side: "s", at: 670.6, width: 2.2, height: 2.6 },
+        { side: "e", at: 275.85, width: 2.4, height: 2.6 },
+        { side: "n", at: 670.36, width: 2.4, height: 2.6 },    // to the short stair down into the Welcome Lounge
+      ]],
+      // Walkway from the Sun Garden Lounge east to Kise's west hallway, along
+      // the south side of the Rec Lounge's brick wall (green on "gamecmu1st2nd -
+      // edits.JPG"); the west short stair leads down from it into the lounge.
+      // Ceiling level with the Sun Garden's.
+      [706.2, 283.6, 718.5, 291.5, 6, [
+        { side: "n", at: 714.8, width: 5.4, height: 9 },       // (Comstock's wall is open here, over the short stair)
+        { side: "w", at: 287.55, width: 5.2, height: 4.1 },    // Sun Garden Lounge
+        { side: "e", at: 287.55, width: 5.2, height: 3.7 },    // Kise's hallway
+      ], undefined, undefined, 6 - 4.1, 0xe7e4dd], // (painted ceiling, like the Sun Garden's: FP_COLORS.ceiling)
       // Glass entrance link on Dining's west side: door on its south face (blue
       // in screenshot5B.png), open straight through into Dining on its east side.
       [711.8, 300.2, 718.5, 313.3, 4.5, [
@@ -859,6 +878,996 @@
       [726.1, 325.4, 726.1, 334.7, KISE_CEILING_M], // Kise: the hallway's glass side where it meets the dining room (insidekiselookingnorth.png); brick end: BUILDINGS
     ];
 
+    // ------------------------------------------------------------------
+    // WALK-IN FLOOR PLANS (FLOOR_PLANS): Hagen, Langseth, Livingston Lord
+    // Library and Comstock Memorial Union, laid out room by room from the
+    // photos of their plans in "making the map/" (gamehagen1st.JPG,
+    // gamelangseth1st.JPG, gamelibrary1st.JPG, gamecmu1st2nd.JPG). Only the
+    // open areas, classrooms and stairwells are walk-in. Every other room is
+    // a solid block, and a door the plan shows into one is a closed,
+    // cosmetic door panel.
+    //
+    // Each plan is written in its photo's own pixels (u across, v down, in
+    // the photo scaled to 1600 px on its long side) and mapped onto the
+    // screenshot by piecewise-linear knots per axis, fitted to the traced
+    // footprint (`px` / `py`: which plan axis drives that screenshot axis,
+    // and [plan, screenshot px] pairs). A plan without knots is written in
+    // screenshot px.
+    //   floors      -- [u1, v1, u2, v2] the ground floor's interior (also
+    //                  what counts as indoors); floorQuads add 4-point
+    //                  polygons for curved or slanted edges
+    //   outlines    -- exterior wall polygons ([u, v] points): brick, set
+    //                  just inside the line, as tall as the roof above them;
+    //                  { points, open: true } leaves out the closing edge
+    //   roofs       -- [u1, v1, u2, v2, height m] roof heights by area
+    //                  (default `roof`); the building's mass fills from the
+    //                  top floor's `ceiling` up to them
+    //   solids      -- rooms that aren't walk-in, floor to ceiling
+    //   partitions  -- interior walls [u1, v1, u2, v2] (painted block)
+    //   doors       -- [u, v, width m, kind, face, opts]. kind "door": an
+    //                  opening with a lintel; "open": open to the ceiling;
+    //                  "glass": a closed glass door (a pane in a frame -- you
+    //                  can see through it but nothing gets through);
+    //                  "fake": a closed door panel on its `face` side ("+u",
+    //                  "-u", "+v" or "-v"). opts: { base, h, color }
+    //   stairs      -- [u1, v1, u2, v2, rising toward "+u"|"-u"|"+v"|"-v",
+    //                  from m, to m]; from == to is a landing
+    //   shafts      -- [u1, v1, u2, v2, ceiling m]: stairwells and tall rooms
+    //                  whose ceiling sits higher than the floor's
+    //   columns     -- [u1, v1, u2, v2] free-standing solids (pillars)
+    //   upper       -- a walk-in second floor: { level m, slab m, holes,
+    //                  solids, partitions, doors, rails } (Comstock only)
+    //   level       -- the ground floor's height when it's below the ground
+    //                  (m, negative): its floors are sunk, except
+    //                  `raisedFloors` (at ground level); `sunkenExtra` adds
+    //                  sunken landings outside its doors
+    //   rails       -- glass balcony rails at ground level [u1, v1, u2, v2]
+    //   ramps       -- [uA, vA, uB, vB, width m, height at A, height at B],
+    //                  with glass rails down both sides
+    //   brickPartitions -- indexes into `partitions` built in brick
+    //   portals     -- enemy navigation links up each stair: the walking line
+    //                  [[u, v, height m], ...] from the floor below to the
+    //                  floor (or landing) above -- see FLOOR_PLAN_PORTALS
+    //                  (add `{ open: false }` as a last element to close one)
+    //   outlines' { glass: [edge indexes] } -- all-glass walls (up to the
+    //                  ceiling, brick above)
+    // The stairwells climb to a second-floor landing that ends at a closed
+    // door (those floors aren't built), except Comstock's, which reach its
+    // second floor.
+    // ------------------------------------------------------------------
+    const FLOOR_PLANS = [
+      // Hagen Hall (gamehagen1st.JPG): north is right on the plan, west is up.
+      // One long corridor (C101) from the south door (V101) to the north
+      // door (V102), with two ways through to Langseth on its east side: the
+      // east branch opposite 104, and the north strip past 118.
+      {
+        name: "Hagen Hall",
+        px: { from: "v", knots: [[415, 266], [783, 300]] },
+        py: { from: "u", knots: [[311, 310], [1524, 201]] },
+        roof: 16,
+        ceiling: 3.8,
+        floors: [[311, 415, 1524, 783]],
+        outlines: [[[311, 415], [1524, 415], [1524, 783], [311, 783]]],
+        solids: [
+          [311, 415, 875, 571],   // L101, the 103 / 105 / 107 office suites, 109, 111
+          [1332, 520, 1378, 571], // 117A
+          [1470, 415, 1524, 571], // L102
+          [1277, 632, 1326, 783], // 118
+          [790, 735, 895, 783],   // 120
+          [1365, 640, 1420, 783], // P1 elevator, 122
+          [1464, 632, 1524, 665], // E102
+        ],
+        partitions: [
+          [875, 571, 1470, 571],  // corridor | 113, 117, 121
+          [1090, 415, 1090, 571], // 113 | 117
+          [1332, 415, 1332, 520], // 117 | 121
+          [311, 632, 715, 632],   // corridor | S101, 104
+          [790, 632, 1277, 632],  // corridor | 112, 114, 116
+          [415, 632, 415, 783],   // S101 | 104
+          [715, 632, 715, 783],   // 104 | east branch
+          [790, 632, 790, 735],   // east branch | 112
+          [895, 632, 895, 783],   // 112, 120 | 114
+          [1190, 632, 1190, 783], // 114 | 116
+          [1420, 640, 1464, 640], // north lobby | S102
+        ],
+        doors: [
+          [311, 601, 3, "door"],       // V101, south end
+          [1524, 605, 3, "door"],      // V102, north end
+          [761.5, 783, 3.6, "open"],   // east branch -> Langseth's C105
+          [1343, 783, 2, "door"],      // north strip -> Langseth
+          [913, 571, 1.8, "door"], [1036, 571, 1.8, "door"],  // 113
+          [1118, 571, 1.8, "door"], [1300, 571, 1.8, "door"], // 117
+          [1396, 571, 1.8, "door"],    // 121
+          [1332, 495, 1.6, "door"],    // 117 <-> 121
+          [386, 632, 2, "door"],       // S101
+          [548, 632, 1.8, "door"],     // 104
+          [873, 632, 1.8, "door"],     // 112
+          [916, 632, 1.8, "door"],     // 114
+          [1204, 632, 1.8, "door"],    // 116
+          [1190, 720, 1.6, "door"],    // 114 <-> 116
+          [1442, 640, 2, "door"],      // S102
+          // rooms that aren't walk-in
+          [350, 571, 1, "fake", "+v"], [379, 571, 1, "fake", "+v"], [420, 571, 1, "fake", "+v"], // L101, L103, 103
+          [678, 571, 1, "fake", "+v"], [770, 571, 1.6, "fake", "+v"], [830, 571, 1, "fake", "+v"], // 107, 109, 111
+          [1355, 571, 1, "fake", "+v"], [1476, 571, 1, "fake", "+v"], // 117A, L102
+          [1326, 668, 1, "fake", "+u"], // 118
+          [790, 760, 1, "fake", "-u"],  // 120
+          [1392, 640, 1.1, "fake", "-v", { color: 0x9ea3a8 }], // P1 elevator
+          // second-floor doors at the stair tops
+          [336, 632, 1, "fake", "+v", { base: 4 }],
+          [1488, 665, 1, "fake", "+v", { base: 4 }],
+        ],
+        stairs: [
+          // S101 (plan: UP flight on the right, DN on the left)
+          [362, 695, 412, 765, "+v", 0, 2], [311, 765, 415, 783, "+v", 2, 2],
+          [315, 695, 358, 765, "-v", 2, 4], [315, 634, 358, 695, "-v", 4, 4],
+          // S102
+          [1420, 690, 1462, 765, "+v", 0, 2], [1420, 765, 1524, 783, "+v", 2, 2],
+          [1464, 690, 1512, 765, "-v", 2, 4], [1464, 665, 1512, 690, "-v", 4, 4],
+        ],
+        shafts: [[311, 632, 415, 783, 7], [1420, 665, 1524, 783, 7], [1420, 640, 1464, 665, 7]],
+        portals: [
+          [[386, 640, 0], [387, 690, 0], [387, 774, 2], [336, 774, 2], [336, 700, 4], [336, 645, 4]],       // S101
+          [[1442, 645, 0], [1441, 690, 0], [1441, 774, 2], [1488, 774, 2], [1488, 700, 4], [1488, 675, 4]], // S102
+        ],
+      },
+      // Langseth Hall (gamelangseth1st.JPG): north is right, west (Hagen) is
+      // up. Placed so its C105 and north corridor meet Hagen's two openings;
+      // 104 is the curved lecture hall of the east wing, two storeys tall.
+      {
+        name: "Langseth Hall",
+        px: { from: "v", knots: [[375, 300], [722, 354], [782, 369]] },
+        py: { from: "u", knots: [[540, 298.2], [1160, 202.1]] },
+        roof: 13,
+        ceiling: 3.8,
+        roofs: [[0, 0, 890, 2000, 8], [890, 0, 2000, 722, 13], [890, 722, 2000, 2000, 9]],
+        floors: [
+          [540, 375, 705, 406], [563, 406, 705, 528], [643, 528, 705, 640], [632, 600, 643, 640],
+          [705, 375, 716, 640], [716, 375, 1126, 722], [1126, 604, 1160, 662], [1126, 662, 1148, 722],
+          [940, 722, 1116, 762],
+        ],
+        floorQuads: [
+          [[940, 762], [940, 772], [1000, 780], [1000, 762]],
+          [[1000, 762], [1000, 780], [1060, 778], [1060, 762]],
+          [[1060, 762], [1060, 778], [1116, 762], [1116, 762]],
+        ],
+        outlines: [[
+          [540, 375], [890, 375], [1126, 375], [1126, 604], [1160, 604], [1160, 662], [1148, 662], [1148, 722],
+          [1116, 722], [1116, 762], [1060, 778], [1000, 780], [940, 772], [940, 722], [890, 722], [716, 722],
+          [716, 640], [632, 640], [632, 600], [643, 600], [643, 528], [563, 528], [563, 406], [540, 406],
+        ]],
+        solids: [
+          [745, 375, 775, 497],   // P2 elevator, 116, E105, E104
+          [862, 375, 1043, 408],  // J102 and the service strip
+          [862, 408, 895, 497],   // 112
+          [1015, 408, 1043, 497], // 110A
+          [1065, 408, 1126, 497], // 108, J101, V108
+          [862, 525, 918, 607],   // 105, 107
+          [1065, 525, 1126, 604], // P1 elevator, 106, E101 - E103
+          [878, 636, 940, 722],   // L101, L102
+        ],
+        partitions: [
+          [563, 406, 705, 406],   // S103 | 118
+          [705, 375, 705, 528],   // S103, 118 | C105
+          [643, 528, 705, 528],   // 118 | 101
+          [775, 497, 862, 497],   // 114 | C102
+          [895, 497, 1015, 497],  // 110 | C102
+          [745, 525, 862, 525],   // C102 | 103
+          [918, 525, 1043, 525],  // C102 | 109
+          [745, 525, 745, 607],   // 101 | 103
+          [745, 607, 862, 607],   // 103 | C101
+          [918, 607, 1043, 607],  // 109 | C101
+          [1043, 525, 1043, 607], // 109 | C104
+          [716, 640, 744, 640],   // 101 | S101
+          [744, 636, 744, 722],   // S101 | C103
+          [772, 636, 878, 636],   // C101 | 102
+          [772, 636, 772, 722],   // C103 | 102
+          [940, 662, 1148, 662],  // east lobby | 104, S102
+          [940, 662, 940, 722],   // L101, L102 | 104
+          [1116, 662, 1116, 722], // 104 | S102
+        ],
+        doors: [
+          [725.2, 375, 3.6, "open"],  // C105 -> Hagen's east branch
+          [1062.6, 375, 2, "door"],   // north corridor -> Hagen
+          [632, 620, 2.2, "door"],    // V101
+          [690, 640, 2.2, "door"],    // V109
+          [758, 722, 1.6, "door"],    // V103
+          [940, 745, 2.2, "door"],    // V104 (from 104)
+          [1160, 618, 2.2, "door"],   // V102
+          [1160, 652, 2.2, "door"],   // V107
+          [1126, 388, 2.2, "door"],   // V106
+          [705, 420, 1.8, "door"],    // 118 from C105
+          [695, 528, 1.6, "door"],    // 118 from 101
+          [705, 398, 1.4, "door"],    // S103
+          [790, 497, 1.6, "door"], [845, 497, 1.6, "door"],  // 114
+          [916, 497, 1.6, "door"], [997, 497, 1.6, "door"],  // 110
+          [760, 525, 1.6, "door"], [852, 607, 1.6, "door"],  // 103
+          [1018, 525, 1.6, "door"], [930, 607, 1.6, "door"], // 109
+          [784, 636, 1.6, "door"], [864, 636, 1.6, "door"],  // 102
+          [723, 640, 1.4, "door"],    // S101
+          [960, 662, 2, "door"],      // 104
+          [1140, 662, 1.5, "door"],   // S102
+          // rooms that aren't walk-in
+          [745, 462, 1, "fake", "-u"], [745, 485, 1, "fake", "-u"], // E105, E104
+          [878, 497, 1, "fake", "+v"],  // 112
+          [1030, 497, 1, "fake", "+v"], // 110A
+          [1043, 392, 1, "fake", "+u"], // J102
+          [1065, 450, 1, "fake", "-u"], // 108
+          [1065, 560, 1, "fake", "-u"], // 106
+          [875, 525, 1, "fake", "-v"], [905, 525, 1, "fake", "-v"], // 105, 107
+          [875, 607, 1, "fake", "+v"], [905, 607, 1, "fake", "+v"],
+          [898, 636, 1, "fake", "-v"], [930, 636, 1, "fake", "-v"], // L101, L102
+          // second-floor doors at the stair tops
+          [705, 383, 1, "fake", "-u", { base: 4 }],
+          [737, 640, 1, "fake", "+v", { base: 4 }],
+          [1124, 662, 1, "fake", "+v", { base: 4 }],
+        ],
+        stairs: [
+          // S103: a long switchback beside 118
+          [610, 391, 690, 406, "-u", 0, 2], [575, 375, 610, 406, "-u", 2, 2],
+          [610, 375, 690, 391, "+u", 2, 4], [690, 375, 705, 391, "+u", 4, 4],
+          // S101
+          [716, 660, 730, 700, "+v", 0, 2], [716, 700, 744, 722, "+v", 2, 2],
+          [730, 660, 744, 700, "-v", 2, 4], [730, 640, 744, 660, "-v", 4, 4],
+          // S102
+          [1132, 668, 1148, 708, "+v", 0, 2], [1116, 708, 1148, 722, "+v", 2, 2],
+          [1116, 678, 1132, 708, "-v", 2, 4], [1116, 662, 1132, 678, "-v", 4, 4],
+        ],
+        shafts: [[540, 375, 705, 406, 7], [716, 640, 744, 722, 7], [1116, 662, 1148, 722, 7], [940, 662, 1116, 780, 6.5]],
+        portals: [
+          [[712, 398, 0], [698, 398, 0], [600, 398, 2], [590, 383, 2], [698, 383, 4]],        // S103
+          [[723, 630, 0], [723, 650, 0], [723, 712, 2], [737, 712, 2], [737, 648, 4]],        // S101
+          [[1140, 655, 0], [1140, 666, 0], [1140, 715, 2], [1124, 715, 2], [1124, 668, 4]],   // S102
+        ],
+      },
+      // Livingston Lord Library (gamelibrary1st.JPG): north is up. The big
+      // reading room (104 / 114A-D) with its pillars, the C105 walk along the
+      // lower roof between the two blocks, and the annex (100) on the west,
+      // joined by the C101 passage between the V101 and V102 doors.
+      {
+        name: "Livingston Lord Library",
+        px: { from: "u", knots: [[192, 539], [377, 558], [1230, 669.5]] },
+        py: { from: "v", knots: [[269, 300.2], [302, 307.2], [955, 393]] },
+        roof: 14,
+        ceiling: 4.2,
+        roofs: [
+          [0, 0, 377, 2000, 8], [377, 302, 866, 955, 14], [866, 302, 950, 955, 8],
+          [950, 0, 1187, 955, 14], [1187, 0, 2000, 955, 5], [377, 955, 2000, 2000, 5],
+        ],
+        floors: [[377, 302, 1230, 955], [980, 269, 1175, 302], [965, 955, 1150, 990], [192, 510, 290, 740], [290, 530, 377, 715]],
+        outlines: [
+          [[377, 302], [866, 302], [950, 302], [980, 302], [980, 269], [1175, 269], [1175, 302], [1187, 302], [1230, 302],
+            [1230, 955], [1187, 955], [1150, 955], [1150, 990], [965, 990], [965, 955], [950, 955], [866, 955], [377, 955]],
+          [[192, 510], [290, 510], [290, 530], [377, 530], [377, 715], [290, 715], [290, 740], [192, 740]],
+        ],
+        solids: [
+          [510, 302, 715, 400],   // 108 office suite, 109
+          [617, 400, 715, 470],   // 108, 108A, 106, 107
+          [560, 430, 615, 460],   // E104
+          [590, 460, 612, 540],   // J101
+          [377, 695, 490, 760],   // L101, L102
+          [600, 680, 715, 775],   // E101, 111, 101A, 112
+          [377, 865, 486, 955],   // 101C
+          [508, 855, 603, 955],   // 101B, E102
+          [980, 269, 1100, 330],  // 124
+          [1100, 269, 1175, 345], // S107, 139
+          [1175, 302, 1230, 360], // 125
+          [940, 420, 1045, 638],  // 122, 126 - 129, C107, 120, 121, P101
+          [1010, 638, 1045, 680], // beside S104
+          [940, 680, 1045, 915],  // L103, L104, 103, 116 - 119, 130, 131, C106
+          [1080, 450, 1230, 475], // 135 - 138
+          [1080, 640, 1230, 700], // 133
+          [965, 955, 1025, 990],  // E105
+        ],
+        // the reading room's square pillars, and the long ones along C105
+        columns: [
+          ...[740, 868].flatMap((u) => [473, 539, 605, 670, 732, 797, 861, 925].map((v) => [u - 3, v - 3, u + 3, v + 3])),
+          ...[330, 390, 470, 540, 600, 660, 720, 780, 840, 900].map((v) => [898, v - 12, 906, v + 12]),
+        ],
+        partitions: [
+          [377, 380, 510, 380],   // 110 | 103
+          [425, 302, 425, 340],   // 110 | S103
+          [425, 340, 500, 340],
+          [500, 302, 500, 340],
+          [510, 380, 510, 560],   // 103 | 105
+          [393, 560, 510, 560],   // 103 | 102 (open at its west end)
+          [603, 775, 603, 855],   // 101 | 113
+          [715, 775, 715, 955],   // 113 | 114C
+          [940, 638, 940, 680],   // C105 | S104
+          [1080, 475, 1080, 640], // C108 | 134
+          [1080, 700, 1080, 955], // C108 | 132
+          [1080, 955, 1150, 955], // 132 | S106
+          [290, 530, 290, 715],   // C101 | 100
+        ],
+        doors: [
+          [335, 530, 2.4, "door"],  // V101 (north end of the C101 passage)
+          [335, 715, 2.4, "door"],  // V102 (south end)
+          [377, 580, 2.4, "door"],  // C101 -> 102
+          [377, 680, 2.4, "door"],
+          [290, 625, 2.4, "door"],  // 100
+          [485, 302, 1.8, "door"],  // V109 (by S103)
+          [965, 302, 2.4, "door"],  // V108, the north-east entrance
+          // V104, V103 and V105 are closed glass doors (circled blue on gamelibrary1st.JPG)
+          [925, 955, 2.4, "glass"],  // V104 (end of C105)
+          [497, 955, 1.6, "glass"],  // V103 (end of C103)
+          [1050, 990, 2.4, "glass"], // V105
+          [1150, 972, 2, "door"],   // V106
+          [440, 380, 1.6, "door"],  // 110 <-> 103
+          [500, 313, 1.2, "door"],  // S103
+          [603, 787, 1.6, "door"],  // 113 from 101
+          [715, 808, 1.6, "door"],  // 113 from 114C
+          [940, 670, 1.3, "door"],  // S104
+          [1080, 615, 1.8, "door"], // 134
+          [1080, 760, 2, "door"],   // 132
+          [1115, 955, 1.8, "door"], // 132 -> S106
+          // rooms that aren't walk-in
+          [560, 400, 1, "fake", "+v"], [680, 470, 1, "fake", "+v"], [715, 380, 1, "fake", "+u"], // 108 suite
+          [612, 500, 1, "fake", "+u"], [585, 460, 1, "fake", "+v"], // J101, E104
+          [420, 695, 1, "fake", "-v"], [465, 695, 1, "fake", "-v"], // L101, L102
+          [600, 730, 1, "fake", "-u"],  // 101A
+          [440, 865, 1, "fake", "-v"], [486, 900, 1, "fake", "+u"], // 101C
+          [555, 855, 1, "fake", "-v"],  // 101B
+          ...[460, 540, 600, 730, 790, 850, 900].map((v) => [940, v, 1, "fake", "-u"]), // the room stack, from C105
+          ...[520, 700, 860].map((v) => [1045, v, 1, "fake", "+u"]),                    // ...and from C108
+          [1040, 330, 1.6, "fake", "+v"], [1140, 345, 1, "fake", "+v"], [1200, 360, 1, "fake", "+v"], // 124, 139, 125
+          [1110, 475, 1, "fake", "+v"], [1160, 475, 1, "fake", "+v"], [1210, 475, 1, "fake", "+v"], // 135 - 138
+          [1080, 670, 1, "fake", "-u"], // 133
+          [995, 955, 1, "fake", "-v"],  // E105
+          [1175, 287, 1.8, "fake", "+u", { color: 0x2b3a48 }], // V107 (outside door into S107)
+          // second-floor doors at the stair tops
+          [500, 331, 1, "fake", "-u", { base: 4.6 }],
+          [586, 670, 1, "fake", "-u", { base: 4.6 }],
+          [940, 648, 1, "fake", "+u", { base: 4.6 }],
+        ],
+        stairs: [
+          // S103, inside 110
+          [440, 305, 480, 322, "-u", 0, 2.3], [425, 302, 440, 340, "-u", 2.3, 2.3],
+          [440, 322, 490, 340, "+u", 2.3, 4.6], [490, 322, 500, 340, "+u", 4.6, 4.6],
+          // S102, the open stair between 102 and 101
+          [520, 679, 586, 696, "-u", 0, 2.3], [508, 662, 520, 696, "-u", 2.3, 2.3],
+          [520, 662, 572, 679, "+u", 2.3, 4.6], [572, 662, 586, 679, "+u", 4.6, 4.6],
+          // S104, off C105
+          [950, 659, 1000, 680, "+u", 0, 2.3], [1000, 638, 1010, 680, "+u", 2.3, 2.3],
+          [950, 638, 1000, 659, "-u", 2.3, 4.6], [940, 638, 950, 659, "-u", 4.6, 4.6],
+        ],
+        shafts: [[425, 302, 500, 340, 7.5], [508, 662, 586, 696, 7.5], [940, 638, 1010, 680, 7.5]],
+        portals: [
+          [[490, 295, 0], [490, 312, 0], [432, 312, 2.3], [432, 331, 2.3], [496, 331, 4.6]],   // S103
+          [[595, 690, 0], [584, 688, 0], [514, 688, 2.3], [514, 670, 2.3], [580, 670, 4.6]],   // S102
+          [[930, 670, 0], [945, 670, 0], [1005, 670, 2.3], [1005, 648, 2.3], [945, 648, 4.6]], // S104
+        ],
+      },
+      // Comstock Memorial Union (gamecmu1st2nd.JPG): north is up; the lower
+      // plan is the first floor, the upper one the second, drawn 608 px
+      // higher (second-floor v below is already shifted onto the first
+      // floor's). Joined to Kise: the plan's corridor along Kise's north end
+      // and Kise's west hallway both open into it (see HOLLOW_BUILDINGS).
+      // Changes marked on "gamecmu1st2nd - edits.JPG": most of the first floor
+      // (the Lower, Rec and Welcome lounges, the food court seating and the
+      // hallways north of them) is 3 steps down (`level`). Only the Main Lounge
+      // -- a platform with a glass balcony, open south to Kise's corridor --
+      // and the west entrance stay at ground level (`raisedFloors`). A ramp runs
+      // from the entrance down into the lounges, short stairs lead from the
+      // Main Lounge down into the pockets beside it, and the big stairs go from
+      // the pockets up to the second floor. The two north doors open onto a
+      // sunken landing with 3 steps up to the ground (`sunkenExtra`).
+      {
+        name: "Comstock Memorial Union",
+        px: { from: "u", knots: [[325, 668], [945, 787]] },
+        py: { from: "v", knots: [[918, 200], [1350, 283.6]] },
+        roof: 12,
+        ceiling: 9,
+        level: -0.48,
+        floors: [[325, 918, 945, 1290], [358, 1290, 945, 1350]],
+        raisedFloors: [
+          [358, 1300, 405, 1350], // west entrance, by the vestibule and the Sun Garden
+          [605, 1255, 753, 1350], // Main Lounge, open to Kise's corridor
+          [580, 1309, 605, 1350], // the big stairs start at ground level
+          [753, 1309, 780, 1350],
+        ],
+        // outside the north doors: 1 m of landing at the lower level, then
+        // steps up -- each exactly as wide as its doorway
+        sunkenExtra: [[463.5, 904.7, 482.5, 922], [768.2, 904.7, 791.8, 922]],
+        outlines: [[[325, 918], [945, 918], [945, 1350], [358, 1350], [358, 1290], [325, 1290]]],
+        solids: [
+          [325, 918, 395, 951],   // north-west corner, elevator
+          [325, 951, 388, 1193],  // 120
+          [427, 918, 466, 997],   // 115, 117
+          [483, 918, 752, 998],   // 113, restrooms
+          [425, 1034, 482, 1194], // 121
+          [482, 1034, 534, 1141], // 126
+          [551, 1034, 752, 1171], // 114, 125, 106 and the service core
+          [806, 1111, 945, 1202], // 103 food court
+        ],
+        partitions: [
+          [806, 918, 806, 1111],   // 105 (meeting room)
+          [552, 1305, 552, 1350],  // brick walls (black on the edits): Rec Lounge | west stair pocket
+          [808, 1300, 808, 1350],  // east stair pocket | food court seating
+        ],
+        brickPartitions: [1, 2],
+        doors: [
+          [473, 918, 2.4, "door"],  // north entrance by 115
+          [780, 918, 3, "door"],    // north entrance by the bus stop
+          [358, 1310, 2.4, "door", null, { h: 2.88 }], // west entrance, through the vestibule (at ground level)
+          [335, 1290, 2.4, "door", null, { h: 2.88 }], // vestibule -> the short stair down into the Welcome Lounge
+          [680.5, 1350, 32.3, "open"], // no wall from the west short stair to the food court: the walkway, Kise's hallway and corridor
+          [414, 1350, 14.2, "open"], // Sun Garden Lounge (the south-west wing)
+          [806, 1040, 2.4, "door"], // 105
+          // rooms that aren't walk-in
+          [377, 951, 1.1, "fake", "+v", { color: 0x9ea3a8 }], // elevator
+          [446, 997, 1, "fake", "+v"], [560, 998, 1.2, "fake", "+v"], [690, 998, 1, "fake", "+v"], [730, 998, 1, "fake", "+v"],
+          [388, 1100, 1.2, "fake", "+u"], [425, 1110, 1.2, "fake", "-u"], [534, 1090, 1, "fake", "+u"],
+          [600, 1034, 1.2, "fake", "-v"], [600, 1171, 1.2, "fake", "+v"], [700, 1171, 1.2, "fake", "+v"],
+          [752, 1070, 1.6, "fake", "+u"], [806, 1160, 1.8, "fake", "-u"],
+        ],
+        stairs: [
+          // north-west stairwell (switchback) to the second floor
+          [395, 930, 411, 951, "-v", -0.48, 2.25], [395, 918, 427, 930, "-v", 2.25, 2.25], [411, 930, 427, 951, "+v", 2.25, 4.5],
+          // the big stairs either side of the Main Lounge, from ground level up to the second floor (yellow)
+          [580, 1309, 605, 1350, "-v", 0, 4.5],
+          [753, 1309, 780, 1350, "-v", 0, 4.5],
+          // short stairs beside them, down north into the lounge (red; plan: the small stair icons)
+          [553, 1318, 578, 1350, "+v", -0.48, 0],
+          [781, 1328, 807, 1350, "+v", -0.48, 0],
+          // short stair from the west vestibule down into the Welcome Lounge (red)
+          [326, 1272, 345, 1290, "+v", -0.48, 0],
+          // outside the north doors: 3 steps up from the landing to the ground
+          [463.5, 904.7, 482.5, 910.2, "-v", -0.48, -0.16],
+          [768.2, 904.7, 791.8, 910.2, "-v", -0.48, -0.16],
+        ],
+        // the ramp from the west entrance down into the lounges (orange), [uA, vA, uB, vB, width m, height at A, at B]
+        ramps: [[398, 1323, 560, 1222, 2.4, 0, -0.48]],
+        // glass balcony rails at ground level (light blue): [u1, v1, u2, v2]
+        rails: [
+          [605, 1255, 753, 1255], [605, 1255, 605, 1309], [753, 1255, 753, 1309], // around the Main Lounge
+          [358, 1300, 405, 1300], [405, 1300, 405, 1312], [405, 1334, 405, 1350], // around the west entrance
+          [405, 1350, 470, 1350],   // Sun Garden | Rec Lounge
+        ],
+        portals: [
+          [[592, 1356, 0], [592, 1348, 0], [592, 1309, 4.5], [592, 1295, 4.5]],   // big stair, west of the Main Lounge
+          [[766, 1356, 0], [766, 1348, 0], [766, 1309, 4.5], [766, 1295, 4.5]],   // big stair, east of it
+          [[403, 1000, -0.48], [403, 952, -0.48], [403, 924, 2.25], [419, 924, 2.25], [419, 951, 4.5], [419, 965, 4.5]], // north-west stairwell
+        ],
+        upper: {
+          level: 4.5,
+          slab: 0.4,
+          holes: [[395, 918, 427, 951], [545, 1309, 809, 1350], [610, 1275, 751, 1309]], // stairwell, "Open to 1st Floor"
+          solids: [
+            [325, 918, 395, 954],   // north-west corner, elevator
+            [427, 918, 487, 961],   // 218
+            [526, 918, 605, 961],   // 216
+            [642, 918, 722, 962],   // 214
+            [757, 918, 864, 963],   // 212, storage
+            [864, 918, 945, 956],   // north-east corner
+            [895, 956, 945, 1258],  // 208, 207, 205, 204
+            [870, 1258, 945, 1340], // 203
+            [325, 1028, 402, 1222], // 222
+            [432, 992, 486, 1226],  // ballroom storage, 225
+            [465, 1258, 545, 1350], // restrooms
+          ],
+          partitions: [[486, 992, 864, 992], [864, 992, 864, 1226], [486, 1226, 864, 1226]], // 200 Ballroom
+          doors: [
+            [675, 992, 2.4, "door"], [864, 1110, 2.4, "door"], [560, 1226, 2.4, "door"], [790, 1226, 2.4, "door"], // Ballroom
+            [460, 961, 1, "fake", "+v"], [565, 961, 1, "fake", "+v"], [680, 962, 1, "fake", "+v"], [790, 963, 1, "fake", "+v"],
+            ...[1000, 1090, 1180, 1240].map((v) => [895, v, 1, "fake", "-u"]), // 208 - 204
+            [870, 1300, 1, "fake", "-u"],  // 203
+            [402, 1120, 1.2, "fake", "+u"], // 222
+            [460, 1226, 1, "fake", "+v"],  // 225
+            [432, 1050, 1, "fake", "-u"],  // storage
+            [505, 1258, 1, "fake", "-v"],  // restrooms
+            [377, 954, 1.1, "fake", "+v", { color: 0x9ea3a8 }], // elevator
+          ],
+          rails: [
+            [395, 951, 411, 951], // over the stairwell's lower flight
+            [545, 1309, 580, 1309], [605, 1309, 610, 1309], [751, 1309, 753, 1309], [780, 1309, 809, 1309],
+            [809, 1309, 809, 1350], // (none along the restrooms: pink on the edits)
+            [610, 1275, 751, 1275], [610, 1275, 610, 1309], [751, 1275, 751, 1309],
+          ],
+        },
+      },
+      // Comstock's Sun Garden Lounge: the angled one-storey south-west wing
+      // (footprint from screenshot5B.png, in screenshot px), open along its
+      // north side into the first floor. Its east, south and slanted walls
+      // are all glass (blue on "gamecmu1st2nd - edits.JPG").
+      {
+        name: "Comstock - Sun Garden Lounge",
+        roof: 6,
+        ceiling: 4.1,
+        // (the extra strips under the slanted wall keep the roof closed there)
+        floors: [[674.3, 283.6, 706.2, 289.3], [701, 289.3, 706.2, 296], [688, 289.3, 701, 293.6], [680, 289.3, 688, 291.2]],
+        floorQuads: [
+          [[673.8, 289.3], [701, 289.3], [701, 298.4], [701, 298.4]],
+          [[701, 296], [706.2, 296], [701, 298.4], [701, 298.4]],
+        ],
+        outlines: [{ points: [[706.2, 283.6], [706.2, 291.5], [706.2, 296], [701, 298.4], [673.8, 289.3], [674.3, 283.6]], open: true, glass: [1, 2, 3] }], // north side: Comstock's wall
+        doors: [[706.2, 287.55, 5.2, "open"]], // into the walkway to Kise (green on the edits)
+      },
+    ];
+    const FP_PARTITION_M = 0.2;        // interior walls (exterior ones are HOLLOW_WALL_M)
+    const FP_DOOR_HEIGHT_M = 2.4;
+    const FP_FAKE_DOOR_HEIGHT_M = 2.2;
+    const FP_MAX_RISE_M = 0.22;        // stair step, well under STEP_UP_M
+    const FP_RAIL_HEIGHT_M = 1.1;
+    const FP_BAND_DEPTH_M = 4;         // roof over a slanted/curved wall
+    const FP_INSET_M = 0.02;           // keeps painted faces off the brick ones
+    const FP_COLORS = {
+      partition: 0xd8d2c6, solid: 0xcdc6b8, ceiling: 0xe7e4dd, stair: 0xa9a49c, carpet: 0x7a6c64,
+      door: 0x6e4f36, doorFrame: 0x9a948c, handle: 0xc9c9c9, railCap: 0x8c9196,
+    };
+
+    // Plan pixels -> screenshot px.
+    function floorPlanToPx(plan) {
+      if (!plan.px) return (u, v) => [u, v];
+      const lerp = (knots, t) => {
+        let i = 0;
+        while (i < knots.length - 2 && t > knots[i + 1][0]) i++;
+        const [a0, b0] = knots[i], [a1, b1] = knots[i + 1];
+        return b0 + ((t - a0) * (b1 - b0)) / (a1 - a0);
+      };
+      return (u, v) => [lerp(plan.px.knots, plan.px.from === "u" ? u : v), lerp(plan.py.knots, plan.py.from === "u" ? u : v)];
+    }
+    function floorPlanRectPx(toPx, r) {
+      const [ax, ay] = toPx(r[0], r[1]), [bx, by] = toPx(r[2], r[3]);
+      return [Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)];
+    }
+    // Every plan's ground-floor interior, screenshot px (indoors, the floor
+    // mesh, and where trees and grass stay out).
+    const FLOOR_PLAN_FLOORS_PX = FLOOR_PLANS.flatMap((plan) => {
+      const toPx = floorPlanToPx(plan);
+      return plan.floors.map((r) => floorPlanRectPx(toPx, r));
+    });
+    const FLOOR_PLAN_QUADS_PX = FLOOR_PLANS.flatMap((plan) => {
+      const toPx = floorPlanToPx(plan);
+      return (plan.floorQuads || []).map((q) => q.map(([u, v]) => toPx(u, v)));
+    });
+    const inFloorPlanQuad = (px, py) => FLOOR_PLAN_QUADS_PX.some((q) => pointInPolygon(px, py, q));
+    // Rectangle minus rectangle, screenshot px -> up to four rectangles.
+    function subtractPxRect(r, h) {
+      if (h[0] >= r[2] || h[2] <= r[0] || h[1] >= r[3] || h[3] <= r[1]) return [r];
+      const out = [];
+      if (h[1] > r[1]) out.push([r[0], r[1], r[2], h[1]]);
+      if (h[3] < r[3]) out.push([r[0], h[3], r[2], r[3]]);
+      const y0 = Math.max(r[1], h[1]), y1 = Math.min(r[3], h[3]);
+      if (h[0] > r[0]) out.push([r[0], y0, h[0], y1]);
+      if (h[2] < r[2]) out.push([h[2], y0, r[2], y1]);
+      return out;
+    }
+    // Sunken floors (plans whose `level` is below the ground): the floors
+    // minus `raisedFloors`, stopped at the inside face of the exterior walls
+    // (the walls themselves stand on the ground outside), plus `sunkenExtra`.
+    // { rect (screenshot px), depth (m) } -- see groundHeightAt.
+    const FLOOR_PLAN_SUNKEN = FLOOR_PLANS.filter((plan) => plan.level < 0).flatMap((plan) => {
+      const toPx = floorPlanToPx(plan);
+      const floors = plan.floors.map((r) => floorPlanRectPx(toPx, r));
+      let lower = floors;
+      for (const h of (plan.raisedFloors || []).map((r) => floorPlanRectPx(toPx, r))) lower = lower.flatMap((r) => subtractPxRect(r, h));
+      // (open straight into another walk-in building, e.g. Kise, counts as inside)
+      const inside = (x, y) => [...FLOOR_PLAN_FLOORS_PX, ...HOLLOW_BUILDINGS].some((f) => x > f[0] && x < f[2] && y > f[1] && y < f[3]);
+      const onOutline = (x0, y0, x1, y1, nx, ny) => [0.1, 0.3, 0.5, 0.7, 0.9].some((t) =>
+        !inside(x0 + (x1 - x0) * t + nx * 0.3, y0 + (y1 - y0) * t + ny * 0.3));
+      const wallPx = HOLLOW_WALL_M / MAP_SCALE;
+      lower = lower.flatMap(([x0, y0, x1, y1]) => {
+        const cut = [onOutline(x0, y0, x0, y1, -1, 0), onOutline(x0, y0, x1, y0, 0, -1), onOutline(x1, y0, x1, y1, 1, 0), onOutline(x0, y1, x1, y1, 0, 1)];
+        const r = [cut[0] ? x0 + wallPx : x0, cut[1] ? y0 + wallPx : y0, cut[2] ? x1 - wallPx : x1, cut[3] ? y1 - wallPx : y1];
+        // Where a cut edge is only partly wall (the rest opens into another
+        // walk-in building), give the open stretches back as tabs.
+        const tabs = [];
+        const edges = [
+          [cut[0], (t) => [x0, t], [y0, y1], (a, b) => [x0, a, r[0], b], [-0.3, 0]],
+          [cut[1], (t) => [t, y0], [x0, x1], (a, b) => [a, y0, b, r[1]], [0, -0.3]],
+          [cut[2], (t) => [x1, t], [y0, y1], (a, b) => [r[2], a, x1, b], [0.3, 0]],
+          [cut[3], (t) => [t, y1], [x0, x1], (a, b) => [a, r[3], b, y1], [0, 0.3]],
+        ];
+        for (const [isCut, at, [lo, hi], tab, [nx, ny]] of edges) {
+          if (!isCut) continue;
+          let start = null;
+          for (let t = lo; t <= hi + 1e-6; t += 0.25) {
+            const [px, py] = at(Math.min(t + 0.125, hi));
+            const open = t < hi && inside(px + nx, py + ny);
+            if (open && start === null) start = t;
+            if (!open && start !== null) { tabs.push(tab(start, Math.min(t, hi))); start = null; }
+          }
+        }
+        return [r, ...tabs];
+      });
+      const extra = (plan.sunkenExtra || []).map((r) => floorPlanRectPx(toPx, r));
+      return [...lower, ...extra].map((rect) => ({ rect, depth: -plan.level }));
+    });
+    const sunkenWorld = FLOOR_PLAN_SUNKEN.map((s) => ({ ...rectToWorld(s.rect), depth: s.depth }));
+    // Ramps (FLOOR_PLANS' `ramps`): smooth slopes, part of the ground height
+    // (see groundHeightAt), world units.
+    const FLOOR_PLAN_RAMPS = FLOOR_PLANS.flatMap((plan) => {
+      const toPx = floorPlanToPx(plan);
+      return (plan.ramps || []).map(([ua, va, ub, vb, width, ha, hb]) => {
+        const a = mapToWorld(...toPx(ua, va)), b = mapToWorld(...toPx(ub, vb));
+        const len = Math.hypot(b.x - a.x, b.z - a.z);
+        return { a, b, len, ux: (b.x - a.x) / len, uz: (b.z - a.z) / len, half: width / 2, ha, hb };
+      });
+    });
+    // Height of a ramp's surface at (x, z), or null off every ramp.
+    function rampHeightAt(x, z) {
+      for (const r of FLOOR_PLAN_RAMPS) {
+        const dx = x - r.a.x, dz = z - r.a.z;
+        const along = dx * r.ux + dz * r.uz, across = Math.abs(dx * -r.uz + dz * r.ux);
+        if (along >= 0 && along <= r.len && across <= r.half) return r.ha + ((r.hb - r.ha) * along) / r.len;
+      }
+      return null;
+    }
+    // STAIR PORTALS (enemy navigation between floors). The nav grid holds one
+    // stand height per cell, so an upper floor (Comstock's second floor, a
+    // stairwell's top landing) isn't part of it and a stair's top reads as a
+    // dead end. Each portal is a known walking line up an existing stair,
+    // bottom -> top; findPath uses it to join the floor below to the floor
+    // above. Enemies still walk the real steps (it's a route, not a
+    // teleport). `level` is shared by every portal reaching the same floor
+    // of the same building; a body counts as up there once it stands within
+    // NAV_LEVEL_MARGIN_M of that floor's height, inside the building.
+    const NAV_LEVEL_MARGIN_M = 1.0;
+    const FLOOR_PLAN_LEVELS = new Map(); // "building:height" -> level
+    const FLOOR_PLAN_PORTALS = FLOOR_PLANS.flatMap((plan) => {
+      const toPx = floorPlanToPx(plan);
+      const floors = plan.floors.map((r) => rectToWorld(floorPlanRectPx(toPx, r)));
+      return (plan.portals || []).map((raw) => {
+        const open = !(raw.length && raw[raw.length - 1] && raw[raw.length - 1].open === false);
+        const line = raw.filter(Array.isArray).map(([u, v, h]) => ({ ...mapToWorld(...toPx(u, v)), y: h }));
+        const upperH = line[line.length - 1].y, lowerH = line[0].y;
+        const key = plan.name + ":" + upperH;
+        if (!FLOOR_PLAN_LEVELS.has(key)) {
+          FLOOR_PLAN_LEVELS.set(key, {
+            key, refY: upperH, floors,
+            box: {
+              minX: Math.min(...floors.map((f) => f.minX)), maxX: Math.max(...floors.map((f) => f.maxX)),
+              minZ: Math.min(...floors.map((f) => f.minZ)), maxZ: Math.max(...floors.map((f) => f.maxZ)),
+            },
+          });
+        }
+        const pad = 1.2;
+        return {
+          level: FLOOR_PLAN_LEVELS.get(key), line, lowerH, upperH, open,
+          bottom: line[0], top: line[line.length - 1],
+          box: {
+            minX: Math.min(...line.map((q) => q.x)) - pad, maxX: Math.max(...line.map((q) => q.x)) + pad,
+            minZ: Math.min(...line.map((q) => q.z)) - pad, maxZ: Math.max(...line.map((q) => q.z)) + pad,
+          },
+        };
+      });
+    });
+    // Which upper floor (level) a body standing at height y is on, or null
+    // for the ordinary ground-level navigation.
+    function navLevelAt(x, z, y) {
+      if (y === undefined) return null;
+      for (const level of FLOOR_PLAN_LEVELS.values()) {
+        if (y < level.refY - NAV_LEVEL_MARGIN_M || y > level.refY + 2) continue;
+        if (level.floors.some((f) => x > f.minX && x < f.maxX && z > f.minZ && z < f.maxZ)) return level;
+      }
+      return null;
+    }
+    // The portal whose stair a body is partway up (not at either end), or null.
+    function navPortalUnder(x, z, y) {
+      for (const p of FLOOR_PLAN_PORTALS) {
+        if (x < p.box.minX || x > p.box.maxX || z < p.box.minZ || z > p.box.maxZ) continue;
+        if (y > p.lowerH + 0.15 && y < p.upperH - 0.15) return p;
+      }
+      return null;
+    }
+
+    // Floors at ground level (the floor mesh): everything but the sunken parts.
+    const FLOOR_PLAN_GROUND_FLOORS_PX = FLOOR_PLANS.flatMap((plan) => {
+      const toPx = floorPlanToPx(plan);
+      return (plan.level < 0 ? plan.raisedFloors || [] : plan.floors).map((r) => floorPlanRectPx(toPx, r));
+    });
+
+    // World rect helpers (world rects: { minX, maxX, minZ, maxZ }).
+    function intersectWorldRects(a, b) {
+      const r = { minX: Math.max(a.minX, b.minX), maxX: Math.min(a.maxX, b.maxX), minZ: Math.max(a.minZ, b.minZ), maxZ: Math.min(a.maxZ, b.maxZ) };
+      return r.maxX - r.minX > 0.01 && r.maxZ - r.minZ > 0.01 ? r : null;
+    }
+    function subtractWorldRects(rects, holes) {
+      let out = rects;
+      for (const h of holes) {
+        const next = [];
+        for (const r of out) {
+          if (!intersectWorldRects(r, h)) { next.push(r); continue; }
+          const midZ0 = Math.max(r.minZ, h.minZ), midZ1 = Math.min(r.maxZ, h.maxZ);
+          const pieces = [
+            { minX: r.minX, maxX: r.maxX, minZ: r.minZ, maxZ: h.minZ },
+            { minX: r.minX, maxX: r.maxX, minZ: h.maxZ, maxZ: r.maxZ },
+            { minX: r.minX, maxX: h.minX, minZ: midZ0, maxZ: midZ1 },
+            { minX: h.maxX, maxX: r.maxX, minZ: midZ0, maxZ: midZ1 },
+          ];
+          for (const p of pieces) if (p.maxX - p.minX > 0.01 && p.maxZ - p.minZ > 0.01) next.push(p);
+        }
+        out = next;
+      }
+      return out;
+    }
+
+    // One plan -> colliders: exterior walls, partitions (with their doors
+    // cut out), solid rooms, cosmetic doors, stairs, the ceiling slabs and
+    // the building's mass above them, and (Comstock) the second floor.
+    function floorPlanColliders(plan) {
+      const toPx = floorPlanToPx(plan);
+      const W = (u, v) => { const [x, y] = toPx(u, v); return mapToWorld(x, y); };
+      const rectW = (r) => rectToWorld(floorPlanRectPx(toPx, r));
+      const DIRS = { "+u": [1, 0], "-u": [-1, 0], "+v": [0, 1], "-v": [0, -1] };
+      const dirW = (u, v, d) => {
+        const a = W(u, v), b = W(u + DIRS[d][0], v + DIRS[d][1]);
+        const len = Math.hypot(b.x - a.x, b.z - a.z);
+        return { x: (b.x - a.x) / len, z: (b.z - a.z) / len };
+      };
+      const floorsPx = plan.floors.map((r) => floorPlanRectPx(toPx, r));
+      const cpx = (Math.min(...floorsPx.map((r) => r[0])) + Math.max(...floorsPx.map((r) => r[2]))) / 2;
+      const cpy = (Math.min(...floorsPx.map((r) => r[1])) + Math.max(...floorsPx.map((r) => r[3]))) / 2;
+      const out = [];
+      // A box of half size hx (along yaw) x hz, from base to top.
+      const addBox = (cx, cz, hx, hz, base, top, yaw, props) => {
+        if (hx <= 0.005 || hz <= 0.005 || top - base <= 0.005) return null;
+        const c = makeCollider(cx, cz, hx, hz, top, yaw);
+        if (base !== 0) { c.base = base; c.halfHeight = true; }
+        Object.assign(c, props);
+        c.px = cpx;
+        c.py = cpy;
+        out.push(c);
+        return c;
+      };
+      const addRect = (r, base, top, props, inset = 0) => addBox((r.minX + r.maxX) / 2, (r.minZ + r.maxZ) / 2,
+        (r.maxX - r.minX) / 2 - inset, (r.maxZ - r.minZ) / 2 - inset, base, top, 0, props);
+
+      const upper = plan.upper;
+      const lowerCeiling = upper ? upper.level - upper.slab : plan.ceiling;
+      const L = plan.level || 0; // the ground floor (below 0 when sunken)
+      const floorsW = plan.floors.map(rectW);
+      const insideFloors = (x, z) => floorsW.some((f) => x > f.minX && x < f.maxX && z > f.minZ && z < f.maxZ);
+      // A painted slab under a ceiling (or a floor): flush with its
+      // neighbours (a little overlap), but kept inside the brick exterior
+      // walls so it never shows on the outside.
+      const addSlab = (r, base, top, color) => {
+        const side = (x0, z0, x1, z1, nx, nz) => [0.1, 0.3, 0.5, 0.7, 0.9].some((t) =>
+          !insideFloors(x0 + (x1 - x0) * t + nx * 0.1, z0 + (z1 - z0) * t + nz * 0.1)) ? -0.05 : 0.02;
+        const g = {
+          minX: r.minX - side(r.minX, r.minZ, r.minX, r.maxZ, -1, 0),
+          maxX: r.maxX + side(r.maxX, r.minZ, r.maxX, r.maxZ, 1, 0),
+          minZ: r.minZ - side(r.minX, r.minZ, r.maxX, r.minZ, 0, -1),
+          maxZ: r.maxZ + side(r.minX, r.maxZ, r.maxX, r.maxZ, 0, 1),
+        };
+        addRect(g, base, top, { color });
+      };
+      const roofZones = (plan.roofs || [[-1e5, -1e5, 1e5, 1e5, plan.roof]]).map((z) => ({ rect: rectW(z), h: z[4] }));
+      const shafts = (plan.shafts || []).map((s) => ({ rect: rectW(s), top: s[4] }));
+      const inRectW = (r, p) => p.x > r.minX && p.x < r.maxX && p.z > r.minZ && p.z < r.maxZ;
+      const roofAt = (p) => (roofZones.find((z) => inRectW(z.rect, p)) || { h: plan.roof }).h;
+      const ceilingAt = (p) => (shafts.find((s) => inRectW(s.rect, p)) || { top: plan.ceiling }).top;
+
+      // Walls: { a, b (the plan line, world), off (world offset of the
+      // wall's center line), thick, base, top, props, gaps }.
+      const walls = [];
+      for (const outline of plan.outlines || []) {
+        const pts = (outline.points || outline).map(([u, v]) => W(u, v));
+        let area = 0;
+        for (let i = 0; i < pts.length; i++) {
+          const p = pts[i], q = pts[(i + 1) % pts.length];
+          area += p.x * q.z - q.x * p.z;
+        }
+        const skipClosing = outline.open === true; // the edge back to the first point is open
+        const glassEdges = outline.glass || [];
+        for (let i = 0; i < pts.length; i++) {
+          if (skipClosing && i === pts.length - 1) continue;
+          const a = pts[i], b = pts[(i + 1) % pts.length];
+          const len = Math.hypot(b.x - a.x, b.z - a.z);
+          if (len < 0.01) continue;
+          const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
+          const n = area > 0 ? { x: -uz, z: ux } : { x: uz, z: -ux }; // toward the inside
+          const mid = { x: (a.x + b.x) / 2 + n.x * 0.6, z: (a.z + b.z) / 2 + n.z * 0.6 };
+          const top = roofAt(mid);
+          const t = HOLLOW_WALL_M;
+          if (glassEdges.includes(i)) {
+            // All glass up to the ceiling, brick above it.
+            walls.push({ a, b, off: { x: n.x * t / 2, z: n.z * t / 2 }, thick: t, base: lowerCeiling, top, props: {}, gaps: [], exterior: true });
+            addBox((a.x + b.x) / 2 + n.x * t / 2, (a.z + b.z) / 2 + n.z * t / 2, len / 2, 0.03, 0, lowerCeiling, Math.atan2(-uz, ux),
+              { glass: true, seeThrough: true });
+          } else {
+            walls.push({ a, b, off: { x: n.x * t / 2, z: n.z * t / 2 }, thick: t, base: 0, top, props: {}, gaps: [], exterior: true });
+          }
+          if (Math.abs(ux) > 0.01 && Math.abs(uz) > 0.01) {
+            // Slanted / curved wall: a band of roof running along it, from
+            // the ceiling under it up to the wall's top.
+            const base = ceilingAt(mid);
+            const yaw = Math.atan2(-uz, ux);
+            const cx = (a.x + b.x) / 2 + n.x * FP_BAND_DEPTH_M / 2, cz = (a.z + b.z) / 2 + n.z * FP_BAND_DEPTH_M / 2;
+            addBox(cx, cz, len / 2, FP_BAND_DEPTH_M / 2, base, top, yaw, {});
+            addBox(cx + n.x * 0.05, cz + n.z * 0.05, len / 2 - 0.05, FP_BAND_DEPTH_M / 2 - 0.05,
+              base - 0.12, base, yaw, { color: FP_COLORS.ceiling });
+          }
+        }
+      }
+      const addPartitions = (list, base, top, brick = []) => {
+        (list || []).forEach((p, i) => {
+          const a = W(p[0], p[1]), b = W(p[2], p[3]);
+          const props = brick.includes(i) ? {} : { color: FP_COLORS.partition };
+          walls.push({ a, b, off: { x: 0, z: 0 }, thick: FP_PARTITION_M, base, top: p[4] || top, props, gaps: [], trim: 0.03 });
+        });
+      };
+      addPartitions(plan.partitions, L, lowerCeiling, plan.brickPartitions);
+      if (upper) addPartitions(upper.partitions, upper.level, plan.ceiling);
+
+      // Doors: real ones cut a gap into every wall they sit on; fake ones
+      // are a panel in a frame, with a handle, on the face side.
+      const addDoors = (list, levelBase, levelCeiling) => {
+        for (const [u, v, width, kind, face, opts = {}] of list || []) {
+          const p = W(u, v);
+          const base = levelBase + (opts.base || 0);
+          if (kind === "fake") {
+            const f = dirW(u, v, face);
+            const along = { x: -f.z, z: f.x };
+            const yaw = Math.atan2(-along.z, along.x);
+            const h = FP_FAKE_DOOR_HEIGHT_M;
+            const panel = { color: opts.color !== undefined ? opts.color : FP_COLORS.door, collide: false };
+            addBox(p.x + f.x * 0.02, p.z + f.z * 0.02, width / 2 + 0.08, 0.04, base, base + h + 0.08, yaw, { color: FP_COLORS.doorFrame, collide: false });
+            addBox(p.x + f.x * 0.05, p.z + f.z * 0.05, width / 2, 0.07, base, base + h, yaw, panel);
+            if (opts.color === undefined) {
+              const hx = p.x + f.x * 0.14 + along.x * (width / 2 - 0.16), hz = p.z + f.z * 0.14 + along.z * (width / 2 - 0.16);
+              addBox(hx, hz, 0.06, 0.03, base + 1.0, base + 1.04, yaw, { color: FP_COLORS.handle, collide: false });
+            }
+            continue;
+          }
+          const top = kind === "open" ? levelCeiling : base + (opts.h || FP_DOOR_HEIGHT_M);
+          if (kind === "glass") {
+            // A closed glass door: a pane in a dark frame, filling the opening.
+            const along = (() => {
+              let best = null;
+              for (const w of walls) {
+                const len = Math.hypot(w.b.x - w.a.x, w.b.z - w.a.z);
+                const ux = (w.b.x - w.a.x) / len, uz = (w.b.z - w.a.z) / len;
+                const d = Math.abs((p.x - w.a.x) * -uz + (p.z - w.a.z) * ux);
+                if (d < 0.45 && (!best || d < best.d)) best = { d, ux, uz, off: w.off };
+              }
+              return best;
+            })();
+            if (along) {
+              const yaw = Math.atan2(-along.uz, along.ux);
+              const cx = p.x + along.off.x, cz = p.z + along.off.z;
+              const doorBase = Math.max(base, 0);
+              addBox(cx, cz, width / 2, 0.03, doorBase, top, yaw, { glass: true, seeThrough: true });
+              for (const side of [-1, 1]) { // frame
+                addBox(cx + along.ux * side * (width / 2 - 0.03), cz + along.uz * side * (width / 2 - 0.03), 0.03, 0.06,
+                  doorBase, top, yaw, { color: 0x2f3338, collide: false });
+              }
+              addBox(cx, cz, width / 2, 0.06, top - 0.06, top, yaw, { color: 0x2f3338, collide: false });
+              addBox(cx, cz, 0.02, 0.07, doorBase + 0.9, doorBase + 1.3, yaw, { color: 0xc9c9c9, collide: false }); // handles
+            }
+          }
+          for (const w of walls) {
+            if (w.top <= base || w.base >= top) continue;
+            const len = Math.hypot(w.b.x - w.a.x, w.b.z - w.a.z);
+            const ux = (w.b.x - w.a.x) / len, uz = (w.b.z - w.a.z) / len;
+            const s = (p.x - w.a.x) * ux + (p.z - w.a.z) * uz;
+            const d = Math.abs((p.x - w.a.x) * -uz + (p.z - w.a.z) * ux);
+            if (d > 0.45 || s < -0.1 || s > len + 0.1) continue;
+            w.gaps.push({ s0: s - width / 2, s1: s + width / 2, y0: base, y1: top });
+          }
+        }
+      };
+      addDoors(plan.doors, L, lowerCeiling);
+      if (upper) addDoors(upper.doors, upper.level, plan.ceiling);
+
+      for (const w of walls) {
+        const len = Math.hypot(w.b.x - w.a.x, w.b.z - w.a.z);
+        const ux = (w.b.x - w.a.x) / len, uz = (w.b.z - w.a.z) / len;
+        const yaw = Math.atan2(-uz, ux);
+        const trim = w.trim || 0;
+        const piece = (s0, s1, y0, y1) => {
+          s0 = Math.max(s0, trim);
+          s1 = Math.min(s1, len - trim);
+          if (s1 - s0 < 0.01) return;
+          const m = (s0 + s1) / 2;
+          addBox(w.a.x + w.off.x + ux * m, w.a.z + w.off.z + uz * m, (s1 - s0) / 2, w.thick / 2, y0, y1, yaw, { ...w.props });
+        };
+        let cursor = 0;
+        for (const g of w.gaps.sort((a, b) => a.s0 - b.s0)) {
+          piece(cursor, g.s0, w.base, w.top);
+          piece(g.s0, g.s1, w.base, Math.min(w.top, g.y0));      // below the gap (a door up a floor)
+          piece(g.s0, g.s1, Math.max(w.base, g.y1), w.top);      // lintel
+          cursor = Math.max(cursor, g.s1);
+        }
+        piece(cursor, len, w.base, w.top);
+      }
+
+      // Rooms that aren't walk-in, and pillars.
+      for (const s of plan.solids || []) addRect(rectW(s), L, lowerCeiling, { color: FP_COLORS.solid }, FP_INSET_M);
+      for (const s of plan.columns || []) addRect(rectW(s), L, lowerCeiling, { color: FP_COLORS.partition }, FP_INSET_M);
+      if (upper) for (const s of upper.solids || []) addRect(rectW(s), upper.level, plan.ceiling, { color: FP_COLORS.solid }, FP_INSET_M);
+
+      // Stairs: solid steps (walkable, like the bleachers), each at most
+      // FP_MAX_RISE_M above the last.
+      for (const [u1, v1, u2, v2, dir, h0, h1] of plan.stairs || []) {
+        const n = h1 > h0 ? Math.ceil((h1 - h0) / FP_MAX_RISE_M - 1e-6) : 1;
+        for (let i = 0; i < n; i++) {
+          const f0 = i / n, f1 = (i + 1) / n;
+          let r;
+          if (dir === "+u") r = [u1 + (u2 - u1) * f0, v1, u1 + (u2 - u1) * f1, v2];
+          else if (dir === "-u") r = [u2 - (u2 - u1) * f1, v1, u2 - (u2 - u1) * f0, v2];
+          else if (dir === "+v") r = [u1, v1 + (v2 - v1) * f0, u2, v1 + (v2 - v1) * f1];
+          else r = [u1, v2 - (v2 - v1) * f1, u2, v2 - (v2 - v1) * f0];
+          // (a stair that starts at ground level stands on it; one that starts
+          // below it runs down to the sunken floor)
+          // Steps butt against each other with no gap along the run (a gap
+          // would read as the floor below to the nav grid); only the sides
+          // are kept off the walls.
+          const w = rectW(r), along = dir === "+u" || dir === "-u" ? "u" : "v";
+          const alongX = (rectW([0, 0, 1, 0]).maxX - rectW([0, 0, 1, 0]).minX) > (rectW([0, 0, 0, 1]).maxX - rectW([0, 0, 0, 1]).minX)
+            ? along === "u" : along === "v"; // does the run go along world x?
+          const g = alongX
+            ? { minX: w.minX - 0.005, maxX: w.maxX + 0.005, minZ: w.minZ + FP_INSET_M, maxZ: w.maxZ - FP_INSET_M }
+            : { minX: w.minX + FP_INSET_M, maxX: w.maxX - FP_INSET_M, minZ: w.minZ - 0.005, maxZ: w.maxZ + 0.005 };
+          addRect(g, h0 >= 0 ? 0 : L, h0 + (h1 - h0) * (h1 > h0 ? f1 : 1), { color: FP_COLORS.stair, climbable: true });
+        }
+      }
+
+      // Glass rails: a pane with a steel cap along each segment.
+      const addRail = (a, b, base, top) => {
+        const len = Math.hypot(b.x - a.x, b.z - a.z);
+        const yaw = Math.atan2(-(b.z - a.z), b.x - a.x);
+        const cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2;
+        addBox(cx, cz, len / 2, 0.03, base, top, yaw, { glass: true, seeThrough: true });
+        addBox(cx, cz, len / 2, 0.05, top, top + 0.06, yaw, { color: FP_COLORS.railCap, collide: false });
+      };
+      for (const [u1, v1, u2, v2] of plan.rails || []) addRail(W(u1, v1), W(u2, v2), 0, FP_RAIL_HEIGHT_M);
+
+      // Ramps: the slope itself is ground (FLOOR_PLAN_RAMPS, drawn with the
+      // sunken floors); here just a glass rail down each side, in a few
+      // lengths that step with it.
+      for (const [ua, va, ub, vb, width, ha, hb] of plan.ramps || []) {
+        const a = W(ua, va), b = W(ub, vb);
+        const len = Math.hypot(b.x - a.x, b.z - a.z);
+        const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
+        const nx = -uz, nz = ux;
+        const n = 8;
+        for (let i = 0; i < n; i++) {
+          const top = ha + ((hb - ha) * i) / n;
+          const s0 = (len * i) / n, s1 = (len * (i + 1)) / n, m = (s0 + s1) / 2;
+          const cx = a.x + ux * m, cz = a.z + uz * m;
+          for (const side of [-1, 1]) {
+            const ex = cx + nx * side * width / 2, ez = cz + nz * side * width / 2;
+            addRail({ x: ex - ux * (s1 - s0) / 2, z: ez - uz * (s1 - s0) / 2 }, { x: ex + ux * (s1 - s0) / 2, z: ez + uz * (s1 - s0) / 2 },
+              L, Math.max(top, L) + FP_RAIL_HEIGHT_M);
+          }
+        }
+      }
+
+      // Ceilings and the mass above them, per roof area; stairwells (shafts)
+      // get their own higher ceiling.
+      const shaftRects = shafts.map((s) => s.rect);
+      const slabUnder = (r, at) => addSlab(r, at - 0.12, at, FP_COLORS.ceiling);
+      for (const f of floorsW) {
+        for (const z of roofZones) {
+          const i = intersectWorldRects(f, z.rect);
+          if (!i) continue;
+          for (const r of subtractWorldRects([i], shaftRects)) {
+            addRect(r, plan.ceiling, z.h, {});
+            slabUnder(r, plan.ceiling);
+          }
+          for (const s of shafts) {
+            const r = intersectWorldRects(i, s.rect);
+            if (!r) continue;
+            addRect(r, s.top, z.h, {});
+            slabUnder(r, s.top);
+          }
+        }
+      }
+
+      // Second floor: the slab (the first floor's ceiling underneath, carpet
+      // on top) with its openings, and glass railings around them.
+      if (upper) {
+        const holes = upper.holes.map(rectW);
+        for (const r of subtractWorldRects(floorsW, holes)) {
+          addSlab(r, upper.level - upper.slab, upper.level - 0.05, FP_COLORS.ceiling);
+          addSlab(r, upper.level - 0.05, upper.level, FP_COLORS.carpet);
+        }
+        for (const [u1, v1, u2, v2] of upper.rails || []) addRail(W(u1, v1), W(u2, v2), upper.level, upper.level + FP_RAIL_HEIGHT_M);
+      }
+      return out;
+    }
+
     // Round buildings: [centerX, centerY, radius px, height in meters].
     const CYLINDER_BUILDINGS = [
       [1003, 302, 20, 30],        // Nelson Hall -- a tall round tower
@@ -869,8 +1878,7 @@
     // (The angled wing of Ballard Hall used to be the only entry -- Ballard is
     // gone now, its site is open lawn.)
     const ROTATED_BUILDINGS = [
-      // ...the wing's slanted south face, (673.5, 289.3) -> (701, 298.4)
-      [688.2, 291, 29, 6, 6, -18.3],
+      // (Comstock's angled south-west wing is walk-in now: FLOOR_PLANS)
       // Nelson <-> Grantham tunnel: slants from Nelson's south-west side down to
       // Grantham's roofline, clear of the G-6 turnaround (screenshot4 + campus map.png)
       [984, 330, 29, 8, 3.5, 69],
@@ -1082,16 +2090,13 @@
           [633, 210, 633, 250, 10],  // M-5 divider
           [560, 398, 660, 398, 14],  // south of the library, along the mall
         ],
-        props: [
-          // doors (blue in screenshot5B.png): dark glass panels on the walls
-          [633.6, 307, 637.4, 307.3, 2.4, 0x2b3a48],   // library, north-east door
-          [668.3, 279.7, 672.5, 280, 2.4, 0x2b3a48],   // Comstock west entrance
-        ],
+        // (the library's north-east door and Comstock's west door, blue in
+        // screenshot5B.png, are real openings now: FLOOR_PLANS / HOLLOW_BUILDINGS)
+        props: [],
         trees: [
           [650, 215], [650, 237], [650, 258],          // flowering trees beside Comstock
           [641, 285], [647, 288],                      // plaza planter
           [627, 284], [628, 299],                      // west of the plaza
-          [710.6, 288.8],                              // courtyard between the wing and Dining
           [676.5, 310.5], [683.5, 313], [689.6, 315.6], // flowering trees along the walk
           [678, 319], [674, 324], [686, 322], [690.5, 327], [678.3, 330], [700, 326], [671, 316], [671, 332], // library lawn
           [715, 329],
@@ -1539,6 +2544,11 @@
         side("e", w.maxX - t, w.maxX, [w.minZ + t, w.maxZ - t]);
         const raised = b[7];
         const slab = b[8] ?? 0.3; // roof slab thickness
+        if (b[9] !== undefined) {
+          // painted ceiling under the roof slab (10th value: its color)
+          pieces.push({ minX: w.minX + t - 0.02, maxX: w.maxX - t + 0.02, minZ: w.minZ + t - 0.02, maxZ: w.maxZ - t + 0.02,
+            top: height - slab, base: height - slab - 0.12, color: b[9] });
+        }
         if (!raised) {
           wall(w.minX, w.maxX, w.minZ, w.maxZ, height, height - slab); // roof slab
         } else {
@@ -1565,6 +2575,7 @@
             c.halfHeight = true;
           }
           if (b[6] !== undefined) c.color = b[6];
+          if (piece.color !== undefined) c.color = piece.color;
           if (piece.glass) {
             c.glass = true;
             c.seeThrough = true; // you (and enemies) can see through it
@@ -1584,6 +2595,7 @@
         c.py = (g[1] + g[3]) / 2;
         list.push(c);
       }
+      for (const plan of FLOOR_PLANS) list.push(...floorPlanColliders(plan));
       for (const b of CYLINDER_BUILDINGS) {
         const center = mapToWorld(b[0], b[1]);
         const radius = b[2] * MAP_SCALE;
@@ -1750,6 +2762,7 @@
     const trackMaterial = surfaceMaterial(trackTexture);
     const roadMaterial = surfaceMaterial(roadTexture);
     const concreteMaterial = surfaceMaterial(concreteTexture);
+    const indoorFloorMaterial = surfaceMaterial(concreteTexture); // FLOOR_PLANS' floors: concrete, like Kise's
     const lotMaterial = surfaceMaterial(lotTexture);
     const turfMaterial = surfaceMaterial(turfTexture);
     // Soccer pitch, mapped once over its rectangle: long axis along u.
@@ -1831,6 +2844,7 @@
       walk: 0.02, plaza: 0.025, curb: 0.03, road: 0.04, intersection: 0.045, driveway: 0.05,
       track: 0.06, dirt: 0.06, laneLine: 0.07, lot: 0.08, field: 0.09, pool: 0.09,
       lotWalk: 0.1, infield: 0.1, grassIsland: 0.11, crosswalk: 0.055,
+      indoor: 0.026, // walk-in floor plans' floors: level with Kise's (a plaza), just over the walks under them
       // stadium infield (between the track fill and the lane lines)
       infieldTurf: 0.064, eventArea: 0.066, infieldCover: 0.067,
     };
@@ -2110,6 +3124,9 @@
           if (x > p.minX + i && x < p.maxX - i && z > p.minZ + i && z < p.maxZ - i) h = Math.min(h, -(k + 1) * PIT_STEP_M);
         }
       }
+      for (const w of sunkenWorld) if (x > w.minX && x < w.maxX && z > w.minZ && z < w.maxZ) h = Math.min(h, -w.depth);
+      const ramp = rampHeightAt(x, z);
+      if (ramp !== null) h = ramp;
       return h;
     }
 
@@ -2510,6 +3527,91 @@
     }
     for (const r of PLAZAS) walkGeometries.push(rectGround(r, LIFT.plaza, { uTileM: SLAB_LENGTH_M, vTileM: SLAB_LENGTH_M }));
     root.add(mergedMesh(walkGeometries, concreteMaterial));
+    // Floors inside the walk-in floor plans (the ground-level ones).
+    root.add(mergedMesh([
+      ...FLOOR_PLAN_GROUND_FLOORS_PX.map((r) => rectGround(r, LIFT.indoor)),
+      ...FLOOR_PLAN_QUADS_PX.map((q) => groundQuad(q.map(([x, y]) => mapToWorld(x, y)), q.map(() => [0, 0]), LIFT.indoor)),
+    ], indoorFloorMaterial, SLAB_LENGTH_M));
+    // Sunken floors (FLOOR_PLAN_SUNKEN) and their edges: concrete faces from
+    // the ground down all round them.
+    if (FLOOR_PLAN_SUNKEN.length > 0) {
+      const sunkFloors = mergedMesh(FLOOR_PLAN_SUNKEN.map((s) => rectGround(s.rect, -s.depth + 0.004)), indoorFloorMaterial.clone(), SLAB_LENGTH_M);
+      // Real geometry, depth-tested like the buildings: drawn over the ground
+      // layers, but hidden behind a sunken area's near edge (see `edges`).
+      sunkFloors.material.depthWrite = true;
+      sunkFloors.material.stencilWrite = false;
+      sunkFloors.renderOrder = 0;
+      root.add(sunkFloors);
+      const edgeGeometries = [];
+      const inOther = (x, z, self) => sunkenWorld.some((o) => o !== self && x > o.minX && x < o.maxX && z > o.minZ && z < o.maxZ);
+      for (const w of sunkenWorld) {
+        for (const [ax, az, bx, bz, inX, inZ] of [
+          [w.minX, w.minZ, w.maxX, w.minZ, 0, 1], [w.minX, w.maxZ, w.maxX, w.maxZ, 0, -1],
+          [w.minX, w.minZ, w.minX, w.maxZ, 1, 0], [w.maxX, w.minZ, w.maxX, w.maxZ, -1, 0],
+        ]) {
+          // the stretches of this edge that don't open onto another sunken rect
+          const len = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.ceil(len / 0.1));
+          let start = null;
+          for (let i = 0; i <= n; i++) {
+            const t = (i + 0.5) / n;
+            const open = i < n && !inOther(ax + (bx - ax) * t - inX * 0.05, az + (bz - az) * t - inZ * 0.05, w);
+            if (open && start === null) start = i / n;
+            if (!open && start !== null) {
+              const t0 = start, t1 = i / n;
+              edgeGeometries.push(wallQuad(ax + (bx - ax) * t0, az + (bz - az) * t0, ax + (bx - ax) * t1, az + (bz - az) * t1,
+                0, -w.depth, inX, inZ, SLAB_LENGTH_M));
+              start = null;
+            }
+          }
+        }
+      }
+      // Both sides drawn: seen from outside, the near edge hides the floor and
+      // steps below the ground behind it.
+      // Ramps: one sloped surface each, and its sides down to the floor below.
+      const rampSurfaces = [];
+      const tri = (pts) => {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(pts.flat(), 3));
+        g.computeVertexNormals();
+        g.setAttribute("uv", new THREE.Float32BufferAttribute(pts.flatMap((q) => [q[0] / SLAB_LENGTH_M, q[2] / SLAB_LENGTH_M]), 2));
+        return g;
+      };
+      for (const r of FLOOR_PLAN_RAMPS) {
+        const nx = -r.uz * r.half, nz = r.ux * r.half, lift = 0.006;
+        const p = (x, z, y) => [x, y + lift, z];
+        const A1 = p(r.a.x - nx, r.a.z - nz, r.ha), A2 = p(r.a.x + nx, r.a.z + nz, r.ha);
+        const B1 = p(r.b.x - nx, r.b.z - nz, r.hb), B2 = p(r.b.x + nx, r.b.z + nz, r.hb);
+        const low = Math.min(r.ha, r.hb);
+        // wound to face up
+        rampSurfaces.push(tri([A1, B2, B1]), tri([A1, A2, B2]));
+        for (const [P, Q] of [[A1, B1], [A2, B2]]) {
+          const Pl = [P[0], low, P[2]], Ql = [Q[0], low, Q[2]];
+          edgeGeometries.push(tri([P, Q, Ql]), tri([P, Ql, Pl]));
+        }
+      }
+      if (rampSurfaces.length > 0) {
+        const up = rampSurfaces.map((g) => {
+          // make sure each triangle faces up (flip if its normal points down)
+          const n = g.attributes.normal.array;
+          if (n[1] < 0) {
+            const a = g.attributes.position.array;
+            for (let k = 0; k < 3; k++) { const t = a[3 + k]; a[3 + k] = a[6 + k]; a[6 + k] = t; }
+            g.computeVertexNormals();
+          }
+          return g;
+        });
+        const ramps = mergedMesh(up, indoorFloorMaterial.clone());
+        ramps.material.depthWrite = true;
+        ramps.material.stencilWrite = false;
+        ramps.renderOrder = 0;
+        root.add(ramps);
+      }
+      const edges = mergedMesh(edgeGeometries, new THREE.MeshLambertMaterial({ map: concreteTexture, color: 0xd8d4cc, side: THREE.DoubleSide }));
+      edges.material.depthWrite = true;
+      edges.material.stencilWrite = false;
+      edges.renderOrder = 0;
+      root.add(edges);
+    }
     // Walks across lots are their own mesh so they paint above the lots.
     root.add(mergedMesh(LOT_WALKS.map((w) =>
       stripQuad(w[0], w[1], w[2], w[3], w[4] || PATH_WIDTH_PX, LIFT.lotWalk, SLAB_LENGTH_M)), concreteMaterial.clone()));
@@ -2649,8 +3751,20 @@
 
 
     const buildingMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
-    // Storefront glass (Kise): pale blue-tinted, slightly frosted, with a specular sheen so it reads as glass.
-    const glassMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff, specular: 0x667788, shininess: 90, transparent: true, opacity: 0.33, depthWrite: false });
+    // Storefront glass (Kise): blue-green tinted with a strong specular sheen,
+    // and a Fresnel edge so it reads as glass. Head-on it stays see-through;
+    // at a glancing angle it turns more opaque and brighter, the way real
+    // glass turns reflective, so a pane stays visible even when nothing
+    // behind it gives it away. Light-independent: it follows the scene's
+    // lighting, so it doesn't glow at night.
+    const glassMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff, specular: 0x8899aa, shininess: 120, transparent: true, opacity: 0.44, depthWrite: false });
+    glassMaterial.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "gl_FragColor = vec4( outgoingLight, diffuseColor.a );",
+        `float glassFresnel = pow(1.0 - abs(dot(normal, normalize(vViewPosition))), 3.0);
+        gl_FragColor = vec4(outgoingLight * (1.0 + 0.35 * glassFresnel), mix(diffuseColor.a, 0.9, glassFresnel));`,
+      );
+    };
 
     // Brick: one small tiling canvas texture, projected in world space in the
     // shader (walls take it by their facing, flat roofs get gravel gray), so
@@ -2785,7 +3899,7 @@
     // any building footprint -- trees never grow inside a house.
     const TREE_BUILDING_CLEARANCE_PX = 2.5;
     function insideAnyBuilding(px, py) {
-      for (const b of [...BUILDINGS, ...HOLLOW_BUILDINGS]) {
+      for (const b of [...BUILDINGS, ...HOLLOW_BUILDINGS, ...FLOOR_PLAN_FLOORS_PX]) {
         if (px > b[0] - TREE_BUILDING_CLEARANCE_PX && px < b[2] + TREE_BUILDING_CLEARANCE_PX &&
           py > b[1] - TREE_BUILDING_CLEARANCE_PX && py < b[3] + TREE_BUILDING_CLEARANCE_PX) return true;
       }
@@ -2866,7 +3980,7 @@
         // Keep canopies out of buildings you can walk into (they'd show
         // through the walls inside): shrink to fit, or drop the tree.
         let maxCrownR;
-        for (const hb of HOLLOW_BUILDINGS) {
+        for (const hb of [...HOLLOW_BUILDINGS, ...FLOOR_PLAN_FLOORS_PX]) {
           const w = rectToWorld(hb);
           const d = Math.hypot(Math.max(w.minX - pos.x, 0, pos.x - w.maxX), Math.max(w.minZ - pos.z, 0, pos.z - w.maxZ));
           if (d < 1.4) return;
@@ -2969,7 +4083,7 @@
           matrix.compose(new THREE.Vector3(c.cx, bottom, c.cz), rotation,
             new THREE.Vector3(c.halfX * 2, size, c.halfZ * 2));
           mesh.setMatrixAt(i, matrix);
-          mesh.setColorAt(i, color.set(c.glass ? 0xb9d6e4 : isBrick(c) ? 0xffffff : c.color !== undefined ? c.color : BUILDING_COLOR));
+          mesh.setColorAt(i, color.set(c.glass ? 0x9fc6d6 : isBrick(c) ? 0xffffff : c.color !== undefined ? c.color : BUILDING_COLOR));
         });
         mesh.instanceMatrix.needsUpdate = true;
         mesh.instanceColor.needsUpdate = true;
@@ -3464,7 +4578,16 @@
     // Climbable pieces (bleacher steps) don't block on their own -- only
     // where the line would have to climb more than a step at once (see
     // canClimbAlong), e.g. straight up the back of a grandstand.
-    function segmentBlocked(x1, z1, x2, z2, clearance = 0, includeFences = false) {
+    //
+    // y1 / y2 (optional): the two ends' standing heights. When either end is
+    // up off the ground floor, the check is floor-aware instead (see
+    // segmentBlocked3D): slabs, ceilings and upper-floor walls count only
+    // where the sight line actually passes through them. Ground to ground
+    // it's exactly the plain check.
+    function segmentBlocked(x1, z1, x2, z2, clearance = 0, includeFences = false, y1, y2) {
+      if (y1 !== undefined && y2 !== undefined && (Math.max(y1, y2) > NAV_LEVEL_MARGIN_M + 0.5 || Math.abs(y1 - y2) > NAV_LEVEL_MARGIN_M)) {
+        return segmentBlocked3D(x1, z1, y1 + SIGHT_EYE_M, x2, z2, y2 + SIGHT_EYE_M, clearance, includeFences);
+      }
       const pad = clearance + 0.01;
       const climbables = [];
       const blocked = forEachColliderIn(Math.min(x1, x2) - pad, Math.min(z1, z2) - pad, Math.max(x1, x2) + pad, Math.max(z1, z2) + pad, (c) => {
@@ -3495,6 +4618,32 @@
       });
       if (blocked) return true;
       return climbables.length > 0 && !canClimbAlong(x1, z1, x2, z2, climbables);
+    }
+
+    // The same analytic sweep, in 3D: a collider blocks only if the sight
+    // line (a-eye to b-eye) is within its height span where it crosses the
+    // collider's footprint. Glass, fences, trees and non-colliding details
+    // don't; stair steps do (they're solid).
+    const SIGHT_EYE_M = 1.4;
+    function segmentBlocked3D(x1, z1, ya, x2, z2, yb, clearance, includeFences) {
+      const pad = clearance + 0.01;
+      return forEachColliderIn(Math.min(x1, x2) - pad, Math.min(z1, z2) - pad, Math.max(x1, x2) + pad, Math.max(z1, z2) + pad, (c) => {
+        if (c.isTree || (c.seeThrough && !includeFences)) return false;
+        const a = toLocal(c, x1, z1);
+        const b = toLocal(c, x2, z2);
+        const hx = (c.shape === "cylinder" ? c.radius : c.halfX) + clearance, hz = (c.shape === "cylinder" ? c.radius : c.halfZ) + clearance;
+        let t0 = 0, t1 = 1;
+        const ddx = b.x - a.x, ddz = b.z - a.z;
+        const clip = (p, q) => {
+          if (Math.abs(p) < 1e-12) return q >= 0;
+          const r = q / p;
+          if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; } else { if (r < t0) return false; if (r < t1) t1 = r; }
+          return true;
+        };
+        if (!(clip(-ddx, a.x + hx) && clip(ddx, hx - a.x) && clip(-ddz, a.z + hz) && clip(ddz, hz - a.z) && t0 <= t1)) return false;
+        const yA = ya + (yb - ya) * t0, yB = ya + (yb - ya) * t1;
+        return Math.max(yA, yB) >= (c.base || 0) && Math.min(yA, yB) <= c.height;
+      });
     }
 
     // Top of the climbable stack at a point (the ground if none of `list`
@@ -3647,9 +4796,10 @@
       return { x: best.x, z: best.z };
     }
 
-    const hollowRects = HOLLOW_BUILDINGS.map(rectToWorld);
+    const hollowRects = [...HOLLOW_BUILDINGS, ...FLOOR_PLAN_FLOORS_PX].map(rectToWorld);
     function isInsideHollowBuilding(x, z) {
-      return hollowRects.some((r) => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ);
+      return hollowRects.some((r) => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ) ||
+        inFloorPlanQuad(x / MAP_SCALE + MAP_CENTER_X, z / MAP_SCALE + MAP_CENTER_Y);
     }
 
     // Footstep surface at a world point: "concrete" for anything hard --
@@ -3680,6 +4830,98 @@
         if (d <= cap.radius && d >= cap.radius - TRACK_LANES * TRACK_LANE_WIDTH_M) return "concrete";
       }
       return "grass";
+    }
+
+    // Where 3D grass grows (see grass-system.js): only the lawn itself --
+    // the base grass layer and the planted islands inside lots -- never
+    // on anything laid over it (streets, sidewalks, walks, lots, driveways,
+    // plazas, the track and its turf infield, turf and soccer fields,
+    // pools, dirt, the construction pits) or under anything standing on it
+    // (every building, house, bleacher, fence, prop and tree trunk -- the
+    // same colliders movement uses) or inside a hollow building. Returns a
+    // tester for points inside the given world box: (x, z) -> the ground
+    // height the grass stands on there, or -1 for none. Every layout list
+    // is cut down to the box once up front, so testing the ~1000 points of
+    // a grass chunk stays cheap.
+    const TRACK_CAPSULES = TRACKS.map(capsuleOf);
+    const SPLASH_PAD = { c: mapToWorld(1789, 634), r: 5 * MAP_SCALE };
+    const GRASS_EDGE_PAD_M = 0.12; // keep blades from spilling over edges and walls
+    function grassTesterForArea(minX, minZ, maxX, maxZ) {
+      const pad = 2; // px
+      const pMinX = minX / MAP_SCALE + MAP_CENTER_X - pad, pMaxX = maxX / MAP_SCALE + MAP_CENTER_X + pad;
+      const pMinY = minZ / MAP_SCALE + MAP_CENTER_Y - pad, pMaxY = maxZ / MAP_SCALE + MAP_CENTER_Y + pad;
+      const rectHits = (r) => r[2] >= pMinX && r[0] <= pMaxX && r[3] >= pMinY && r[1] <= pMaxY;
+      const segHits = (s, reach) => Math.max(s[0], s[2]) + reach >= pMinX && Math.min(s[0], s[2]) - reach <= pMaxX &&
+        Math.max(s[1], s[3]) + reach >= pMinY && Math.min(s[1], s[3]) - reach <= pMaxY;
+      const circleHits = (cx, cy, r) => cx + r >= pMinX && cx - r <= pMaxX && cy + r >= pMinY && cy - r <= pMaxY;
+      const edgePx = GRASS_EDGE_PAD_M / MAP_SCALE;
+      const islands = GRASS_AREAS.filter(rectHits);
+      const coverRects = [...streetRectsPx, ...LOTS, ...PLAZAS, ...DRIVEWAYS, ...RUNWAYS, ...TURF_AREAS, ...SOCCER_FIELDS,
+        ...POOLS, ...WADING_POOLS, ...DIRT_AREAS, ...pitRectsPx].filter(rectHits);
+      const sidewalkReach = (r) => (r[4] || ROAD_WIDTH_PX) / 2 + SIDEWALK_GAP_PX + SIDEWALK_WIDTH_PX;
+      const roads = [...ROADS, ...CONSTRUCTION_ROADS].filter((r) => segHits(r, sidewalkReach(r) + pad));
+      const paths = [...PATHS, ...LOT_WALKS].filter((p) => segHits(p, (p[4] || PATH_WIDTH_PX) / 2 + pad));
+      const arcs = [...PATH_ARCS, ...DRIVE_ARCS].filter((a) => circleHits(a[0], a[1], a[2] + a[3]));
+      const dirtArcs = DIRT_ARCS.filter((a) => circleHits(a[0], a[1], a[3]));
+      const dirtCircles = DIRT_CIRCLES.filter((d) => circleHits(d[0], d[1], d[2]));
+      const hollows = hollowRects.filter((r) => r.maxX >= minX && r.minX <= maxX && r.maxZ >= minZ && r.minZ <= maxZ);
+      const colliders = [];
+      forEachColliderIn(minX - 1, minZ - 1, maxX + 1, maxZ + 1, (c) => {
+        if (!c.base) colliders.push(c); // raised pieces (lintels, canopies) leave the ground under them alone
+      });
+      const tracks = TRACK_CAPSULES.filter((cap) => cap.cx + cap.radius >= minX && cap.cx - cap.radius <= maxX &&
+        cap.zBottom + cap.radius >= minZ && cap.zTop - cap.radius <= maxZ);
+
+      return (x, z) => {
+        const px = x / MAP_SCALE + MAP_CENTER_X, py = z / MAP_SCALE + MAP_CENTER_Y;
+        let height = 0;
+        let island = false;
+        for (const r of islands) if (inRect(px, py, r, -edgePx)) { island = true; break; }
+        if (island) {
+          height = LIFT.grassIsland;
+        } else {
+          for (const r of coverRects) if (inRect(px, py, r, edgePx)) return -1;
+          for (const r of roads) {
+            const d = distToSegment(px, py, r[0], r[1], r[2], r[3]);
+            if (d <= sidewalkReach(r) + edgePx) {
+              // the road itself, or the sidewalk -- the grass strip between them stays
+              const half = (r[4] || ROAD_WIDTH_PX) / 2;
+              if (d <= half + edgePx || Math.abs(d - (half + SIDEWALK_GAP_PX + SIDEWALK_WIDTH_PX / 2)) <= SIDEWALK_WIDTH_PX / 2 + edgePx) return -1;
+            }
+          }
+          for (const p of paths) if (distToSegment(px, py, p[0], p[1], p[2], p[3]) <= (p[4] || PATH_WIDTH_PX) / 2 + edgePx) return -1;
+          for (const a of arcs) {
+            if (Math.abs(Math.hypot(px - a[0], py - a[1]) - a[2]) > a[3] / 2 + edgePx) continue;
+            const deg = ((Math.atan2(a[1] - py, px - a[0]) * 180) / Math.PI - a[4] + 720) % 360;
+            if (a[5] >= 360 || deg <= a[5]) return -1;
+          }
+          for (const d of dirtCircles) if (Math.hypot(px - d[0], py - d[1]) <= d[2] + edgePx) return -1;
+          for (const a of dirtArcs) {
+            const r = Math.hypot(px - a[0], py - a[1]);
+            if (r < a[2] - edgePx || r > a[3] + edgePx) continue;
+            const ang = (Math.atan2(a[1] - py, px - a[0]) * 180) / Math.PI; // flatArcWorld's: counterclockwise on the screenshot
+            const rel = (((ang - a[4]) % 360) + 360) % 360;
+            if (a[5] >= 360 || rel <= a[5]) return -1;
+          }
+          for (const cap of tracks) { // lanes and turf infield alike
+            const d = Math.hypot(x - cap.cx, z - Math.max(cap.zTop, Math.min(cap.zBottom, z)));
+            if (d <= cap.radius + GRASS_EDGE_PAD_M) return -1;
+          }
+          if (Math.hypot(x - SPLASH_PAD.c.x, z - SPLASH_PAD.c.z) <= SPLASH_PAD.r + GRASS_EDGE_PAD_M) return -1;
+          if (groundHeightAt(x, z) !== 0) return -1; // a pit step or a street's curb ramp
+        }
+        for (const r of hollows) if (x > r.minX - GRASS_EDGE_PAD_M && x < r.maxX + GRASS_EDGE_PAD_M && z > r.minZ - GRASS_EDGE_PAD_M && z < r.maxZ + GRASS_EDGE_PAD_M) return -1;
+        if (inFloorPlanQuad(px, py)) return -1; // angled floor pieces (the Sun Garden wing, Langseth's curved 104)
+        for (const c of colliders) {
+          if (c.shape === "cylinder") {
+            if ((x - c.cx) ** 2 + (z - c.cz) ** 2 < (c.radius + GRASS_EDGE_PAD_M) ** 2) return -1;
+            continue;
+          }
+          const local = toLocal(c, x, z);
+          if (Math.abs(local.x) < c.halfX + GRASS_EDGE_PAD_M && Math.abs(local.z) < c.halfZ + GRASS_EDGE_PAD_M) return -1;
+        }
+        return height;
+      };
     }
 
     // ------------------------------------------------------------------
@@ -3756,6 +4998,64 @@
     }
     const navWalkableCell = (cx, cz) => navCellHeight(cx, cz) !== NAV_BLOCKED;
 
+    // Upper-floor cells (a FLOOR_PLAN_LEVELS level): the same 1 m cells and
+    // A*, but a cell stands on the highest surface at most a step above the
+    // floor's height (a slab, a landing, a stair step) instead of the ground,
+    // and only inside that building. Rasterized lazily, per level, only when
+    // something up there needs a path -- the ground grid is untouched.
+    const navLevelChunks = new Map(); // level key -> Map(chunk key -> cells)
+    function rasterizeLevelChunk(chunkX, chunkZ, level) {
+      const cells = new Float32Array(NAV_CHUNK_CELLS * NAV_CHUNK_CELLS).fill(NAV_BLOCKED);
+      const x0 = chunkX * NAV_CHUNK_CELLS * NAV_CELL_M;
+      const z0 = chunkZ * NAV_CHUNK_CELLS * NAV_CELL_M;
+      const span = NAV_CHUNK_CELLS * NAV_CELL_M;
+      const b = level.box;
+      if (x0 > b.maxX || x0 + span < b.minX || z0 > b.maxZ || z0 + span < b.minZ) return cells;
+      const nearby = [];
+      forEachColliderIn(x0 - NAV_CLEARANCE_M, z0 - NAV_CLEARANCE_M, x0 + span + NAV_CLEARANCE_M, z0 + span + NAV_CLEARANCE_M, (c) => { nearby.push(c); });
+      const reach = level.refY + STEP_UP_M + 0.01;
+      for (let j = 0; j < NAV_CHUNK_CELLS; j++) {
+        for (let i = 0; i < NAV_CHUNK_CELLS; i++) {
+          const x = x0 + (i + 0.5) * NAV_CELL_M;
+          const z = z0 + (j + 0.5) * NAV_CELL_M;
+          if (!level.floors.some((f) => x > f.minX && x < f.maxX && z > f.minZ && z < f.maxZ)) continue;
+          let standY = groundHeightAt(x, z);
+          for (const c of nearby) {
+            if (c.isTree || c.height > reach || c.height <= standY) continue;
+            if (c.shape === "cylinder") { if ((x - c.cx) ** 2 + (z - c.cz) ** 2 < c.radius ** 2) standY = c.height; continue; }
+            const local = toLocal(c, x, z);
+            if (Math.abs(local.x) <= c.halfX && Math.abs(local.z) <= c.halfZ) standY = c.height;
+          }
+          if (standY < level.refY - NAV_LEVEL_MARGIN_M) continue; // not on this floor (a stairwell, an atrium)
+          let walkable = true;
+          for (let k = 0; walkable && k < nearby.length; k++) {
+            const c = nearby[k];
+            if (!blocksBody(c, standY, true, 1.85)) continue;
+            if (c.shape === "cylinder") {
+              if ((x - c.cx) ** 2 + (z - c.cz) ** 2 < (c.radius + NAV_CLEARANCE_M) ** 2) walkable = false;
+            } else {
+              const local = toLocal(c, x, z);
+              const dx = local.x - Math.max(-c.halfX, Math.min(local.x, c.halfX));
+              const dz = local.z - Math.max(-c.halfZ, Math.min(local.z, c.halfZ));
+              if (dx * dx + dz * dz < NAV_CLEARANCE_M * NAV_CLEARANCE_M) walkable = false;
+            }
+          }
+          if (walkable) cells[j * NAV_CHUNK_CELLS + i] = standY;
+        }
+      }
+      return cells;
+    }
+    function navLevelCellHeight(cx, cz, level) {
+      let chunks = navLevelChunks.get(level.key);
+      if (!chunks) navLevelChunks.set(level.key, (chunks = new Map()));
+      const chunkX = Math.floor(cx / NAV_CHUNK_CELLS);
+      const chunkZ = Math.floor(cz / NAV_CHUNK_CELLS);
+      const key = chunkZ * 100000 + chunkX;
+      let cells = chunks.get(key);
+      if (!cells) chunks.set(key, (cells = rasterizeLevelChunk(chunkX, chunkZ, level)));
+      return cells[(cz - chunkZ * NAV_CHUNK_CELLS) * NAV_CHUNK_CELLS + (cx - chunkX * NAV_CHUNK_CELLS)];
+    }
+
     const navWindowSize = NAV_WINDOW_CELLS * NAV_WINDOW_CELLS;
     const navG = new Float32Array(navWindowSize);
     const navFrom = new Int32Array(navWindowSize);
@@ -3764,12 +5064,16 @@
     const NAV_NEIGHBORS = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, Math.SQRT2], [1, -1, Math.SQRT2], [-1, 1, Math.SQRT2], [-1, -1, Math.SQRT2]];
 
     // Nearest walkable cell within a few cells of (cx, cz), or null.
-    function nearestWalkableCell(cx, cz, inWindow) {
+    // nearY (optional): only cells a body standing at that height could step
+    // onto -- never a stair step high above it just because it's close.
+    function nearestWalkableCell(cx, cz, inWindow, cellHeight = navCellHeight, nearY) {
       for (let r = 0; r <= 3; r++) {
         for (let dz = -r; dz <= r; dz++) {
           for (let dx = -r; dx <= r; dx++) {
             if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
-            if (inWindow(cx + dx, cz + dz) && navWalkableCell(cx + dx, cz + dz)) return { cx: cx + dx, cz: cz + dz };
+            if (!inWindow(cx + dx, cz + dz)) continue;
+            const h = cellHeight(cx + dx, cz + dz);
+            if (h !== NAV_BLOCKED && (nearY === undefined || Math.abs(h - nearY) <= NAV_MAX_CLIMB_M)) return { cx: cx + dx, cz: cz + dz };
           }
         }
       }
@@ -3781,19 +5085,88 @@
     // was found within the window/expansion budget. A goal farther away than
     // the window allows is pulled in along the straight line, so a far chase
     // still gets a sensible partial route instead of a map-wide search.
-    function findPath(sx, sz, gx, gz) {
+    //
+    // sy / gy (optional): the start's and goal's standing heights. When
+    // either is up on a portal-linked floor, the route goes by stair portal
+    // (see findPathAcrossLevels); otherwise -- and always without heights --
+    // this is the ordinary ground navigation, exactly as before.
+    function findPath(sx, sz, gx, gz, sy, gy) {
+      if (sy !== undefined && FLOOR_PLAN_PORTALS.length > 0) {
+        const routed = findPathAcrossLevels(sx, sz, sy, gx, gz, gy);
+        if (routed !== undefined) return routed;
+      }
       // A fence between here and the goal: route to (and through) a gate
       // first -- the next repath, once on the goal's side, goes straight on.
       const via = fenceWaypoint(sx, sz, gx, gz);
       if (via) {
-        const toGate = findPathLocal(sx, sz, via.x, via.z);
+        const toGate = findPathLocal(sx, sz, via.x, via.z, null, sy);
         if (toGate && via.through) toGate.push({ x: via.through.x, z: via.through.z });
         return toGate;
       }
-      return findPathLocal(sx, sz, gx, gz);
+      return findPathLocal(sx, sz, gx, gz, null, sy, gy);
     }
 
-    function findPathLocal(sx, sz, gx, gz) {
+    // Floor-to-floor routing. Returns undefined when neither end is on an
+    // upper floor (the caller carries on with ground navigation).
+    //   same upper floor      -> A* on that floor's cells
+    //   partway up a stair    -> the rest of that stair, toward the goal's floor
+    //   different floors      -> A* to the best portal's near end, then its
+    //                            stair line (the next repaths take over from
+    //                            the far end)
+    // Only runs at repath time, only when the ends are on different floors,
+    // and only looks at portals reaching one of the two floors.
+    function findPathAcrossLevels(sx, sz, sy, gx, gz, gy) {
+      const from = navLevelAt(sx, sz, sy), to = navLevelAt(gx, gz, gy);
+      // On a stair (or at either end of one that leads where we're going):
+      // keep going along its line rather than re-planning to its end.
+      let onStair = navPortalUnder(sx, sz, sy);
+      if (!onStair && from !== to) {
+        onStair = FLOOR_PLAN_PORTALS.find((p) => p.open && (p.level === from || p.level === to) &&
+          sx > p.box.minX && sx < p.box.maxX && sz > p.box.minZ && sz < p.box.maxZ &&
+          sy >= p.lowerH - 0.3 && sy <= p.upperH + 0.3) || null;
+      }
+      if (onStair && onStair.open && (from !== to || !from)) {
+        const up = to === onStair.level;
+        if (up || from === onStair.level || to !== onStair.level) {
+          // the stair segment the body is on, then the rest of the line
+          let best = 0, bestD = Infinity;
+          for (let i = 0; i + 1 < onStair.line.length; i++) {
+            const a = onStair.line[i], b = onStair.line[i + 1];
+            const dx = b.x - a.x, dz = b.z - a.z, len2 = dx * dx + dz * dz || 1e-9;
+            const t = Math.max(0, Math.min(1, ((sx - a.x) * dx + (sz - a.z) * dz) / len2));
+            const d = Math.hypot(sx - (a.x + dx * t), sz - (a.z + dz * t)) + Math.abs(sy - (a.y + (b.y - a.y) * t));
+            if (d < bestD) { bestD = d; best = i; }
+          }
+          const rest = up ? onStair.line.slice(best + 1) : onStair.line.slice(0, best + 1).reverse();
+          const path = rest.map((q) => ({ x: q.x, z: q.z }));
+          path.stairFrom = 0;
+          return path;
+        }
+      }
+      if (!from && !to) return undefined;
+      if (from === to) return findPathLocal(sx, sz, gx, gz, from, sy, gy);
+      // Different floors: down from `from` first if it's an upper floor, else up to `to`.
+      const goingUp = !from;
+      const level = goingUp ? to : from;
+      const candidates = FLOOR_PLAN_PORTALS.filter((p) => p.open && p.level === level).map((p) => {
+        const near = goingUp ? p.bottom : p.top, far = goingUp ? p.top : p.bottom;
+        return { p, near, cost: Math.hypot(near.x - sx, near.z - sz) + Math.hypot(far.x - gx, far.z - gz) };
+      }).sort((a, b) => a.cost - b.cost);
+      for (const { p, near } of candidates.slice(0, 2)) {
+        const leg = Math.hypot(near.x - sx, near.z - sz) < 1.2 ? [] : findPathLocal(sx, sz, near.x, near.z, from, sy, near.y);
+        if (!leg) continue;
+        const end = leg.length ? leg[leg.length - 1] : { x: sx, z: sz };
+        if (Math.hypot(end.x - near.x, end.z - near.z) > 2.5) continue; // didn't reach the stair
+        const stair = (goingUp ? p.line : p.line.slice().reverse()).slice(1);
+        const path = [...leg, ...stair.map((q) => ({ x: q.x, z: q.z }))];
+        path.stairFrom = leg.length;
+        return path;
+      }
+      return null;
+    }
+
+    function findPathLocal(sx, sz, gx, gz, level = null, sy, gy) {
+      const cellHeight = level ? (cx, cz) => navLevelCellHeight(cx, cz, level) : navCellHeight;
       const half = NAV_WINDOW_CELLS / 2 - 2;
       let scx = Math.floor(sx / NAV_CELL_M), scz = Math.floor(sz / NAV_CELL_M);
       let gcx = Math.floor(gx / NAV_CELL_M), gcz = Math.floor(gz / NAV_CELL_M);
@@ -3806,13 +5179,13 @@
       const originX = Math.floor((scx + gcx) / 2) - NAV_WINDOW_CELLS / 2;
       const originZ = Math.floor((scz + gcz) / 2) - NAV_WINDOW_CELLS / 2;
       const inWindow = (cx, cz) => cx >= originX && cx < originX + NAV_WINDOW_CELLS && cz >= originZ && cz < originZ + NAV_WINDOW_CELLS;
-      const start = nearestWalkableCell(scx, scz, inWindow);
-      let goal = nearestWalkableCell(gcx, gcz, inWindow);
+      const start = nearestWalkableCell(scx, scz, inWindow, cellHeight, sy) || nearestWalkableCell(scx, scz, inWindow, cellHeight);
+      let goal = (span <= half * 2 && nearestWalkableCell(gcx, gcz, inWindow, cellHeight, gy)) || nearestWalkableCell(gcx, gcz, inWindow, cellHeight);
       // Goal inside a building (e.g. a far goal pulled in along the line):
       // back off toward the start until there's somewhere to stand.
       for (let k = 1; !goal && k <= 12; k++) {
         const t = 1 - k / 12;
-        goal = nearestWalkableCell(scx + Math.round((gcx - scx) * t), scz + Math.round((gcz - scz) * t), inWindow);
+        goal = nearestWalkableCell(scx + Math.round((gcx - scx) * t), scz + Math.round((gcz - scz) * t), inWindow, cellHeight);
       }
       if (!start || !goal) return null;
       const toIndex = (cx, cz) => (cz - originZ) * NAV_WINDOW_CELLS + (cx - originX);
@@ -3876,9 +5249,9 @@
           if (nx < 0 || nz < 0 || nx >= NAV_WINDOW_CELLS || nz >= NAV_WINDOW_CELLS) continue;
           const ni = nz * NAV_WINDOW_CELLS + nx;
           if (navState[ni] === 2) continue;
-          const hc = navCellHeight(cx, cz);
-          if (!navStepOk(hc, navCellHeight(cx + dx, cz + dz))) continue;
-          if (dx !== 0 && dz !== 0 && (!navStepOk(hc, navCellHeight(cx + dx, cz)) || !navStepOk(hc, navCellHeight(cx, cz + dz)))) continue;
+          const hc = cellHeight(cx, cz);
+          if (!navStepOk(hc, cellHeight(cx + dx, cz + dz))) continue;
+          if (dx !== 0 && dz !== 0 && (!navStepOk(hc, cellHeight(cx + dx, cz)) || !navStepOk(hc, cellHeight(cx, cz + dz)))) continue;
           const g = navG[current] + cost;
           if (navState[ni] === 1 && g >= navG[ni]) continue;
           navG[ni] = g;
@@ -3912,7 +5285,14 @@
         for (const mesh of zone.treeMeshes) mesh.visible = distance <= TREE_DRAW_DISTANCE;
       }
       if (treeSystem) treeSystem.updateVisibility(viewers);
+      if (grassSystem) grassSystem.updateVisibility(viewers);
     }
+
+    // 3D grass on the lawns (grass-system.js), chunked around the viewers
+    // like the trees; where it grows comes from grassTesterForArea.
+    const grassSystem = window.createGrassSystem
+      ? window.createGrassSystem(THREE, root, environment, { testerForArea: grassTesterForArea })
+      : null;
 
     const spawnWorld = mapToWorld(SPAWN_PX.x, SPAWN_PX.y);
     return {
@@ -3928,9 +5308,19 @@
       supportHeightAt,
       segmentBlocked,
       isWalkable,
+      navLevelAt: (x, z, y) => { const l = navLevelAt(x, z, y); return l ? l.key : null; },
+      isOnStairPortal: (x, z, y) => !!navPortalUnder(x, z, y),
+      stairPortals: FLOOR_PLAN_PORTALS, // (debug: each portal's walking line)
+      navCellHeightAt: (x, z, y) => { // (debug) the nav grid's stand height for (x, z): ground grid, or the floor at y
+        const level = navLevelAt(x, z, y);
+        const cx = Math.floor(x / NAV_CELL_M), cz = Math.floor(z / NAV_CELL_M);
+        const h = level ? navLevelCellHeight(cx, cz, level) : navCellHeight(cx, cz);
+        return h === NAV_BLOCKED ? null : h;
+      },
       distanceToNearestBuilding,
       isInsideHollowBuilding,
       surfaceAt,
+      grassTesterForArea,
       spotsBehindBuildings,
       enclosureMask,
       isSameFenceSide,
@@ -3941,6 +5331,7 @@
       environment,
       treeDensityNear: (x, z, r) => (treeSystem ? treeSystem.treeDensityNear(x, z, r) : 0),
       treeStats: () => (treeSystem ? treeSystem.stats() : null),
+      grassStats: () => (grassSystem ? grassSystem.stats() : null),
       // Ground layers the weather darkens when wet (asphalt most, grass least).
       wetSurfaces: [
         { material: roadMaterial, darken: 0.38 },
@@ -3952,6 +5343,7 @@
         { material: dirtMaterial, darken: 0.32 },
         { material: laneLineMaterial, darken: 0.18 },
         { material: grassMaterial, darken: 0.16 },
+        ...(grassSystem ? grassSystem.materials.map((material) => ({ material, darken: 0.16 })) : []),
         { material: turfMaterial, darken: 0.14 },
         { material: soccerMaterial, darken: 0.14 },
       ],

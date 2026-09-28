@@ -3159,10 +3159,12 @@
 <!-- The Campus map (campus-world.js) and its procedural enemy spawning
      (procedural-spawn.js) -- see the CAMPUS MAP section in the game script. -->
 <script src="tree-models.js"></script>
+<script src="grass-system.js"></script>
 <script src="campus-world.js"></script>
 <script src="procedural-spawn.js"></script>
 <script src="zombie-model.js"></script>
 <script src="player-model.js"></script>
+<script src="fp-hands.js"></script>
 
 <script>
 (function () {
@@ -3280,6 +3282,9 @@
   const REVIVE_RANGE = 1.8;              // m, horizontal, camera to camera
   const REVIVE_HOLD_SECONDS = 4;
   const REVIVE_HEALTH_FRACTION = 0.25;
+  // Revive Player skill: a dead player's dropped gun still within this
+  // of where they died is picked back up when they're revived.
+  const REVIVE_WEAPON_PICKUP_RANGE = 3;  // m
 
   // Rest of the slide tuning (see SLIDE_PEAK_SPEED_MULTIPLIER/SLIDE_DECAY_DURATION
   // above, next to WALK_SPEED/SPRINT_MULTIPLIER). Sliding shares the crouch's
@@ -4012,17 +4017,18 @@
   const GUN_MELEE_RISE_HEIGHT = 0.09;    // peak upward offset during the lift
   const GUN_MELEE_SWING_ROTATION = 1.1;  // radians the grip swings forward at the peak of the strike
 
-  // Fist punch animation: the punching fist thrusts forward (-Z, toward
-  // whatever the crosshair is pointing at) and back over the swing.
-  const FIST_PUNCH_THRUST_DISTANCE = 0.22; // how far the punching fist travels forward at peak extension
+  // Fist punches are animated by the bare hands themselves (fp-hands.js):
+  // wind-up, strike to the screen center, impact, recovery -- see
+  // updateBareHands.
 
-  // Gun bob: while grounded and moving, the gun bobs vertically with a
-  // sine wave whose phase advances with distance traveled -- so bobbing
-  // speeds up automatically at higher speed (e.g. sprinting) without
-  // needing a separate sprint flag. Amplitude scales with speed (relative
-  // to WALK_SPEED) and both are smoothed toward their targets.
-  const BOB_FREQUENCY = 1.6;              // radians of bob phase per unit speed per second
-  const BOB_AMPLITUDE = 0.02;             // peak vertical offset at walk speed
+  // Gun bob: while grounded and moving, the gun bobs vertically once per
+  // footstep on the stride clock (see GAIT & FOOTSTEPS), trailing the
+  // camera's own dip a little -- so its rhythm is the footsteps' and
+  // speeds up with the cadence. Amplitude scales with speed (relative to
+  // WALK_SPEED) and is smoothed toward its target. Smaller than a
+  // once-a-stride bob would be: it's twice as fast, and the camera itself
+  // now carries the body's motion.
+  const BOB_AMPLITUDE = 0.009;            // peak vertical offset at walk speed
   const BOB_MAX_AMPLITUDE_SCALE = 1.4;    // caps how much extra amplitude sprint/slide speed adds
   const BOB_AMPLITUDE_SMOOTHING = 8;      // how fast bob amplitude eases toward its target
 
@@ -4093,6 +4099,18 @@
   // players -- each player's gun needs to be its own real, independently
   // transformable object in the scene graph. Only called from
   // createPlayer, below.
+  // Hidden view models (every weapon but the one in hand, the fists, the
+  // turret-carry hands) skip the per-frame world-matrix update: three.js
+  // otherwise walks each one's whole subtree every frame -- a few hundred
+  // objects per player -- though none of it is drawn. Shown again, it
+  // catches up on its next update: updateMatrix() marks the group's own
+  // world matrix dirty, which forces its children through too.
+  function skipMatrixUpdateWhileHidden(object) {
+    object.updateMatrixWorld = function (force) {
+      if (this.visible) THREE.Object3D.prototype.updateMatrixWorld.call(this, force);
+    };
+  }
+
   function buildPlayerGunRig(cam) {
     const viewModelRoot = new THREE.Group();
     cam.add(viewModelRoot);
@@ -4101,12 +4119,14 @@
     for (const weaponId in WEAPON_DEFS) {
       const built = WEAPON_DEFS[weaponId].gun.buildModel();
       built.group.visible = false;
+      skipMatrixUpdateWhileHidden(built.group);
       viewModelRoot.add(built.group);
       weaponViewModels[weaponId] = built;
     }
 
     const fistsViewModel = buildFistsViewModel();
     fistsViewModel.group.visible = false;
+    skipMatrixUpdateWhileHidden(fistsViewModel.group);
     viewModelRoot.add(fistsViewModel.group);
 
     return { viewModelRoot, weaponViewModels, fistsViewModel };
@@ -4150,9 +4170,25 @@
       stamina: MAX_STAMINA,
       isStaminaExhausted: false,
 
-      // Footsteps -- see updateFootsteps/playFootstepSound.
-      footstepDistanceSinceLastStep: 0,
-      steppingFoot: "left", // flips every step; which foot starts doesn't matter
+      // Gait -- see GAIT & FOOTSTEPS (updateGait/playFootstepSound): one
+      // stride clock that footsteps, camera motion, the gun bob and the
+      // bare hands' running arms all read, so they never drift apart.
+      gaitPhase: 0,          // radians, 2*PI per stride; right foot lands at 0, left at PI
+      gaitSpeed: 0,          // smoothed actual horizontal speed, m/s
+      gaitRun: 0,            // 0 walking .. 1 running mechanics (smoothed)
+      gaitBob: 0,            // 0..1 how much camera motion is in effect (smoothed)
+      gaitMovedDistance: 0,  // this frame's post-collision horizontal movement
+      steppingFoot: "left",  // the foot the next footstep sound is for
+      // Camera running motion (visual only -- see updateGaitCamera):
+      // offsets in the player's yaw frame (x right, y up, z back), added
+      // just around rendering (see renderFrame), and small rotations added
+      // in applyCameraRotation. Plus the landing dip's spring.
+      cameraBobOffset: new THREE.Vector3(),
+      cameraBobPitch: 0,
+      cameraBobYaw: 0,
+      cameraBobRoll: 0,
+      cameraLandDip: 0,
+      cameraLandDipVelocity: 0,
 
       // Look -- see onMouseMove/applyCameraRotation.
       yaw: 0,
@@ -4273,7 +4309,7 @@
       cameraSwingYaw: 0,
       cameraSwingRoll: 0,
       meleeSwingFist: "left",   // which fist this particular swing animates, if it's a punch
-      nextPunchFist: "left",    // alternates left/right on every fist swing
+      nextPunchFist: "right",   // alternates right/left on every fist swing, starting with the right
       // The bat's own windup (explicit request): set by performMelee when
       // its normal swing starts, resolved by updateMelee once
       // meleeSwingElapsed catches up to BAT_MELEE_WINDUP_DURATION -- see
@@ -6167,36 +6203,25 @@
     return { group, muzzleTip, reloadRig, boltRig };
   }
 
-  // Fists (shown when the active slot is empty): two tan rectangular
-  // prisms positioned like forearms held up in front of the camera. Not a
-  // WEAPON_DEFS entry -- per spec this isn't a third weapon, just what the
-  // view model shows when a slot has nothing in it -- but built and swapped
-  // in the exact same way as a gun's model (see setActiveViewModel below).
-  const FIST_SIZE = { width: 0.11, height: 0.11, length: 0.34 };
-  const FIST_REST_POSITIONS = {
-    left: new THREE.Vector3(-0.16, -0.22, -0.32),
-    right: new THREE.Vector3(0.2, -0.24, -0.34),
-  };
-  const fistMaterial = new THREE.MeshStandardMaterial({
-    color: 0xd2a679, // tan
-    roughness: 0.7,
-    metalness: 0.05,
-  });
-
+  // Bare hands (shown when the active slot is empty): two jointed human
+  // hands on forearms rising in from the bottom corners, built and
+  // animated by fp-hands.js (idle, walk, sprint, jump/fall/land, and the
+  // alternating punches with real fist formation). Not a WEAPON_DEFS
+  // entry -- per spec this isn't a third weapon, just what the view model
+  // shows when a slot has nothing in it -- but swapped in the exact same
+  // way as a gun's model (see setActiveViewModel below). Same skin tone as
+  // the guns' reload hands.
+  const bareHandSkinMaterial = new THREE.MeshStandardMaterial({ color: 0xd2a679, roughness: 0.62, metalness: 0, emissive: 0x140c07 });
   function buildFistsViewModel() {
-    const group = new THREE.Group();
-    const geometry = new THREE.BoxGeometry(FIST_SIZE.width, FIST_SIZE.height, FIST_SIZE.length);
-
-    const leftFist = new THREE.Mesh(geometry, fistMaterial);
-    leftFist.position.copy(FIST_REST_POSITIONS.left);
-    group.add(leftFist);
-
-    const rightFist = new THREE.Mesh(geometry, fistMaterial);
-    rightFist.position.copy(FIST_REST_POSITIONS.right);
-    group.add(rightFist);
-
-    return { group, leftFist, rightFist };
+    const hands = createFirstPersonHands(THREE, { material: bareHandSkinMaterial });
+    // Its poses are in camera space; viewModelRoot sits at FISTS_POSE's
+    // hip-fire position, so offset back by that.
+    hands.group.position.copy(FISTS_POSE.hipFirePosition).negate();
+    return hands;
   }
+  // The turret-carry view's two box hands (see getTurretCarryView).
+  const FIST_SIZE = { width: 0.11, height: 0.11, length: 0.34 };
+  const fistMaterial = bareHandSkinMaterial;
 
   // ------------------------------------------------------------------
   // WEAPON DEFINITIONS: the data a weapon needs to plug into inventory
@@ -10309,7 +10334,7 @@
   // entrance gaps aren't carved out of the box, same simplification the
   // original two-state pathfinding's isInsideBuilding() used before it
   // was replaced by the A* nav grid). Used by the concrete floor patch
-  // right below and by the footstep surface check (see updateFootsteps).
+  // right below and by the footstep surface check (see playFootstepSound).
   function isInsideBuilding(x, z) {
     if (isCampusMap) return campusWorld.isInsideHollowBuilding(x, z);
     return Math.abs(x) <= wallHalfWidthGame && Math.abs(z) <= wallHalfDepthGame;
@@ -10487,9 +10512,10 @@
   // path can never clip the corner of a wall or the interior pillar --
   // this (plus simplifyGridPath's string-pulling below) is what actually
   // makes cornering look deliberate instead of grid-snapped.
-  function findGridPath(startX, startZ, goalX, goalZ) {
+  function findGridPath(startX, startZ, goalX, goalZ, startY, goalY) {
     // Campus: lazily-rasterized local grid + windowed A* (campus-world.js).
-    if (isCampusMap) return campusWorld.findPath(startX, startZ, goalX, goalZ);
+    // With standing heights it also routes between floors by stair portal.
+    if (isCampusMap) return campusWorld.findPath(startX, startZ, goalX, goalZ, startY, goalY);
     const start = navWorldToCell(startX, startZ);
     const goal = navWorldToCell(goalX, goalZ);
     const startIndex = navGridIndex(start.cx, start.cz);
@@ -10556,10 +10582,12 @@
   // its cached path early and beeline once nothing is actually in the
   // way (see updateEnemies).
   const LINE_OF_SIGHT_STEP = NAV_GRID_CELL_SIZE * 0.5;
-  function hasLineOfSight(x1, z1, x2, z2, radius) {
+  function hasLineOfSight(x1, z1, x2, z2, radius, y1, y2) {
     // Campus: fences count -- nothing reaches, hits or explodes through one
     // (bullets don't use this, so you can still shoot through chain-link).
-    if (isCampusMap) return !campusWorld.segmentBlocked(x1, z1, x2, z2, radius, true);
+    // With standing heights (y1, y2) it's floor-aware: a floor slab between
+    // two floors blocks it (see campusWorld.segmentBlocked).
+    if (isCampusMap) return !campusWorld.segmentBlocked(x1, z1, x2, z2, radius, true, y1, y2);
     const dx = x2 - x1, dz = z2 - z1;
     const distance = Math.hypot(dx, dz);
     const steps = Math.max(1, Math.ceil(distance / LINE_OF_SIGHT_STEP));
@@ -11334,6 +11362,17 @@
   // recycled). Pure field reads + one distance -- no queries.
   function isCampusEnemyBusy(enemyState, nearestPlayerDistance) {
     if (enemyState.carriedBy || enemyState.thrownState) return true;
+    // On a stair route (see STAIR_ROUTE_GRACE_MS): slow, back-and-forth
+    // switchback climbing isn't being stuck -- as long as it's still getting
+    // higher or lower. No height change for a while and the grace ends.
+    if (enemyState.stairRouteUntil > performance.now()) {
+      const y = enemyState.campusGroundY || 0, now = performance.now();
+      if (enemyState.stairProgressY === undefined || Math.abs(y - enemyState.stairProgressY) > 0.4) {
+        enemyState.stairProgressY = y;
+        enemyState.stairProgressAt = now;
+      }
+      if (now - enemyState.stairProgressAt < STAIR_PROGRESS_WINDOW_MS) return true;
+    }
     if (enemyState.barricadeBusyUntil > performance.now()) return true; // tearing at boards, not stuck
     if (enemyState.boss && enemyState.boss.state !== "moving") return true;
     if (enemyState.bruteThrow && enemyState.bruteThrow.state !== "none") return true;
@@ -11986,6 +12025,7 @@
     model.group.position.set(0, -TURRET_HEAD_Y - 0.07, 0);
     group.add(model.group);
     group.visible = false;
+    skipMatrixUpdateWhileHidden(group);
     player.camera.add(group);
     const layer = VIEW_MODEL_LAYER[players.indexOf(player)];
     group.traverse((o) => o.layers.set(layer));
@@ -12552,6 +12592,7 @@
     for (const weaponId in player.weaponViewModels) {
       player.weaponViewModels[weaponId].group.visible = false;
     }
+    const wasShowingHands = player.fistsViewModel.group.visible;
     player.fistsViewModel.group.visible = false;
 
     const def = getActiveWeaponDef(player);
@@ -12562,6 +12603,7 @@
       player.weaponViewModels[getActiveSlot(player).weaponId].group.visible = true;
     } else {
       player.fistsViewModel.group.visible = true;
+      if (!wasShowingHands) player.fistsViewModel.show(); // eases up into view rather than popping in
     }
 
     player.activeHipFirePosition.copy(pose.hipFirePosition);
@@ -15918,9 +15960,8 @@
   }
 
   // Dead -> Alive: back where they fell (pushed clear of anything now in
-  // the way -- walls, barricades, turrets), full health, weapon slots as
-  // they were (the guns their death dropped are taken back off the
-  // floor), and out of spectating.
+  // the way -- walls, barricades, turrets), full health, their guns
+  // picked back up if still lying by the body, and out of spectating.
   function reviveDeadPlayer(player) {
     if (!player.isDead || !isCoopMatchActive) return;
     const index = players.indexOf(player);
@@ -15930,15 +15971,23 @@
       player.camera.position.z = snap.z;
       player.campusGroundY = snap.groundY;
       player.yaw = snap.yaw;
-      for (const item of snap.droppedItems) {
-        const i = droppedItems.indexOf(item);
-        if (i === -1) continue; // already picked up by someone
+      // Each gun comes back only if it's still on the floor near the body
+      // (then it's picked back up); one a teammate took, or that ended up
+      // somewhere else, stays wherever it is -- never duplicated.
+      for (let slotIndex = 0; slotIndex < 2; slotIndex++) {
+        const item = snap.slotItems[slotIndex];
+        const i = item ? droppedItems.indexOf(item) : -1;
+        const nearBody = i !== -1 &&
+          Math.hypot(item.group.position.x - snap.x, item.group.position.z - snap.z) <= REVIVE_WEAPON_PICKUP_RANGE;
+        if (!nearBody) {
+          player.inventorySlots[slotIndex] = null;
+          continue;
+        }
         scene.remove(item.group);
         disposeDroppedItemGeometry(item.group);
         droppedItems.splice(i, 1);
+        player.inventorySlots[slotIndex] = { ...snap.slots[slotIndex] };
       }
-      player.inventorySlots[0] = snap.slots[0] ? { ...snap.slots[0] } : null;
-      player.inventorySlots[1] = snap.slots[1] ? { ...snap.slots[1] } : null;
       player.activeSlotIndex = snap.activeSlotIndex;
     }
     player.deathSnapshot = null;
@@ -16029,7 +16078,7 @@
       groundY: player.campusGroundY || 0, yaw: player.yaw,
       slots: player.inventorySlots.map((slot) => (slot ? { ...slot, isReloading: false, reloadElapsed: 0 } : null)),
       activeSlotIndex: player.activeSlotIndex,
-      droppedItems: [],
+      slotItems: [null, null], // the floor item each slot's gun became (see below)
     };
     const droppedCountBefore = droppedItems.length;
     player.isDead = true;
@@ -16060,7 +16109,13 @@
     } else {
       dropActiveSlotItem(player);
     }
-    player.deathSnapshot.droppedItems = droppedItems.slice(droppedCountBefore); // taken back off the floor on a revive
+    // Pair each slot with the floor item its gun became -- slots drop in
+    // order, so the new items line up with the non-empty slots. A revive
+    // only takes back guns still lying here (see reviveDeadPlayer).
+    const newDrops = droppedItems.slice(droppedCountBefore);
+    player.deathSnapshot.slots.forEach((slot, i) => {
+      if (slot && newDrops.length && newDrops[0].weaponId === slot.weaponId) player.deathSnapshot.slotItems[i] = newDrops.shift();
+    });
     player.viewModelRoot.visible = false;
 
     // A dead player can't open their inventory again (processToggleInventoryAction
@@ -16384,7 +16439,7 @@
     player.gunBobAmplitude = 0;
     player.gunBobOffsetY = 0;
     player.meleeCooldownRemaining = 0;
-    player.nextPunchFist = "left";
+    player.nextPunchFist = "right";
     player.viewModelRoot.visible = true; // undoes triggerDeath's own hide -- see its comment
     player.carriedTurret = null; // (turrets themselves are cleared with the world -- see TURRETS)
     hideTurretCarryView(player);
@@ -16404,8 +16459,18 @@
     player.bruteKnockbackVelocity.set(0, 0, 0);
     player.grabbedBy = null;
     player.pendingThrowLandingDamage = 0;
-    player.footstepDistanceSinceLastStep = 0;
+    player.gaitPhase = 0;
+    player.gaitSpeed = 0;
+    player.gaitRun = 0;
+    player.gaitBob = 0;
+    player.gaitMovedDistance = 0;
     player.steppingFoot = "left";
+    player.cameraBobOffset.set(0, 0, 0);
+    player.cameraBobPitch = 0;
+    player.cameraBobYaw = 0;
+    player.cameraBobRoll = 0;
+    player.cameraLandDip = 0;
+    player.cameraLandDipVelocity = 0;
 
     player.yaw = 0;
     player.pitch = 0;
@@ -16683,14 +16748,14 @@
   // kick-per-shot system.
   function applyCameraRotation(player) {
     player.camera.rotation.order = "YXZ";
-    player.camera.rotation.y = player.yaw + player.cameraRecoilYawOffset + player.cameraSwingYaw + player.cameraScopeSwayYaw;
+    player.camera.rotation.y = player.yaw + player.cameraRecoilYawOffset + player.cameraSwingYaw + player.cameraScopeSwayYaw + player.cameraBobYaw;
     player.camera.rotation.x = Math.max(
       -PITCH_LIMIT,
-      Math.min(PITCH_LIMIT, player.pitch + player.cameraRecoilPitchOffset + player.cameraReloadPitch + player.cameraSwingPitch + player.cameraScopeSwayPitch)
+      Math.min(PITCH_LIMIT, player.pitch + player.cameraRecoilPitchOffset + player.cameraReloadPitch + player.cameraSwingPitch + player.cameraScopeSwayPitch + player.cameraBobPitch)
     );
-    // Tiny reload sway (see updateReloadAnimation) and katana swing lean
-    // (see updateKatanaCamera).
-    player.camera.rotation.z = player.cameraReloadRoll + player.cameraSwingRoll;
+    // Tiny reload sway (see updateReloadAnimation), katana swing lean
+    // (see updateKatanaCamera) and the running sway (see updateGaitCamera).
+    player.camera.rotation.z = player.cameraReloadRoll + player.cameraSwingRoll + player.cameraBobRoll;
   }
 
   // Clicking the overlay's background (the "click to play" prompt, or
@@ -20898,7 +20963,7 @@
   // ------------------------------------------------------------------
   // MELEE (V key): behavior depends on what's in the active slot -- a gun
   // swings itself like a club, an empty slot throws a fist punch instead
-  // (see FIST_REST_POSITIONS/fistsViewModel above). Both resolve their hit
+  // (see buildFistsViewModel/updateBareHands). Both resolve their hit
   // the same instant-raycast way fireWeapon does -- reusing the exact same
   // `raycaster` and the same `enemyMeshes` hit list, just range-limited
   // instead of unlimited. A gun-bash deals a weapon def's own `melee`
@@ -21198,14 +21263,6 @@
     };
   }
 
-  // Fist punch thrust: a quick extension forward (-Z) then a slightly
-  // slower return -- same triangular pulse shape as the gun's strike phase.
-  function getFistPunchThrust(progress) {
-    return progress < 0.4
-      ? easeOutCubic(progress / 0.4)
-      : 1 - easeInOutCubic((progress - 0.4) / 0.6);
-  }
-
   // Snaps any in-progress melee animation back to rest. Called whenever
   // the active slot changes (see setActiveViewModel above) so a stale
   // swing from whatever was just switched away from can't linger.
@@ -21221,8 +21278,6 @@
     // switching away from the bat mid-swing shouldn't land a hit for a
     // weapon that's no longer even equipped.
     player.pendingMeleeHit = null;
-    player.fistsViewModel.leftFist.position.copy(FIST_REST_POSITIONS.left);
-    player.fistsViewModel.rightFist.position.copy(FIST_REST_POSITIONS.right);
     const katanaPivot = player.weaponViewModels.katana.slashPivot;
     katanaPivot.quaternion.copy(KATANA_REST_QUATERNION);
     katanaPivot.position.set(0, 0, 0);
@@ -21783,11 +21838,9 @@
       const pose = player.meleeSwingIsBat ? getBatMeleeSwingPose(progress) : getGunMeleeSwingPose(progress);
       player.gunMeleeOffsetY = pose.offsetY;
       player.gunMeleeRotationX = pose.rotationX;
-    } else {
-      const thrust = getFistPunchThrust(progress) * FIST_PUNCH_THRUST_DISTANCE;
-      const fistMesh = player.meleeSwingFist === "left" ? player.fistsViewModel.leftFist : player.fistsViewModel.rightFist;
-      fistMesh.position.z = FIST_REST_POSITIONS[player.meleeSwingFist].z - thrust;
     }
+    // A fist punch has no view-model offsets of its own -- the bare hands
+    // play it from meleeSwingFist/meleeSwingElapsed (see updateBareHands).
 
     if (progress >= 1) {
       const wasKatana = player.meleeSwingIsKatana;
@@ -21818,7 +21871,8 @@
   const SPRINT_SWAY_ROT = 0.035;          // running sway amplitude (radians)
 
   function updateGunSprintPose(player, deltaSeconds) {
-    const target = player.isSprinting && !player.isSliding ? 1 : 0;
+    // Bare hands run with their own arm swing (see updateBareHands), not a gun carry pose.
+    const target = player.isSprinting && !player.isSliding && getActiveWeaponDef(player) ? 1 : 0;
     player.gunSprintBlend += (target - player.gunSprintBlend) * Math.min(1, SPRINT_POSE_BLEND_SPEED * deltaSeconds);
     if (player.gunSprintBlend < 0.001) player.gunSprintBlend = 0;
     // Eased so it starts and settles softly.
@@ -21840,14 +21894,12 @@
   }
 
   function updateGunBob(player, deltaSeconds) {
-    const speed = player.velocity.length();
+    // 2*PI per step (the sprint sway below swings once per stride at half this).
+    player.gunBobPhase = 2 * player.gaitPhase;
 
-    if (player.isGrounded) {
-      player.gunBobPhase += speed * BOB_FREQUENCY * deltaSeconds;
-    }
-
-    const targetAmplitude = player.isGrounded
-      ? Math.min(BOB_MAX_AMPLITUDE_SCALE, speed / WALK_SPEED) * BOB_AMPLITUDE
+    // Bare hands move with their own running arms instead (see updateBareHands).
+    const targetAmplitude = player.isGrounded && !player.isSliding && !player.fistsViewModel.group.visible
+      ? Math.min(BOB_MAX_AMPLITUDE_SCALE, player.gaitSpeed / WALK_SPEED) * BOB_AMPLITUDE
       : 0;
     player.gunBobAmplitude +=
       (targetAmplitude - player.gunBobAmplitude) * Math.min(1, BOB_AMPLITUDE_SMOOTHING * deltaSeconds);
@@ -21857,8 +21909,28 @@
     // pose/FOV transition (see updateAim) so it settles in smoothly
     // rather than snapping the instant ADS starts/ends.
     const adsBobScale = 1 - easeInOutCubic(player.aimProgress) * 0.8;
-    player.gunBobOffsetY = Math.sin(player.gunBobPhase) * player.gunBobAmplitude * adsBobScale;
+    player.gunBobOffsetY = Math.cos(player.gunBobPhase - 1.6 * Math.PI - 0.6) * player.gunBobAmplitude * adsBobScale;
     updateGunSprintPose(player, deltaSeconds);
+    if (player.fistsViewModel.group.visible) updateBareHands(player, deltaSeconds);
+  }
+
+  // Feeds the bare hands (fp-hands.js) this player's movement and punch
+  // state -- they pick their own idle/walk/run/sprint/air/landing pose
+  // from it (the running arms on the same stride clock as the footsteps)
+  // and play the alternating punches.
+  function updateBareHands(player, deltaSeconds) {
+    player.fistsViewModel.update(deltaSeconds, {
+      speed: player.gaitSpeed,
+      walkSpeed: WALK_SPEED,
+      gaitPhase: player.gaitPhase,
+      run: player.isSliding ? 0 : player.gaitRun,
+      effort: gaitEffort(player),
+      grounded: player.isGrounded,
+      verticalVelocity: player.verticalVelocity,
+      punch: player.isMeleeSwinging && !player.meleeSwingUsesGun
+        ? { side: player.meleeSwingFist, t: Math.min(1, player.meleeSwingElapsed / MELEE_SWING_DURATION) }
+        : null,
+    });
   }
 
   // Horizontal physics velocity (x/z only — vertical motion is handled
@@ -21918,35 +21990,34 @@
   }
 
   // ------------------------------------------------------------------
-  // FOOTSTEPS: alternates left/right foot every FOOTSTEP_STEP_DISTANCE_*
-  // game units of actual horizontal movement (not a fixed timer), so
-  // sprinting naturally produces a faster footstep cadence and walking a
-  // slower one, without separate per-movement-state timing logic. Fed
-  // from updateMovement's own post-wall-collision position delta (not
-  // `velocity` directly), so being stuck against a wall while holding a
-  // movement key doesn't rack up phantom steps. Landing from a jump (see
-  // the isGrounded transition in updateMovement's gravity block) plays
-  // the next step immediately instead of waiting for that distance to
-  // accumulate -- a landing IS a footfall.
+  // GAIT & FOOTSTEPS: one stride clock per player (gaitPhase, 2*PI per
+  // stride -- the right foot lands at every even multiple of PI, the left
+  // at every odd one) that the footstep sounds, the camera's running
+  // motion (updateGaitCamera), the gun bob and the bare hands' arm swing
+  // (fp-hands.js) all read, so a footfall, the dip of the view and the
+  // arms' opposition always line up.
   //
-  // WALK/SPRINT distances (and volumes below) are user-set values, tuned
-  // by ear over a few passes rather than derived from a formula. CROUCH
-  // is its own fixed distance (not a fraction of the walk one) since
-  // crouch-walk is much slower and a proportional distance would make
-  // crouched steps sound too sparse.
+  // The clock runs at a real runner's cadence (steps per second, see
+  // GAIT_CADENCE) for the player's actual speed -- a trained runner goes
+  // faster mostly by lengthening the step, with cadence only creeping up
+  // (about 108 steps/min walking, ~177 at the normal running pace, ~192
+  // sprinting). Speed is measured from updateMovement's own post-wall-
+  // collision position delta (not `velocity`), so being stuck against a
+  // wall while holding a movement key doesn't stride in place. Landing
+  // from a jump plays a footstep immediately and puts the clock right at
+  // that contact -- a landing IS a footfall.
   //
-  // Volume also has its own value per movement state -- crouch quietest,
-  // then walk, then sprint loudest -- via FOOTSTEP_VOLUME_CROUCH/WALK/
-  // SPRINT below (isSprinting picks between the last two the same way it
-  // already does for step distance).
+  // Volume has its own value per movement state -- crouch quietest, then
+  // walk, then sprint loudest -- via FOOTSTEP_VOLUME_CROUCH/WALK/SPRINT
+  // below (user-set values, tuned by ear).
   //
   // Silent while sliding: a slide is a momentum-driven ground-scrape,
   // not a walking gait, and no slide-specific sound was supplied, so
   // it's left silent rather than reusing a regular footstep for it.
   // ------------------------------------------------------------------
-  const FOOTSTEP_STEP_DISTANCE_WALK = 2.8;
-  const FOOTSTEP_STEP_DISTANCE_SPRINT = 3.0;
-  const FOOTSTEP_STEP_DISTANCE_CROUCH = 1.4;
+  // [speed m/s, steps per second], linear between; standing up only.
+  const GAIT_CADENCE = [[0, 1.5], [1.4, 1.8], [2.4, 2.55], [3.5, 2.8], [4.85, 2.95], [7.8, 3.2], [10.2, 3.8]];
+  const GAIT_RUN_SPEEDS = [2.0, 3.2]; // m/s: walking mechanics below, running above, blended between
   const FOOTSTEP_CLIPS = {
     grass: { left: "footstep_grass_left_01", right: "footstep_grass_right_01" },
     concrete: { left: "footstep_concrete_left_01", right: "footstep_concrete_right_01" },
@@ -21957,8 +22028,8 @@
 
   // Plays whichever foot is currently due, for the current surface, at
   // the crouch/walk/sprint volume for whichever of those is currently
-  // true, then flips the foot -- shared by both the distance-based
-  // trigger below and the jump-landing trigger in updateMovement.
+  // true, then flips the foot -- shared by both the gait's own footfalls
+  // (updateGait) and the jump-landing one in updateMovement.
   // Which footstep set a body at (x, z) with its feet at feetY hears: on
   // the campus, whatever it's standing on (see campusWorld.surfaceAt --
   // streets, sidewalks, lots, bleachers... are hard); elsewhere, the
@@ -21979,19 +22050,135 @@
     player.steppingFoot = player.steppingFoot === "left" ? "right" : "left";
   }
 
-  function updateFootsteps(player, movedDistance, isCrouching) {
-    if (!player.isGrounded || player.isSliding || movedDistance <= 0) return;
+  // Steps per second at `speed`. Crouch-walking and crawling (isLow) are
+  // slower and shorter-stepped.
+  function gaitCadence(speed, isLow) {
+    if (isLow) return Math.min(2.1, 1.3 + 0.3 * speed);
+    const table = GAIT_CADENCE;
+    if (speed >= table[table.length - 1][0]) return table[table.length - 1][1];
+    for (let i = 1; i < table.length; i++) {
+      if (speed <= table[i][0]) {
+        const t = (speed - table[i - 1][0]) / (table[i][0] - table[i - 1][0]);
+        return table[i - 1][1] + (table[i][1] - table[i - 1][1]) * t;
+      }
+    }
+    return table[0][1];
+  }
 
-    player.footstepDistanceSinceLastStep += movedDistance;
-    const stepDistance = isCrouching
-      ? FOOTSTEP_STEP_DISTANCE_CROUCH
-      : player.isSprinting
-      ? FOOTSTEP_STEP_DISTANCE_SPRINT
-      : FOOTSTEP_STEP_DISTANCE_WALK;
-    if (player.footstepDistanceSinceLastStep < stepDistance) return;
+  // 0 at the normal running pace, 1 at a full sprint (a little more for
+  // a tactical sprint) -- from actual speed, so a sprint slowed by a wall
+  // or a strafe runs like one.
+  function gaitEffort(player) {
+    return Math.max(0, Math.min(1.25, (player.gaitSpeed - WALK_SPEED) / (WALK_SPEED * (SPRINT_MULTIPLIER - 1))));
+  }
 
-    player.footstepDistanceSinceLastStep = 0;
-    playFootstepSound(player, isCrouching);
+  // Once per frame from updateMovement (after gravity, so a landing this
+  // frame is already known). isLow = crouching or crawling.
+  function updateGait(player, deltaSeconds, isLow) {
+    const measured = deltaSeconds > 0 ? player.gaitMovedDistance / deltaSeconds : 0;
+    player.gaitMovedDistance = 0;
+    player.gaitSpeed += (measured - player.gaitSpeed) * Math.min(1, 12 * deltaSeconds);
+    const speed = player.gaitSpeed;
+    const striding = player.isGrounded && !player.isSliding && speed > 0.2;
+
+    // Walking vs running mechanics; held through a jump.
+    const r = Math.max(0, Math.min(1, (speed - GAIT_RUN_SPEEDS[0]) / (GAIT_RUN_SPEEDS[1] - GAIT_RUN_SPEEDS[0])));
+    const runTarget = isLow || player.isSliding ? 0 : r * r * (3 - 2 * r);
+    if (player.isGrounded) player.gaitRun += (runTarget - player.gaitRun) * Math.min(1, 5 * deltaSeconds);
+
+    if (striding) {
+      const before = player.gaitPhase;
+      player.gaitPhase += Math.PI * gaitCadence(speed, isLow) * deltaSeconds;
+      const contact = Math.floor(player.gaitPhase / Math.PI);
+      if (contact > Math.floor(before / Math.PI)) {
+        player.steppingFoot = contact % 2 === 0 ? "right" : "left";
+        playFootstepSound(player, isLow);
+      }
+      // Keep it small (an even multiple of PI, so the feet don't swap).
+      if (player.gaitPhase > 2000 * Math.PI) player.gaitPhase -= 2000 * Math.PI;
+    }
+    updateGaitCamera(player, deltaSeconds, isLow, striding);
+  }
+
+  // Landing from a fall: a footfall right now, the stride clock set to
+  // that contact (so the next step comes a full step later), and the
+  // camera's landing dip, sized by how fast they came down.
+  function landGait(player, impactSpeed, isLow) {
+    if (!player.isSliding) {
+      const contact = Math.round(player.gaitPhase / Math.PI);
+      player.gaitPhase = contact * Math.PI + 1e-4;
+      player.steppingFoot = contact % 2 === 0 ? "right" : "left";
+      playFootstepSound(player, isLow);
+    }
+    player.cameraLandDipVelocity -= GAIT_CAMERA.landDip * Math.min(1.4, impactSpeed / 9);
+  }
+
+  // ------------------------------------------------------------------
+  // CAMERA RUNNING MOTION: what running feels like from behind the eyes
+  // -- deliberately small (a runner's gaze stays steady; the head moves
+  // far less than the body), comfortable, and all on the stride clock:
+  //   - vertical: running dips at mid-stance and rises through the flight
+  //     phase, once per step; walking is the reverse (vaulting over the
+  //     planted leg), and the two blend as the pace changes;
+  //   - lateral: a slight drift toward the planted foot, once per stride,
+  //     with a matching hint of roll;
+  //   - fore/aft: the tiny brake-then-push of each contact;
+  //   - a slight nod after each footfall and a trace of yaw from the
+  //     shoulders' counter-rotation;
+  //   - landing from a jump: a damped dip and nod.
+  // Aiming down sights cuts it by 80% (like the gun bob), crouching by 40%.
+  // Visual only: the offsets are added to the camera just around the
+  // draw (renderFrame) and the rotations in applyCameraRotation, so
+  // movement, collision and aim never see them.
+  // Amplitudes in m / radians.
+  // ------------------------------------------------------------------
+  const GAIT_CAMERA = {
+    walk: { y: 0.010, x: 0.006, z: 0.0015, roll: 0.003, pitch: 0.0018, yaw: 0.001 },
+    run: { y: 0.011, x: 0.004, z: 0.003, roll: 0.0035, pitch: 0.0025, yaw: 0.0015 },
+    sprintY: 0.005,  // extra vertical at a full sprint
+    landDip: 0.5,    // m/s of dip velocity per 9 m/s of landing speed (~2 cm dip)
+  };
+
+  function updateGaitCamera(player, deltaSeconds, isLow, striding) {
+    const dt = Math.min(deltaSeconds, 0.05);
+    player.gaitBob += ((striding ? Math.min(1, player.gaitSpeed / 1.6) : 0) - player.gaitBob) * Math.min(1, 6 * dt);
+    const scale = player.gaitBob * (isLow ? 0.6 : 1) * (1 - easeInOutCubic(player.aimProgress) * 0.8);
+    const run = player.gaitRun;
+    const W = GAIT_CAMERA.walk, R = GAIT_CAMERA.run;
+    const mix = (a, b) => a + (b - a) * run;
+    const phi = player.gaitPhase, twice = 2 * phi;
+    const y = W.y * Math.cos(twice - 0.5 * Math.PI) * (1 - run) +
+      (R.y + GAIT_CAMERA.sprintY * gaitEffort(player)) * Math.cos(twice - 1.6 * Math.PI) * run;
+    const lateral = Math.cos(phi - 1.3); // + = over the right foot
+    // Landing dip: a critically-ish damped spring.
+    player.cameraLandDipVelocity += (-110 * player.cameraLandDip - 15 * player.cameraLandDipVelocity) * dt;
+    player.cameraLandDip += player.cameraLandDipVelocity * dt;
+    const dip = player.cameraLandDip;
+    player.cameraBobOffset.set(
+      mix(W.x, R.x) * lateral * scale,
+      y * scale + dip,
+      mix(W.z, R.z) * Math.cos(twice - 1.1 * Math.PI) * scale
+    );
+    player.cameraBobRoll = -mix(W.roll, R.roll) * lateral * scale;
+    player.cameraBobPitch = -mix(W.pitch, R.pitch) * Math.cos(twice - 0.3 * Math.PI) * scale + dip * 0.35;
+    player.cameraBobYaw = -mix(W.yaw, R.yaw) * Math.cos(phi - 0.15) * scale;
+  }
+
+  // Adds (sign 1) or takes back off (sign -1) every player camera's
+  // running offset -- see renderFrame.
+  function shiftCamerasByBob(sign) {
+    for (const player of players) {
+      const o = player.cameraBobOffset;
+      if (!o || (o.x === 0 && o.y === 0 && o.z === 0)) continue;
+      const c = Math.cos(player.yaw), s = Math.sin(player.yaw);
+      const p = player.camera.position;
+      p.x += sign * (o.x * c + o.z * s);
+      p.y += sign * o.y;
+      p.z += sign * (-o.x * s + o.z * c);
+      // Taking it back off: the camera's own world matrix too, so a
+      // raycast from it before the next draw doesn't start from the bob.
+      if (sign < 0) player.camera.updateWorldMatrix(false, false);
+    }
   }
 
   // ------------------------------------------------------------------
@@ -22103,7 +22290,7 @@
 
   // Only ever called for a green enemy that actually moved this frame --
   // see updateEnemies' own call site, right after its moveWithWallCollision
-  // call, mirroring updateFootsteps/updateMovement's exact pattern for the
+  // call, mirroring updateMovement/updateGait's exact pattern for the
   // player (pre-move position captured, post-move delta measured).
   function updateEnemyFootsteps(enemyState, movedDistance) {
     if (movedDistance <= 0) return;
@@ -22225,8 +22412,8 @@
     // standing still isn't running, and shouldn't force ADS off -- see
     // updateAim), is disabled while crouching (and while sliding, below),
     // and while moving backward too. updateAim reads player.isSprinting
-    // to cancel ADS, and playFootstepSound/updateFootsteps read it for
-    // sprint-paced footstep audio, so a backward sprint attempt is
+    // to cancel ADS, and playFootstepSound reads it for
+    // the sprint footstep volume, so a backward sprint attempt is
     // treated as an ordinary walk everywhere, not just capped in top speed.
     const isTacticalSprintHeld = hasControl && !isDowned && player.input.isActionHeld("tacticalSprint");
     player.isSprinting =
@@ -22331,9 +22518,9 @@
     moveWithWallCollision(player.camera.position, player.velocity.x * deltaSeconds, player.velocity.z * deltaSeconds, PLAYER_RADIUS, (player.campusGroundY || 0) + player.jumpOffset, isPlayerLowForBarricadeGap(player));
     // Measured from the actual post-collision position, not from
     // velocity/deltaSeconds directly -- otherwise holding a movement key
-    // while stuck against a wall would keep racking up phantom step
-    // distance despite barely moving.
-    updateFootsteps(player, Math.hypot(player.camera.position.x - preMoveX, player.camera.position.z - preMoveZ), isCrouching || isDowned); // a crawl is as quiet as a crouch-walk
+    // while stuck against a wall would keep striding in place (see
+    // updateGait, below).
+    player.gaitMovedDistance = Math.hypot(player.camera.position.x - preMoveX, player.camera.position.z - preMoveZ);
     } // end hasControl/inventory-open -- gravity below runs regardless
 
     // Brute-hit knockback: applied outside hasControl so it still carries
@@ -22376,6 +22563,7 @@
 
     player.verticalVelocity += GRAVITY * deltaSeconds;
     player.jumpOffset += player.verticalVelocity * deltaSeconds;
+    const landingSpeed = Math.max(0, -player.verticalVelocity); // for the landing dip, if this frame lands
 
     if (player.jumpOffset <= 0) {
       player.jumpOffset = 0;
@@ -22409,16 +22597,10 @@
       takeDamage(player, damage);
     }
 
-    // Landing plays the next footstep immediately rather than waiting for
-    // FOOTSTEP_STEP_DISTANCE_* of horizontal movement to accumulate --
-    // also resets the accumulator so a normal step doesn't fire again a
-    // moment later just because it happened to be close to threshold
-    // already. Same isSliding exclusion as updateFootsteps (a slide is
-    // silent, landing mid-slide shouldn't suddenly make noise).
-    if (player.isGrounded && !wasGrounded && !player.isSliding) {
-      player.footstepDistanceSinceLastStep = 0;
-      playFootstepSound(player, isCrouching);
-    }
+    // Landing is a footfall (silent mid-slide, like every step) and a
+    // camera dip -- see landGait. Then this frame's stride.
+    if (player.isGrounded && !wasGrounded) landGait(player, landingSpeed, isCrouching || isDowned);
+    updateGait(player, deltaSeconds, isCrouching || isDowned); // a crawl is as quiet as a crouch-walk
 
     player.camera.position.y = player.currentEyeHeight + player.jumpOffset + (isCampusMap ? player.campusGroundY : 0);
 
@@ -23055,6 +23237,14 @@
   }
 
   // Where a target stands (a deployed turret sits where it was placed).
+  // Stair portals (campus-world.js FLOOR_PLAN_PORTALS): targets farther
+  // apart in height than this are on different floors -- see updateEnemies.
+  const SAME_FLOOR_HEIGHT_M = 1.2;
+  // An enemy following a stair route isn't "stuck" while its height is
+  // still changing -- see isCampusEnemyBusy.
+  const STAIR_ROUTE_GRACE_MS = 12000;
+  const STAIR_PROGRESS_WINDOW_MS = 6000;
+
   function targetStandingY(target) {
     if (target.isTurretTarget) return target.camera.position.y;
     return isCampusMap ? target.campusGroundY || 0 : 0;
@@ -23190,8 +23380,18 @@
         const reselected = boss ? pickNearestActivePlayer(mesh.position.x, mesh.position.z) : pickNearestEnemyTarget(mesh.position.x, mesh.position.z);
         if (reselected) enemyState.targetPlayer = reselected;
         targetPlayer = enemyState.targetPlayer; // resync the local reference so everything below this point (LOS check, movement, damage) targets whoever was just picked
-        const rawPath = findGridPath(mesh.position.x, mesh.position.z, targetPlayer.camera.position.x, targetPlayer.camera.position.z);
-        enemyState.pathWaypoints = rawPath ? simplifyGridPath(mesh.position.x, mesh.position.z, rawPath, enemyRadius) : [];
+        // (Campus: with both standing heights, so a target on another floor
+        // is reached by stair portal -- the route's stair part, from
+        // rawPath.stairFrom on, is kept point by point, not string-pulled.)
+        const rawPath = findGridPath(mesh.position.x, mesh.position.z, targetPlayer.camera.position.x, targetPlayer.camera.position.z,
+          isCampusMap ? enemyFeetY : undefined, isCampusMap ? targetStandingY(targetPlayer) : undefined);
+        if (rawPath && rawPath.stairFrom !== undefined) {
+          const leg = simplifyGridPath(mesh.position.x, mesh.position.z, rawPath.slice(0, rawPath.stairFrom), enemyRadius);
+          enemyState.pathWaypoints = [...leg, ...rawPath.slice(rawPath.stairFrom)];
+          enemyState.stairRouteUntil = performance.now() + STAIR_ROUTE_GRACE_MS;
+        } else {
+          enemyState.pathWaypoints = rawPath ? simplifyGridPath(mesh.position.x, mesh.position.z, rawPath, enemyRadius) : [];
+        }
       }
       // Drop waypoints already reached, and drop the whole cached path
       // early -- beelining straight for the player instead -- the moment
@@ -23210,18 +23410,28 @@
       if (enemyState.losCheckTimer <= 0 && !lowDetail) {
         enemyState.losCheckTimer = NAV_LOS_CHECK_INTERVAL + Math.random() * NAV_LOS_CHECK_JITTER;
         enemyState.hasLineOfSightCached = hasLineOfSight(
-          mesh.position.x, mesh.position.z, targetPlayer.camera.position.x, targetPlayer.camera.position.z, enemyRadius
+          mesh.position.x, mesh.position.z, targetPlayer.camera.position.x, targetPlayer.camera.position.z, enemyRadius,
+          isCampusMap ? enemyFeetY : undefined, isCampusMap ? targetStandingY(targetPlayer) : undefined
         );
       }
-      if (enemyState.pathWaypoints.length > 0 && enemyState.hasLineOfSightCached) {
+      // Campus: a target on another floor (up a stair, on the floor above)
+      // is only ever reached by the planned route -- never by beelining
+      // under or over it.
+      const sameFloor = !isCampusMap || Math.abs(targetStandingY(targetPlayer) - enemyFeetY) <= SAME_FLOOR_HEIGHT_M;
+      if (enemyState.pathWaypoints.length > 0 && enemyState.hasLineOfSightCached && sameFloor) {
         enemyState.pathWaypoints = [];
       }
 
       if (enemyState.pathWaypoints.length > 0) {
         const waypoint = enemyState.pathWaypoints[0];
         enemyMoveDir.set(waypoint.x - mesh.position.x, 0, waypoint.z - mesh.position.z);
-      } else {
+      } else if (sameFloor) {
         enemyMoveDir.copy(enemyToPlayer);
+      } else {
+        // Another floor and no route yet: wait for one (soon) instead of
+        // pressing against the ceiling or the floor above.
+        enemyMoveDir.set(0, 0, 0);
+        enemyState.repathTimer = Math.min(enemyState.repathTimer, 0.3);
       }
       const moveDistance = enemyMoveDir.length();
 
@@ -23264,7 +23474,7 @@
         );
         if (barricade) enemyAttackBarricade(enemyState, barricade, deltaSeconds);
         // Footsteps (every enemy -- see ENEMY FOOTSTEPS) -- same
-        // pre/post-move delta pattern as the player's own updateFootsteps
+        // pre/post-move delta pattern as the player's own gait (updateGait)
         // call site, so a wall blocking most of this frame's intended
         // movement doesn't rack up phantom step distance either.
         updateEnemyFootsteps(enemyState, Math.hypot(mesh.position.x - preMoveX, mesh.position.z - preMoveZ));
@@ -23659,7 +23869,18 @@
   // whole canvas otherwise. setScissor (not just setViewport) is what
   // actually clips each render to its half -- setViewport alone still
   // lets a camera's own clear/draw calls touch the whole canvas.
+  // The running camera motion (see CAMERA RUNNING MOTION) rides along for
+  // the draw only.
   function renderFrame() {
+    shiftCamerasByBob(1);
+    try {
+      renderViews();
+    } finally {
+      shiftCamerasByBob(-1);
+    }
+  }
+
+  function renderViews() {
     if (!isCoopMatchActive) {
       renderer.render(scene, camera);
       return;
@@ -24739,6 +24960,7 @@
         enterWeatherState(WEATHER_STATES.RAINING, 600);
       },
       prewarmRendererForRun, raycastEnemies,
+      updateGunBob, applyCameraRotation, setActiveViewModel,
       haltLoop: false, // true stops animate() so only the benchmark renders
     };
     const script = document.createElement("script");
