@@ -82,6 +82,15 @@
     const PIT_STEPS = 2;
     const PIT_LEDGE_M = 0.7;  // width of each step's ledge
 
+    // Streets sit a little below the rest of the ground, edged by a concrete
+    // curb (see STREET LEVEL). Every curb also has an invisible ramp: the
+    // walking height eases over CURB_RAMP_M on the street side instead of
+    // stepping -- like the sloped player clip games lay over curbs and
+    // stairs -- so stepping on or off a curb glides instead of popping.
+    const STREET_DROP_M = 0.12;
+    const CURB_RAMP_M = 0.5;
+    const CURB_TOP_WIDTH_M = 0.18; // concrete strip along the top of the curb
+
     // Streets as centerlines: [x1, y1, x2, y2, width px] (horizontal or
     // vertical; width defaults to ROAD_WIDTH_PX).
     const ROADS = [
@@ -1819,7 +1828,7 @@
     // holds up even far away on software/low-precision GPUs.
     // ------------------------------------------------------------------
     const LIFT = {
-      walk: 0.02, plaza: 0.025, road: 0.04, intersection: 0.045, driveway: 0.05,
+      walk: 0.02, plaza: 0.025, curb: 0.03, road: 0.04, intersection: 0.045, driveway: 0.05,
       track: 0.06, dirt: 0.06, laneLine: 0.07, lot: 0.08, field: 0.09, pool: 0.09,
       lotWalk: 0.1, infield: 0.1, grassIsland: 0.11, crosswalk: 0.055,
       // stadium infield (between the track fill and the lane lines)
@@ -1854,6 +1863,11 @@
       // lower one. Overlapping coplanar pieces (sidewalks crossing at a
       // corner, walks meeting, streets meeting) can't z-fight at any distance.
       material.depthWrite = false;
+      // ...and skips pixels the street mask has claimed (see STREET LEVEL),
+      // so ground drawn flat across a street never covers the sunken road.
+      material.stencilWrite = true; // (enables the stencil test; the ops keep the buffer as is)
+      material.stencilFunc = THREE.NotEqualStencilFunc;
+      material.stencilRef = 1;
       const mesh = new THREE.Mesh(merged, material);
       mesh.renderOrder = -1000 + Math.round((positions[1] || 0) * 1000);
       return mesh;
@@ -1902,8 +1916,11 @@
 
     // Axis-aligned rectangle (screenshot px). UVs either stretch 0 -> 1 over
     // it (`stretch`), or tile in meters with u along `uAxis` ("x" or "z").
-    function rectGround(r, lift, { stretch = false, uAxis = "x", uTileM = 1, vTileM = 1 } = {}) {
+    // `origin` (a world rect) anchors the tiling at its corner instead, so
+    // pieces cut from one rectangle line up.
+    function rectGround(r, lift, { stretch = false, uAxis = "x", uTileM = 1, vTileM = 1, origin } = {}) {
       const w = rectToWorld(r);
+      const o = origin || w;
       const corners = [
         { x: w.minX, z: w.minZ }, { x: w.maxX, z: w.minZ }, { x: w.maxX, z: w.maxZ }, { x: w.minX, z: w.maxZ },
       ];
@@ -1911,8 +1928,8 @@
         // v runs south -> north so a canvas drawn north-up lands north-up.
         if (stretch) return [(p.x - w.minX) / (w.maxX - w.minX), (w.maxZ - p.z) / (w.maxZ - w.minZ)];
         return uAxis === "x"
-          ? [(p.x - w.minX) / uTileM, (p.z - w.minZ) / vTileM]
-          : [(p.z - w.minZ) / uTileM, (p.x - w.minX) / vTileM];
+          ? [(p.x - o.minX) / uTileM, (p.z - o.minZ) / vTileM]
+          : [(p.z - o.minZ) / uTileM, (p.x - o.minX) / vTileM];
       };
       return groundQuad(corners, corners.map(uvOf), lift);
     }
@@ -1948,9 +1965,145 @@
     });
     const pits = pitRectsPx.map(rectToWorld);
 
-    // Ground height at a world point: 0, or a step down inside a pit.
+    // ------------------------------------------------------------------
+    // STREET LEVEL. Every street (ROADS, plus any cul-de-sac -- a full disc
+    // among DRIVE_ARCS) is sunk STREET_DROP_M below the ground, with a curb
+    // wherever it meets the ground (not where it meets another street or a
+    // pit). Walking height ramps up over the last CURB_RAMP_M before a curb.
+    // ------------------------------------------------------------------
+    const streetRectsPx = ROADS.map((r) => {
+      const half = (r[4] || ROAD_WIDTH_PX) / 2;
+      return isHorizontal(r)
+        ? [Math.min(r[0], r[2]) - half, r[1] - half, Math.max(r[0], r[2]) + half, r[1] + half]
+        : [r[0] - half, Math.min(r[1], r[3]) - half, r[0] + half, Math.max(r[1], r[3]) + half];
+    });
+    const streetRects = streetRectsPx.map(rectToWorld);
+    const isCulDeSac = (a) => a[2] - a[3] / 2 <= 0 && a[5] >= 360;
+    const CUL_DE_SAC_SEGMENTS = 48; // same as flatArcWorld/flatDiscWorld, so the curb follows the asphalt's edge
+    const culDeSacs = DRIVE_ARCS.filter(isCulDeSac).map((a) => ({ ...mapToWorld(a[0], a[1]), r: (a[2] + a[3] / 2) * MAP_SCALE }));
+
+    // Parts of segment a -> b that have street or pit right beside them on
+    // the side of the normal (nx, nz), as sorted, merged [t0, t1] ranges.
+    function streetCoverAlong(ax, az, bx, bz, nx, nz, skipDisc) {
+      const EPS = 0.01;
+      const ox = ax + nx * EPS, oz = az + nz * EPS;
+      const dx = bx - ax, dz = bz - az;
+      const covered = [];
+      for (const w of [...streetRects, ...pits]) {
+        // Liang-Barsky: the t range of the offset segment inside w
+        let t0 = 0, t1 = 1, outside = false;
+        for (const [p, q] of [[-dx, ox - w.minX], [dx, w.maxX - ox], [-dz, oz - w.minZ], [dz, w.maxZ - oz]]) {
+          if (Math.abs(p) < 1e-9) { if (q < 0) outside = true; continue; }
+          if (p < 0) t0 = Math.max(t0, q / p); else t1 = Math.min(t1, q / p);
+        }
+        if (!outside && t1 > t0) covered.push([t0, t1]);
+      }
+      for (const c of culDeSacs) {
+        if (c === skipDisc) continue;
+        const fx = ox - c.x, fz = oz - c.z;
+        const A = dx * dx + dz * dz, B = 2 * (fx * dx + fz * dz), C = fx * fx + fz * fz - c.r * c.r;
+        const disc = B * B - 4 * A * C;
+        if (disc <= 0) continue;
+        const s = Math.sqrt(disc);
+        const t0 = Math.max(0, (-B - s) / (2 * A)), t1 = Math.min(1, (-B + s) / (2 * A));
+        if (t1 > t0) covered.push([t0, t1]);
+      }
+      covered.sort((p, q) => p[0] - q[0]);
+      const merged = [];
+      for (const r of covered) {
+        const last = merged[merged.length - 1];
+        if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+        else merged.push([...r]);
+      }
+      return merged;
+    }
+    // The rest of [0, 1] after sorted, merged `ranges`.
+    function uncoveredRanges(ranges) {
+      const out = [];
+      let t = 0;
+      for (const [t0, t1] of ranges) {
+        if (t0 > t) out.push([t, t0]);
+        t = Math.max(t, t1);
+      }
+      if (t < 1) out.push([t, 1]);
+      return out;
+    }
+
+    // Curb lines: the stretches of street edge that meet the ground, with
+    // (nx, nz) pointing off the street.
+    const curbs = [];
+    function addCurb(ax, az, bx, bz, nx, nz, skipDisc) {
+      const len = Math.hypot(bx - ax, bz - az);
+      for (const [t0, t1] of uncoveredRanges(streetCoverAlong(ax, az, bx, bz, nx, nz, skipDisc))) {
+        if ((t1 - t0) * len < 0.02) continue;
+        curbs.push({ ax: ax + (bx - ax) * t0, az: az + (bz - az) * t0, bx: ax + (bx - ax) * t1, bz: az + (bz - az) * t1, nx, nz });
+      }
+    }
+    for (const w of streetRects) {
+      addCurb(w.minX, w.minZ, w.maxX, w.minZ, 0, -1);
+      addCurb(w.minX, w.maxZ, w.maxX, w.maxZ, 0, 1);
+      addCurb(w.minX, w.minZ, w.minX, w.maxZ, -1, 0);
+      addCurb(w.maxX, w.minZ, w.maxX, w.maxZ, 1, 0);
+    }
+    for (const c of culDeSacs) {
+      // same vertices as the disc geometry: angle counterclockwise on the screenshot, z = -sin
+      const at = (i) => {
+        const a = (i / CUL_DE_SAC_SEGMENTS) * Math.PI * 2;
+        return { x: c.x + c.r * Math.cos(a), z: c.z - c.r * Math.sin(a) };
+      };
+      for (let i = 0; i < CUL_DE_SAC_SEGMENTS; i++) {
+        const p = at(i), q = at(i + 1);
+        const mid = ((i + 0.5) / CUL_DE_SAC_SEGMENTS) * Math.PI * 2;
+        addCurb(p.x, p.z, q.x, q.z, Math.cos(mid), -Math.sin(mid), c);
+      }
+    }
+
+    // Street shapes and curb lines bucketed on a coarse grid, so a height
+    // lookup only looks at what's near the point.
+    const STREET_CELL_M = 8;
+    const streetCells = new Map();
+    const streetCellKey = (x, z) => Math.floor(x / STREET_CELL_M) * 65536 + Math.floor(z / STREET_CELL_M);
+    function addToStreetCells(minX, minZ, maxX, maxZ, field, item) {
+      for (let i = Math.floor(minX / STREET_CELL_M); i <= Math.floor(maxX / STREET_CELL_M); i++) {
+        for (let j = Math.floor(minZ / STREET_CELL_M); j <= Math.floor(maxZ / STREET_CELL_M); j++) {
+          const key = i * 65536 + j;
+          let cell = streetCells.get(key);
+          if (!cell) streetCells.set(key, (cell = { rects: [], discs: [], curbs: [] }));
+          cell[field].push(item);
+        }
+      }
+    }
+    for (const w of streetRects) addToStreetCells(w.minX, w.minZ, w.maxX, w.maxZ, "rects", w);
+    for (const c of culDeSacs) addToStreetCells(c.x - c.r, c.z - c.r, c.x + c.r, c.z + c.r, "discs", c);
+    for (const k of curbs) {
+      addToStreetCells(Math.min(k.ax, k.bx) - CURB_RAMP_M, Math.min(k.az, k.bz) - CURB_RAMP_M,
+        Math.max(k.ax, k.bx) + CURB_RAMP_M, Math.max(k.az, k.bz) + CURB_RAMP_M, "curbs", k);
+    }
+
+    // Street surface height at a world point (0 off the streets): the full
+    // drop, easing linearly up to 0 at a curb over the last CURB_RAMP_M.
+    function streetHeightAt(x, z) {
+      const cell = streetCells.get(streetCellKey(x, z));
+      if (!cell) return 0;
+      let inside = false;
+      for (const w of cell.rects) {
+        if (x >= w.minX && x <= w.maxX && z >= w.minZ && z <= w.maxZ) { inside = true; break; }
+      }
+      if (!inside) {
+        for (const c of cell.discs) {
+          if ((x - c.x) ** 2 + (z - c.z) ** 2 <= c.r * c.r) { inside = true; break; }
+        }
+      }
+      if (!inside) return 0;
+      let d = CURB_RAMP_M;
+      for (const k of cell.curbs) d = Math.min(d, distToSegment(x, z, k.ax, k.az, k.bx, k.bz));
+      return -STREET_DROP_M * (d / CURB_RAMP_M);
+    }
+
+    // Ground height at a world point: 0, a street (sunk, ramping up to its
+    // curbs), or a step down inside a pit.
     function groundHeightAt(x, z) {
-      let h = 0;
+      let h = streetHeightAt(x, z);
       for (const p of pits) {
         for (let k = 0; k < PIT_STEPS; k++) {
           const i = k * PIT_LEDGE_M;
@@ -1982,7 +2135,7 @@
     // Pit geometry: a dirt floor per step level (drawn before every other
     // ground layer, so the ground around a pit paints over its near edge like
     // a real rim), and inward-facing dirt walls for each step.
-    function wallQuad(ax, az, bx, bz, yTop, yBottom, inX, inZ) {
+    function wallQuad(ax, az, bx, bz, yTop, yBottom, inX, inZ, tileM = DIRT_TILE_M) {
       const g = new THREE.BufferGeometry();
       let v = [[ax, yTop, az], [bx, yTop, bz], [bx, yBottom, bz], [ax, yTop, az], [bx, yBottom, bz], [ax, yBottom, az]];
       // Wind so the face points toward (inX, inZ) (into the pit).
@@ -1994,8 +2147,8 @@
       const len = Math.hypot(inX, inZ) || 1;
       g.setAttribute("position", new THREE.Float32BufferAttribute(v.flat(), 3));
       g.setAttribute("normal", new THREE.Float32BufferAttribute(v.flatMap(() => [inX / len, 0, inZ / len]), 3));
-      const along = Math.hypot(bx - ax, bz - az) / DIRT_TILE_M;
-      const down = (yTop - yBottom) / DIRT_TILE_M;
+      const along = Math.hypot(bx - ax, bz - az) / tileM;
+      const down = (yTop - yBottom) / tileM;
       g.setAttribute("uv", new THREE.Float32BufferAttribute([0, down, along, down, along, 0, 0, down, along, 0, 0, 0], 2));
       return g;
     }
@@ -2011,26 +2164,40 @@
         )], dirtMaterial.clone(), DIRT_TILE_M);
         floor.renderOrder = -3000 + n * 10 + k; // before grass (-1000 and up), lower step last
         root.add(floor);
-        pitWallGeometries.push(
-          wallQuad(x0, z0, x1, z0, yTop, yBottom, 0, 1),
-          wallQuad(x0, z1, x1, z1, yTop, yBottom, 0, -1),
-          wallQuad(x0, z0, x0, z1, yTop, yBottom, 1, 0),
-          wallQuad(x1, z0, x1, z1, yTop, yBottom, -1, 0),
-        );
+        for (const [ax, az, bx, bz, inX, inZ] of [
+          [x0, z0, x1, z0, 0, 1], [x0, z1, x1, z1, 0, -1], [x0, z0, x0, z1, 1, 0], [x1, z0, x1, z1, -1, 0],
+        ]) {
+          if (k > 0) {
+            pitWallGeometries.push(wallQuad(ax, az, bx, bz, yTop, yBottom, inX, inZ));
+            continue;
+          }
+          // The top wall only rises to street level where a street runs into the pit.
+          const onStreet = streetCoverAlong(ax, az, bx, bz, -inX, -inZ);
+          for (const [t0, t1, top] of [
+            ...onStreet.map(([t0, t1]) => [t0, t1, -STREET_DROP_M]),
+            ...uncoveredRanges(onStreet).map(([t0, t1]) => [t0, t1, yTop]),
+          ]) {
+            pitWallGeometries.push(wallQuad(ax + (bx - ax) * t0, az + (bz - az) * t0, ax + (bx - ax) * t1, az + (bz - az) * t1,
+              top, yBottom, inX, inZ));
+          }
+        }
       }
     });
     if (pitWallGeometries.length > 0) {
       const walls = mergedMesh(pitWallGeometries, new THREE.MeshLambertMaterial({ map: dirtTexture, color: 0xbfa888 }));
       walls.material.depthWrite = true; // real geometry, depth-tested like buildings
+      walls.material.stencilWrite = false; // ...and never hidden by the street mask
       walls.renderOrder = 0;
       root.add(walls);
     }
 
-    // Streets, with plain-asphalt patches over every intersection so center
-    // lines stop at the crossing instead of z-fighting through it.
+    // Streets, sunk to street level (see STREET LEVEL), with plain-asphalt
+    // patches over every intersection so center lines stop at the crossing
+    // instead of z-fighting through it.
+    const streetLift = (lift) => lift - STREET_DROP_M;
     const roadHalfWidth = (r) => (r[4] || ROAD_WIDTH_PX) / 2;
     root.add(mergedMesh(ROADS.map((r) =>
-      stripQuad(r[0], r[1], r[2], r[3], roadHalfWidth(r) * 2, LIFT.road, ROAD_DASH_PERIOD_M)), roadMaterial));
+      stripQuad(r[0], r[1], r[2], r[3], roadHalfWidth(r) * 2, streetLift(LIFT.road), ROAD_DASH_PERIOD_M)), roadMaterial));
     const intersectionPatches = [];
     for (const h of ROADS.filter(isHorizontal)) {
       for (const v of ROADS.filter((r) => !isHorizontal(r))) {
@@ -2039,18 +2206,58 @@
         if (x < Math.min(h[0], h[2]) - roadHalfWidth(v) || x > Math.max(h[0], h[2]) + roadHalfWidth(v)) continue;
         if (y < Math.min(v[1], v[3]) - roadHalfWidth(h) || y > Math.max(v[1], v[3]) + roadHalfWidth(h)) continue;
         intersectionPatches.push(rectGround(
-          [x - roadHalfWidth(v), y - roadHalfWidth(h), x + roadHalfWidth(v), y + roadHalfWidth(h)], LIFT.intersection));
+          [x - roadHalfWidth(v), y - roadHalfWidth(h), x + roadHalfWidth(v), y + roadHalfWidth(h)], streetLift(LIFT.intersection)));
       }
     }
     root.add(mergedMesh(intersectionPatches, plainAsphaltMaterial));
+    const driveArc = (a, lift) => {
+      const c = mapToWorld(a[0], a[1]);
+      return flatArcWorld(c.x, c.z, (a[2] - a[3] / 2) * MAP_SCALE, (a[2] + a[3] / 2) * MAP_SCALE,
+        (a[4] * Math.PI) / 180, (a[5] * Math.PI) / 180, lift);
+    };
+    if (culDeSacs.length > 0) {
+      root.add(mergedMesh(DRIVE_ARCS.filter(isCulDeSac).map((a) => driveArc(a, streetLift(LIFT.driveway))), plainAsphaltMaterial, 1));
+    }
     root.add(mergedMesh([
       ...DRIVEWAYS.map((r) => rectGround(r, LIFT.driveway)),
-      ...DRIVE_ARCS.map((a) => {
-        const c = mapToWorld(a[0], a[1]);
-        return flatArcWorld(c.x, c.z, (a[2] - a[3] / 2) * MAP_SCALE, (a[2] + a[3] / 2) * MAP_SCALE,
-          (a[4] * Math.PI) / 180, (a[5] * Math.PI) / 180, LIFT.driveway);
-      }),
+      ...DRIVE_ARCS.filter((a) => !isCulDeSac(a)).map((a) => driveArc(a, LIFT.driveway)),
     ], plainAsphaltMaterial, 1));
+
+    // The ground's own layers (grass, sidewalks, walks, driveways) still run
+    // flat across the streets. The street-level layers paint first; then this
+    // mask -- the streets' outline at ground level, never drawn in color --
+    // marks the stencil buffer, and every later ground layer skips marked
+    // pixels (see mergedMesh), leaving an open hole down to the street.
+    const streetMask = mergedMesh([
+      ...streetRectsPx.map((r) => rectGround(r, 0)),
+      ...culDeSacs.map((c) => flatDiscWorld(c.x, c.z, c.r, 0)),
+    ], new THREE.MeshBasicMaterial({ colorWrite: false }));
+    streetMask.material.stencilFunc = THREE.AlwaysStencilFunc;
+    streetMask.material.stencilZPass = THREE.ReplaceStencilOp;
+    streetMask.renderOrder = -1050; // after every street-level layer, before the ground (-1000 and up)
+    root.add(streetMask);
+
+    // Curbs: a concrete face from the street up to just above the ground
+    // along every curb line (real, depth-tested geometry like the pit walls),
+    // and a thin concrete strip along its top on the ground side.
+    const curbFaceMaterial = new THREE.MeshLambertMaterial({ map: concreteTexture, color: 0xe2dfd8 });
+    if (curbs.length > 0) {
+      const faces = mergedMesh(curbs.map((k) =>
+        wallQuad(k.ax, k.az, k.bx, k.bz, LIFT.curb, -STREET_DROP_M, -k.nx, -k.nz, SLAB_LENGTH_M)), curbFaceMaterial);
+      faces.material.depthWrite = true;
+      faces.material.stencilWrite = false;
+      faces.renderOrder = 0;
+      root.add(faces);
+      root.add(mergedMesh(curbs.map((k) => {
+        const len = Math.hypot(k.bx - k.ax, k.bz - k.az) / SLAB_LENGTH_M;
+        const ox = k.nx * CURB_TOP_WIDTH_M, oz = k.nz * CURB_TOP_WIDTH_M;
+        return groundQuad(
+          [{ x: k.ax, z: k.az }, { x: k.bx, z: k.bz }, { x: k.bx + ox, z: k.bz + oz }, { x: k.ax + ox, z: k.az + oz }],
+          [[0, 0], [len, 0], [len, 0.15], [0, 0.15]],
+          LIFT.curb,
+        );
+      }), concreteMaterial));
+    }
 
     // Crosswalks: white zebra bars (one small alpha-tested texture, so it
     // stays in the cheap opaque pass).
@@ -2068,13 +2275,22 @@
       }),
     });
     const crosswalkGeometries = [];
+    const streetCrosswalkGeometries = [];
     // rect in px; `walkAxis`: the direction people walk ("x" or "z"); bars
-    // are spaced along it and run across it.
+    // are spaced along it and run across it. The part out on a street is
+    // drawn again down at street level (the ground-level copy is masked there).
     const addCrosswalk = (r, walkAxis) => {
       if (r[2] - r[0] < 0.5 || r[3] - r[1] < 0.5) return;
       const w = rectToWorld(r);
       const across = walkAxis === "x" ? w.maxZ - w.minZ : w.maxX - w.minX;
-      crosswalkGeometries.push(rectGround(r, LIFT.crosswalk, { uAxis: walkAxis, uTileM: CROSSWALK_BAR_PERIOD_M, vTileM: across }));
+      const tiling = { uAxis: walkAxis, uTileM: CROSSWALK_BAR_PERIOD_M, vTileM: across, origin: w };
+      crosswalkGeometries.push(rectGround(r, LIFT.crosswalk, tiling));
+      for (const s of streetRectsPx) {
+        const piece = [Math.max(r[0], s[0]), Math.max(r[1], s[1]), Math.min(r[2], s[2]), Math.min(r[3], s[3])];
+        if (piece[2] - piece[0] > 0.01 && piece[3] - piece[1] > 0.01) {
+          streetCrosswalkGeometries.push(rectGround(piece, streetLift(LIFT.crosswalk), tiling));
+        }
+      }
     };
     const sidewalkBand = (r) => { // [near, far] offsets of the sidewalk band from the road's centerline, px
       const half = roadHalfWidth(r);
@@ -2129,10 +2345,11 @@
       const v = ROADS.find((r) => !isHorizontal(r) && r[0] === ix && Math.min(r[1], r[3]) <= iy && Math.max(r[1], r[3]) >= iy);
       const vHalf = roadHalfWidth(v);
       addCrosswalk([ix - vHalf - SIDEWALK_GAP_PX, iy - width / 2, ix + vHalf + SIDEWALK_GAP_PX, iy + width / 2], "x");
-      midblockPatches.push(rectGround([ix - vHalf, iy - width / 2 - 0.5, ix + vHalf, iy + width / 2 + 0.5], LIFT.intersection));
+      midblockPatches.push(rectGround([ix - vHalf, iy - width / 2 - 0.5, ix + vHalf, iy + width / 2 + 0.5], streetLift(LIFT.intersection)));
     }
     root.add(mergedMesh(midblockPatches, plainAsphaltMaterial));
     if (crosswalkGeometries.length > 0) root.add(mergedMesh(crosswalkGeometries, crosswalkMaterial));
+    if (streetCrosswalkGeometries.length > 0) root.add(mergedMesh(streetCrosswalkGeometries, crosswalkMaterial));
 
     // Nemzek Hall sign face (gamenemzeksign.jpg): black lettering across the
     // top of the cream panel, facing south toward the entrance walk.
@@ -2432,8 +2649,8 @@
 
 
     const buildingMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
-    // Storefront glass (Kise): pale, mostly clear; one shared material.
-    const glassMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, depthWrite: false });
+    // Storefront glass (Kise): pale blue-tinted, slightly frosted, with a specular sheen so it reads as glass.
+    const glassMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff, specular: 0x667788, shininess: 90, transparent: true, opacity: 0.33, depthWrite: false });
 
     // Brick: one small tiling canvas texture, projected in world space in the
     // shader (walls take it by their facing, flat roofs get gravel gray), so
@@ -2624,6 +2841,7 @@
           const c = makeCollider((w.minX + w.maxX) / 2, (w.minZ + w.maxZ) / 2,
             (w.maxX - w.minX) / 2, (w.maxZ - w.minZ) / 2, (top * i) / steps, 0);
           c.color = color;
+          c.climbable = true; // see canClimbAlong / the nav grid's step heights
           colliders.push(c);
         }
       }
@@ -2945,7 +3163,7 @@
           const stagger = i % 2 === 0 ? 0.25 : -0.25;
           const cx = center.x + along.x * t + along.z * stagger;
           const cz = center.z + along.z * t + along.x * stagger;
-          unitMatrix.compose(new THREE.Vector3(cx, 0, cz), q, new THREE.Vector3(1, 1, 1));
+          unitMatrix.compose(new THREE.Vector3(cx, groundHeightAt(cx, cz), cz), q, new THREE.Vector3(1, 1, 1));
           for (const lx of [-0.95, 0.95]) {
             put(parts.metal, lx, 0.73, 0, 0.05, 1.46, 0.05);   // leg
             put(parts.metal, lx, 0.025, 0, 0.07, 0.05, 0.85);  // foot
@@ -2965,7 +3183,8 @@
         // cones (on square black bases) just outside each end of the row
         for (const end of [-1, 1]) {
           const t = end * (length / 2 + 0.5);
-          unitMatrix.compose(new THREE.Vector3(center.x + along.x * t, 0, center.z + along.z * t), q, new THREE.Vector3(1, 1, 1));
+          const ex = center.x + along.x * t, ez = center.z + along.z * t;
+          unitMatrix.compose(new THREE.Vector3(ex, groundHeightAt(ex, ez), ez), q, new THREE.Vector3(1, 1, 1));
           for (const [cx0, cz0] of [[0, 0.6], [0.1, -0.7]]) {
             put(parts.cone, cx0, 0, cz0, 1, 1, 1);
             put(parts.coneBase, cx0, 0.02, cz0, 0.42, 0.04, 0.42);
@@ -3242,9 +3461,17 @@
     // not trees, fences, curbs or overhead slabs). Analytic, no sampling.
     // includeFences: fences count too -- you can see (and shoot) through
     // chain-link, but nothing walks or reaches through it.
+    // Climbable pieces (bleacher steps) don't block on their own -- only
+    // where the line would have to climb more than a step at once (see
+    // canClimbAlong), e.g. straight up the back of a grandstand.
     function segmentBlocked(x1, z1, x2, z2, clearance = 0, includeFences = false) {
       const pad = clearance + 0.01;
-      return forEachColliderIn(Math.min(x1, x2) - pad, Math.min(z1, z2) - pad, Math.max(x1, x2) + pad, Math.max(z1, z2) + pad, (c) => {
+      const climbables = [];
+      const blocked = forEachColliderIn(Math.min(x1, x2) - pad, Math.min(z1, z2) - pad, Math.max(x1, x2) + pad, Math.max(z1, z2) + pad, (c) => {
+        if (c.climbable) {
+          climbables.push(c);
+          return false;
+        }
         if (!blocksSight(c) && !(includeFences && c.seeThrough && c.height >= SIGHT_MIN_HEIGHT_M)) return false;
         if (c.shape === "cylinder") {
           const dx = x2 - x1, dz = z2 - z1;
@@ -3266,6 +3493,36 @@
         };
         return clip(-ddx, a.x + hx) && clip(ddx, hx - a.x) && clip(-ddz, a.z + hz) && clip(ddz, hz - a.z) && t0 <= t1;
       });
+      if (blocked) return true;
+      return climbables.length > 0 && !canClimbAlong(x1, z1, x2, z2, climbables);
+    }
+
+    // Top of the climbable stack at a point (the ground if none of `list`
+    // covers it). No bucket query, so it's safe inside forEachColliderIn.
+    function climbTopAt(x, z, list) {
+      let h = groundHeightAt(x, z);
+      for (const c of list) {
+        if (c.height <= h) continue;
+        const local = toLocal(c, x, z);
+        if (Math.abs(local.x) <= c.halfX && Math.abs(local.z) <= c.halfZ) h = c.height;
+      }
+      return h;
+    }
+
+    // Can a body walk the straight line (x1, z1) -> (x2, z2) over the
+    // climbable pieces in `list`? Never climbing more than STEP_UP_M between
+    // samples closer together than any step is deep; dropping is fine.
+    const CLIMB_SAMPLE_M = 0.25;
+    function canClimbAlong(x1, z1, x2, z2, list) {
+      const steps = Math.max(1, Math.ceil(Math.hypot(x2 - x1, z2 - z1) / CLIMB_SAMPLE_M));
+      let h = climbTopAt(x1, z1, list);
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const next = climbTopAt(x1 + (x2 - x1) * t, z1 + (z2 - z1) * t, list);
+        if (next - h > STEP_UP_M + 0.01) return false;
+        h = next;
+      }
+      return true;
     }
 
     // Can a body of this radius stand at (x, z)? (inside the playable area,
@@ -3395,6 +3652,36 @@
       return hollowRects.some((r) => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ);
     }
 
+    // Footstep surface at a world point: "concrete" for anything hard --
+    // streets, sidewalks, walks, plazas, lots, driveways, the running track,
+    // indoors, or standing up on a structure (bleachers, steps, a roof) --
+    // and "grass" for soft ground (grass, dirt, turf, the construction pit).
+    // feetY: the body's feet, to tell standing on something from the ground.
+    function surfaceAt(x, z, feetY = 0) {
+      if (feetY > groundHeightAt(x, z) + 0.05 || isInsideHollowBuilding(x, z)) return "concrete";
+      const px = x / MAP_SCALE + MAP_CENTER_X, py = z / MAP_SCALE + MAP_CENTER_Y;
+      for (const r of GRASS_AREAS) if (inRect(px, py, r, 0)) return "grass"; // lawn islands inside lots
+      for (const r of [...streetRectsPx, ...LOTS, ...PLAZAS, ...DRIVEWAYS, ...RUNWAYS]) if (inRect(px, py, r, 0)) return "concrete";
+      for (const r of [...ROADS, ...CONSTRUCTION_ROADS]) { // the sidewalks along both sides
+        const d = distToSegment(px, py, r[0], r[1], r[2], r[3]);
+        if (Math.abs(d - ((r[4] || ROAD_WIDTH_PX) / 2 + SIDEWALK_GAP_PX + SIDEWALK_WIDTH_PX / 2)) <= SIDEWALK_WIDTH_PX / 2) return "concrete";
+      }
+      for (const p of [...PATHS, ...LOT_WALKS]) {
+        if (distToSegment(px, py, p[0], p[1], p[2], p[3]) <= (p[4] || PATH_WIDTH_PX) / 2) return "concrete";
+      }
+      for (const a of [...PATH_ARCS, ...DRIVE_ARCS]) {
+        if (Math.abs(Math.hypot(px - a[0], py - a[1]) - a[2]) > a[3] / 2) continue;
+        const deg = ((Math.atan2(a[1] - py, px - a[0]) * 180) / Math.PI - a[4] + 720) % 360; // counterclockwise on the screenshot
+        if (a[5] >= 360 || deg <= a[5]) return "concrete";
+      }
+      for (const r of TRACKS) { // the lanes only -- the infield is turf
+        const cap = capsuleOf(r);
+        const d = Math.hypot(x - cap.cx, z - Math.max(cap.zTop, Math.min(cap.zBottom, z)));
+        if (d <= cap.radius && d >= cap.radius - TRACK_LANES * TRACK_LANE_WIDTH_M) return "concrete";
+      }
+      return "grass";
+    }
+
     // ------------------------------------------------------------------
     // LOCAL NAVIGATION -- walkability is rasterized lazily in small chunks
     // (only where something actually asks for a path), and A* only ever
@@ -3406,17 +3693,29 @@
     const NAV_CLEARANCE_M = 0.4;
     const NAV_WINDOW_CELLS = 96;          // A* never searches beyond a 96 m square
     const NAV_MAX_EXPANSIONS = 2500;
-    const NAV_CHUNK_CACHE_LIMIT = 400;    // ~400 KB worst case, oldest dropped first
+    const NAV_CHUNK_CACHE_LIMIT = 400;    // ~1.6 MB worst case, oldest dropped first
+    // Cells hold the height a body stands at there (ground, or the top of
+    // a bleacher step), or NAV_BLOCKED. A move between neighbors may climb
+    // at most NAV_MAX_CLIMB_M and drop at most NAV_MAX_DROP_M. Only
+    // climbable pieces (bleachers, stepped at most STEP_UP_M) raise a cell,
+    // so the climb limit is two steps: cells are 1 m apart, and a bleacher
+    // step can be shallower than that.
+    const NAV_BLOCKED = -1e9;
+    const NAV_MAX_CLIMB_M = STEP_UP_M * 2 + 0.01;
+    const NAV_MAX_DROP_M = 1.0;
+    const navStepOk = (from, to) => to !== NAV_BLOCKED && to - from <= NAV_MAX_CLIMB_M && from - to <= NAV_MAX_DROP_M;
     const navChunks = new Map();
 
     function rasterizeNavChunk(chunkX, chunkZ) {
-      const cells = new Uint8Array(NAV_CHUNK_CELLS * NAV_CHUNK_CELLS);
+      const cells = new Float32Array(NAV_CHUNK_CELLS * NAV_CHUNK_CELLS);
       const x0 = chunkX * NAV_CHUNK_CELLS * NAV_CELL_M;
       const z0 = chunkZ * NAV_CHUNK_CELLS * NAV_CELL_M;
       const span = NAV_CHUNK_CELLS * NAV_CELL_M;
       const nearby = [];
+      const climbables = [];
       forEachColliderIn(x0 - NAV_CLEARANCE_M, z0 - NAV_CLEARANCE_M, x0 + span + NAV_CLEARANCE_M, z0 + span + NAV_CLEARANCE_M, (c) => {
-        if (blocksBody(c, 0, true, 1.85)) nearby.push(c);
+        if (c.climbable) climbables.push(c);
+        else nearby.push(c);
       });
       for (let j = 0; j < NAV_CHUNK_CELLS; j++) {
         for (let i = 0; i < NAV_CHUNK_CELLS; i++) {
@@ -3424,8 +3723,10 @@
           const z = z0 + (j + 0.5) * NAV_CELL_M;
           let walkable = x > bounds.minX + NAV_CLEARANCE_M && x < bounds.maxX - NAV_CLEARANCE_M &&
             z > bounds.minZ + NAV_CLEARANCE_M && z < bounds.maxZ - NAV_CLEARANCE_M;
+          const standY = climbTopAt(x, z, climbables);
           for (let k = 0; walkable && k < nearby.length; k++) {
             const c = nearby[k];
+            if (!blocksBody(c, standY, true, 1.85)) continue;
             if (c.shape === "cylinder") {
               if ((x - c.cx) ** 2 + (z - c.cz) ** 2 < (c.radius + NAV_CLEARANCE_M) ** 2) walkable = false;
             } else {
@@ -3435,13 +3736,13 @@
               if (dx * dx + dz * dz < NAV_CLEARANCE_M * NAV_CLEARANCE_M) walkable = false;
             }
           }
-          cells[j * NAV_CHUNK_CELLS + i] = walkable ? 1 : 0;
+          cells[j * NAV_CHUNK_CELLS + i] = walkable ? standY : NAV_BLOCKED;
         }
       }
       return cells;
     }
 
-    function navWalkableCell(cx, cz) {
+    function navCellHeight(cx, cz) {
       const chunkX = Math.floor(cx / NAV_CHUNK_CELLS);
       const chunkZ = Math.floor(cz / NAV_CHUNK_CELLS);
       const key = chunkZ * 100000 + chunkX;
@@ -3451,8 +3752,9 @@
         cells = rasterizeNavChunk(chunkX, chunkZ);
         navChunks.set(key, cells);
       }
-      return cells[(cz - chunkZ * NAV_CHUNK_CELLS) * NAV_CHUNK_CELLS + (cx - chunkX * NAV_CHUNK_CELLS)] === 1;
+      return cells[(cz - chunkZ * NAV_CHUNK_CELLS) * NAV_CHUNK_CELLS + (cx - chunkX * NAV_CHUNK_CELLS)];
     }
+    const navWalkableCell = (cx, cz) => navCellHeight(cx, cz) !== NAV_BLOCKED;
 
     const navWindowSize = NAV_WINDOW_CELLS * NAV_WINDOW_CELLS;
     const navG = new Float32Array(navWindowSize);
@@ -3574,8 +3876,9 @@
           if (nx < 0 || nz < 0 || nx >= NAV_WINDOW_CELLS || nz >= NAV_WINDOW_CELLS) continue;
           const ni = nz * NAV_WINDOW_CELLS + nx;
           if (navState[ni] === 2) continue;
-          if (!navWalkableCell(cx + dx, cz + dz)) continue;
-          if (dx !== 0 && dz !== 0 && (!navWalkableCell(cx + dx, cz) || !navWalkableCell(cx, cz + dz))) continue;
+          const hc = navCellHeight(cx, cz);
+          if (!navStepOk(hc, navCellHeight(cx + dx, cz + dz))) continue;
+          if (dx !== 0 && dz !== 0 && (!navStepOk(hc, navCellHeight(cx + dx, cz)) || !navStepOk(hc, navCellHeight(cx, cz + dz)))) continue;
           const g = navG[current] + cost;
           if (navState[ni] === 1 && g >= navG[ni]) continue;
           navG[ni] = g;
@@ -3627,6 +3930,7 @@
       isWalkable,
       distanceToNearestBuilding,
       isInsideHollowBuilding,
+      surfaceAt,
       spotsBehindBuildings,
       enclosureMask,
       isSameFenceSide,
@@ -3643,6 +3947,7 @@
         { material: plainAsphaltMaterial, darken: 0.38 },
         { material: lotMaterial, darken: 0.34 },
         { material: concreteMaterial, darken: 0.3 },
+        { material: curbFaceMaterial, darken: 0.3 },
         { material: trackMaterial, darken: 0.28 },
         { material: dirtMaterial, darken: 0.32 },
         { material: laneLineMaterial, darken: 0.18 },

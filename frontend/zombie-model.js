@@ -1,5 +1,6 @@
 // Zombie model: the enemies' body -- one shared 19-bone rig, procedural
-// low-poly skinned meshes, a curved face surface on the head, randomized
+// low-poly skinned meshes, a random piece of headwear with the face
+// picture pasted on it, randomized
 // appearance, and the zombie animation set (walk / idle / attacks, plus a
 // mapping for the older boss/brute clips). Purely visual: movement,
 // collision and AI still live in index.html and only read the root
@@ -19,7 +20,8 @@
 //   - Every zombie shares ONE body material (vertex colors + GPU skinning)
 //     and, per body shape and LOD, one set of vertex buffers (position,
 //     normal, skin weights, index). A zombie only owns a small color
-//     buffer per LOD and its bones -- 2 draw calls per zombie (body + face)
+//     buffer per LOD and its bones -- 3 draw calls per zombie (body +
+//     headwear + face)
 //     instead of the old 7 box meshes.
 //   - Three LODs (~1100 / ~450 / ~170 triangles) swapped by camera
 //     distance; the far one casts no shadow and has no hands.
@@ -389,42 +391,146 @@
     }
 
     // ------------------------------------------------------------------
-    // FACE: a curved patch lifted just off the front of the head, built
-    // from the same head surface, so the picture wraps around the face
-    // and cheeks instead of floating as a flat card. The horizontal wrap
-    // angle follows each picture's aspect ratio. Cached per face key.
+    // HEADWEAR (explicit request): every zombie wears one of these over its
+    // head -- paper bag, bucket, cardboard box, trash can or traffic cone --
+    // with its face picture pasted big and flat on the front, so faces
+    // read from much farther away than the old one wrapped onto the skull.
+    // The Head hitbox grows to cover the item (see applyAppearance).
+    //
+    // Head-bone local space: the skull spans about y 0..0.36 around
+    // (0, 0.17, 0.02), +Z forward. Each kind's `parts` are merged into ONE
+    // vertex-colored geometry (one draw call, one shared material), plus a
+    // face decal on either a flat front (`frontZ`) or a round side
+    // (`radiusAt(y)`, measured around `cz`), no bigger than faceMax
+    // [width, height] centered at faceY. `hit` is the Head hitbox's
+    // [size xyz, center xyz].
     // ------------------------------------------------------------------
-    const FACE_S0 = 0.2, FACE_S1 = 0.84;
+    const HEADWEAR_KINDS = ["paperBag", "bucket", "cardboardBox", "trashCan", "trafficCone"];
+    const HEADWEAR = {
+      paperBag: {
+        parts: () => [
+          [new THREE.BoxGeometry(0.44, 0.52, 0.4).translate(0, 0.22, 0.02), 0xb8925e],
+          [new THREE.BoxGeometry(0.46, 0.05, 0.42).translate(0, 0.46, 0.02), 0xa3814f], // folded-over top
+        ],
+        frontZ: 0.22, faceY: 0.2, faceMax: [0.4, 0.42],
+        hit: [[0.48, 0.56, 0.46], [0, 0.22, 0.02]],
+      },
+      cardboardBox: {
+        parts: () => {
+          const top = 0.42, flap = 1.0; // open flaps, hinged at the top edges and splayed out
+          return [
+            [new THREE.BoxGeometry(0.5, 0.46, 0.48).translate(0, 0.19, 0.02), 0xa9773f],
+            [new THREE.BoxGeometry(0.5, 0.012, 0.2).translate(0, 0, 0.1).rotateX(-flap).translate(0, top, 0.26), 0x9a6a36],
+            [new THREE.BoxGeometry(0.5, 0.012, 0.2).translate(0, 0, -0.1).rotateX(flap).translate(0, top, -0.22), 0x9a6a36],
+            [new THREE.BoxGeometry(0.2, 0.012, 0.46).translate(0.1, 0, 0).rotateZ(flap).translate(0.25, top, 0.02), 0x9a6a36],
+            [new THREE.BoxGeometry(0.2, 0.012, 0.46).translate(-0.1, 0, 0).rotateZ(-flap).translate(-0.25, top, 0.02), 0x9a6a36],
+          ];
+        },
+        frontZ: 0.26, faceY: 0.18, faceMax: [0.4, 0.4],
+        hit: [[0.56, 0.62, 0.54], [0, 0.24, 0.02]],
+      },
+      bucket: {
+        // Upside down: the bucket's bottom on top, the open rim at the neck.
+        parts: () => [
+          [new THREE.CylinderGeometry(0.2, 0.245, 0.46, 20).translate(0, 0.19, 0.02), 0x9ea5ab],
+          [new THREE.TorusGeometry(0.247, 0.012, 5, 20).rotateX(Math.PI / 2).translate(0, -0.035, 0.02), 0x80878d],
+          [new THREE.TorusGeometry(0.2, 0.01, 5, 20).rotateX(Math.PI / 2).translate(0, 0.415, 0.02), 0x80878d],
+          [new THREE.TorusGeometry(0.25, 0.006, 4, 16, Math.PI).rotateX(Math.PI + 1.2).translate(0, 0.02, 0.02), 0x55595d], // handle drooping behind the neck
+        ],
+        radiusAt: (y) => 0.245 + (0.2 - 0.245) * (y + 0.04) / 0.46, cz: 0.02, faceY: 0.19, faceMax: [0.36, 0.36],
+        hit: [[0.54, 0.52, 0.54], [0, 0.19, 0.02]],
+      },
+      trashCan: {
+        parts: () => [
+          [new THREE.CylinderGeometry(0.24, 0.27, 0.62, 20).translate(0, 0.25, 0.02), 0x7d8288],
+          [new THREE.TorusGeometry(0.272, 0.014, 5, 20).rotateX(Math.PI / 2).translate(0, -0.05, 0.02), 0x5f646a],
+          [new THREE.TorusGeometry(0.245, 0.014, 5, 20).rotateX(Math.PI / 2).translate(0, 0.51, 0.02), 0x5f646a],
+          [new THREE.BoxGeometry(0.05, 0.03, 0.12).translate(0.27, 0.42, 0.02), 0x5f646a], // side handles
+          [new THREE.BoxGeometry(0.05, 0.03, 0.12).translate(-0.27, 0.42, 0.02), 0x5f646a],
+        ],
+        radiusAt: (y) => 0.27 + (0.24 - 0.27) * (y + 0.06) / 0.62, cz: 0.02, faceY: 0.22, faceMax: [0.4, 0.4],
+        hit: [[0.6, 0.68, 0.6], [0, 0.25, 0.02]],
+      },
+      trafficCone: {
+        parts: () => [
+          [new THREE.CylinderGeometry(0.035, 0.3, 0.85, 20).translate(0, 0.385, 0.02), 0xff6a1a],
+          // Reflective band (a slightly proud slice of the same cone), above the face.
+          [new THREE.CylinderGeometry(0.3 - 0.265 * 0.54 / 0.85 + 0.006, 0.3 - 0.265 * 0.44 / 0.85 + 0.006, 0.1, 20, 1, true).translate(0, 0.45, 0.02), 0xf2f2f2],
+          [new THREE.BoxGeometry(0.58, 0.035, 0.58).translate(0, -0.05, 0.02), 0x2a2a2a], // square base
+        ],
+        radiusAt: (y) => 0.3 - 0.265 * (y + 0.04) / 0.85, cz: 0.02, faceY: 0.19, faceMax: [0.34, 0.34],
+        hit: [[0.6, 0.88, 0.6], [0, 0.38, 0.02]],
+      },
+    };
+
+    // Concatenates [geometry, color] parts into one vertex-colored geometry.
+    function mergeHeadwearParts(parts) {
+      const pos = [], nor = [], col = [], index = [];
+      const c = new THREE.Color();
+      for (const [g, color] of parts) {
+        const base = pos.length / 3;
+        const P = g.attributes.position, N = g.attributes.normal;
+        c.set(color);
+        for (let i = 0; i < P.count; i++) {
+          pos.push(P.getX(i), P.getY(i), P.getZ(i));
+          nor.push(N.getX(i), N.getY(i), N.getZ(i));
+          col.push(c.r, c.g, c.b);
+        }
+        if (g.index) for (let i = 0; i < g.index.count; i++) index.push(base + g.index.getX(i));
+        else for (let i = 0; i < P.count; i++) index.push(base + i);
+        g.dispose();
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      geometry.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+      geometry.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+      geometry.setIndex(index);
+      geometry.computeBoundingSphere();
+      return geometry;
+    }
+
+    const headwearGeometryCache = {};
+    function getHeadwearGeometry(kind) {
+      return headwearGeometryCache[kind] || (headwearGeometryCache[kind] = mergeHeadwearParts(HEADWEAR[kind].parts()));
+    }
+    const headwearMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 });
+
+    // The pasted-on face: as big as fits in the kind's faceMax at the
+    // picture's own aspect ratio (fillHead faces -- the boss's -- fill it
+    // edge to edge, cropping the overflow instead). Round kinds keep a
+    // constant arc width at every height, so the picture isn't pinched on
+    // the tapered bucket/cone. Cached per kind + face key.
     const faceGeometryCache = {};
-    function getFaceGeometry(key) {
-      if (faceGeometryCache[key]) return faceGeometryCache[key];
+    function getFaceGeometry(kind, key) {
+      const cacheKey = kind + "|" + key;
+      if (faceGeometryCache[cacheKey]) return faceGeometryCache[cacheKey];
+      const hw = HEADWEAR[kind];
       const face = getFace(key);
-      const heightM = HEAD.h / 2 * (Math.cos(FACE_S0 * Math.PI) - Math.cos(FACE_S1 * Math.PI));
-      const radius = HEAD.w / 2 * 0.95;
-      let halfAngle = (face.aspect * heightM) / (2 * radius);
-      let cropU = 1, cropV = 1;
+      const [maxW, maxH] = hw.faceMax;
+      let w = maxW, h = maxW / face.aspect, cropU = 1, cropV = 1;
       if (face.fillHead) {
-        halfAngle = 1.35;
-        const patchAspect = (2 * halfAngle * radius) / heightM;
+        h = maxH;
+        const patchAspect = maxW / maxH;
         if (face.aspect > patchAspect) cropU = patchAspect / face.aspect;
         else cropV = face.aspect / patchAspect;
+      } else if (h > maxH) {
+        h = maxH;
+        w = maxH * face.aspect;
       }
-      halfAngle = Math.min(1.45, Math.max(0.55, halfAngle));
-      const NA = 12, NS = 12;
-      const positions = [], uvs = [], patchUvs = [], index = [];
-      const p = new THREE.Vector3();
-      const center = new THREE.Vector3(0, HEAD.cy, HEAD.cz);
+      const NA = hw.radiusAt ? 12 : 1, NS = hw.radiusAt ? 8 : 1;
+      const positions = [], uvs = [], index = [];
       for (let si = 0; si <= NS; si++) {
-        const s = FACE_S0 + (FACE_S1 - FACE_S0) * (si / NS);
+        const y = hw.faceY + (si / NS - 0.5) * h;
         for (let ai = 0; ai <= NA; ai++) {
-          const a = -halfAngle + 2 * halfAngle * (ai / NA);
-          headPoint(a, s, p);
-          p.sub(center).multiplyScalar(1.018).add(center); // just proud of the skin
-          positions.push(p.x, p.y, p.z);
-          // a runs from the zombie's right (-) to its left (+); seen from the
-          // front that's left-to-right, so u follows a directly.
+          const arc = (ai / NA - 0.5) * w;
+          if (hw.radiusAt) {
+            const r = hw.radiusAt(y) + 0.004; // just proud of the surface
+            positions.push(Math.sin(arc / r) * r, y, hw.cz + Math.cos(arc / r) * r);
+          } else {
+            positions.push(arc, y, hw.frontZ + 0.004);
+          }
+          // +x is the zombie's left = the viewer's right, so u follows arc.
           uvs.push(0.5 + (ai / NA - 0.5) * cropU, 0.5 + (si / NS - 0.5) * cropV);
-          patchUvs.push(ai / NA, si / NS);
         }
       }
       for (let si = 0; si < NS; si++) {
@@ -436,37 +542,24 @@
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
       geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-      geometry.setAttribute("faceUv", new THREE.Float32BufferAttribute(patchUvs, 2));
       geometry.setIndex(index);
       geometry.computeVertexNormals();
       geometry.computeBoundingSphere();
-      faceGeometryCache[key] = geometry;
+      faceGeometryCache[cacheKey] = geometry;
       return geometry;
     }
     const faceMaterialCache = {};
     function getFaceMaterial(key) {
       if (faceMaterialCache[key]) return faceMaterialCache[key];
       const texture = getFace(key).texture;
-      // Matte and lit exactly like the body's skin (same fully rough
-      // standard shading), toned down slightly so bright photo backgrounds
-      // don't blow out in direct sun, plus a faint self-light from the
-      // picture so faces stay readable at night.
+      // Fully rough like the headwear, a little brighter than the old
+      // skin-matched face, plus a faint self-light from the picture so
+      // faces stay readable at night.
       const material = new THREE.MeshStandardMaterial({
-        map: texture, color: 0xd0d0d0, roughness: 1, metalness: 0,
-        emissiveMap: texture, emissive: 0x121212, transparent: true, alphaTest: 0.05,
+        map: texture, color: 0xe6e6e6, roughness: 1, metalness: 0,
+        emissiveMap: texture, emissive: 0x2a2a2a, transparent: true, alphaTest: 0.05,
         polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
       });
-      // Feathered edges: the picture fades out toward the patch border, so
-      // it blends into the head instead of ending in a hard-edged card.
-      material.onBeforeCompile = (shader) => {
-        shader.vertexShader = shader.vertexShader
-          .replace("#include <common>", "#include <common>\nattribute vec2 faceUv;\nvarying vec2 vFaceUv;")
-          .replace("#include <uv_vertex>", "#include <uv_vertex>\nvFaceUv = faceUv;");
-        shader.fragmentShader = shader.fragmentShader
-          .replace("#include <common>", "#include <common>\nvarying vec2 vFaceUv;")
-          .replace("#include <map_fragment>", "#include <map_fragment>\n" +
-            "diffuseColor.a *= smoothstep(0.0, 0.16, vFaceUv.x) * smoothstep(1.0, 0.84, vFaceUv.x) * smoothstep(0.0, 0.1, vFaceUv.y) * smoothstep(1.0, 0.88, vFaceUv.y);");
-      };
       faceMaterialCache[key] = material;
       return material;
     }
@@ -480,7 +573,8 @@
     const noRaycast = () => {};
 
     // Hit regions: [name, bone, size xyz, center offset xyz in bone space].
-    // Slightly generous around the thin limbs, like loose clothing.
+    // Slightly generous around the thin limbs, like loose clothing. The
+    // Head one is resized to each zombie's headwear (see HEADWEAR.hit).
     const HITBOXES = [
       ["Head", B.head, [0.36, 0.42, 0.38], [0, 0.17, 0.02]],
       ["Torso", B.chest, [0.44, 0.32, 0.3], [0, 0.1, 0.01]],
@@ -504,6 +598,10 @@
     function createModel() {
       const rig = new THREE.Group();
       rig.name = "ZombieRig";
+      // Everything below except the bones only moves in applyAppearance,
+      // so none of it recomposes its matrix every frame -- each one is
+      // updateMatrix()'d there instead.
+      rig.matrixAutoUpdate = false;
       const bones = BONES.map((def) => {
         const bone = new THREE.Bone();
         bone.name = def.name;
@@ -521,24 +619,43 @@
         mesh.raycast = noRaycast;
         mesh.castShadow = i < 2;
         mesh.receiveShadow = i === 0;
-        mesh.visible = i === 0;
-        rig.add(mesh);
+        mesh.matrixAutoUpdate = false; // identity, never moves
+        // Only the active LOD is in the scene graph (see setLod): a hidden
+        // skinned mesh would still get its world matrix and bind-matrix
+        // inverse recomputed every frame.
+        if (i === 0) rig.add(mesh);
         return mesh;
       });
-      const face = new THREE.Mesh(getFaceGeometry(options.defaultFaceKey), getFaceMaterial(options.defaultFaceKey));
+      const headwear = new THREE.Mesh(getHeadwearGeometry(HEADWEAR_KINDS[0]), headwearMaterial);
+      headwear.name = "ZombieHeadwear";
+      headwear.raycast = noRaycast;
+      headwear.castShadow = true;
+      headwear.matrixAutoUpdate = false;
+      bones[B.head].add(headwear);
+      const face = new THREE.Mesh(getFaceGeometry(HEADWEAR_KINDS[0], options.defaultFaceKey), getFaceMaterial(options.defaultFaceKey));
       face.name = "ZombieFace";
       face.raycast = noRaycast;
+      face.matrixAutoUpdate = false;
       bones[B.head].add(face);
       const hitboxes = HITBOXES.map(([name, bone, size, offset]) => {
         const box = new THREE.Mesh(unitBox, hitboxMaterial);
         box.name = name;
         box.userData.baseSize = size;
         box.userData.baseOffset = offset;
+        // Hidden (not just an invisible material): three.js then skips it
+        // entirely when rendering -- no culling test, no shadow-pass visit
+        // -- while raycasts, which ignore `visible`, still hit it.
+        box.visible = false;
+        box.matrixAutoUpdate = false;
+        // Only raycasts read a hit box's world matrix, so it's skipped in
+        // the per-frame scene update and brought up to date on demand by
+        // syncHitboxes, just before a shot is traced.
+        box.updateMatrixWorld = skipWorldMatrixUpdate;
         bones[bone].add(box);
         return box;
       });
       const model = {
-        rig, bones, skeleton, lodMeshes, face, hitboxes,
+        rig, bones, skeleton, lodMeshes, headwear, face, hitboxes,
         // Per shape key: this model's own geometry wrapper per LOD (shared
         // buffers + its own color buffer), built the first time it's needed.
         geometries: {},
@@ -548,6 +665,14 @@
         anim: createAnimState(modelSerial++),
       };
       return model;
+    }
+
+    function skipWorldMatrixUpdate() {}
+
+    // Hit boxes' world matrices from their bones' current ones (as of the
+    // last rendered frame -- what the player is aiming at).
+    function syncHitboxes(model) {
+      for (const box of model.hitboxes) box.matrixWorld.multiplyMatrices(box.parent.matrixWorld, box.matrix);
     }
 
     function acquire() {
@@ -604,6 +729,7 @@
     // clothing mix -- tank top/shorts/jacket). Special variants lean on the
     // body type that suits them.
     const ARCHETYPES = ["normal", "tall", "heavy", "thin", "damaged", "casual"];
+    const WIDEN_X = 1.15; // every zombie this much wider side to side (see applyAppearance)
 
     function randomAppearance(variant, faceKey, extra = {}) {
       const archetype = variant === "brute" || variant === "boss" ? "heavy" : variant === "green" ? pick(["thin", "normal", "tall", "damaged"]) : pick(ARCHETYPES);
@@ -633,6 +759,7 @@
         heightScale: rand(0.96, 1.04),
         widthScale: rand(0.95, 1.06),
         headScale: extra.headScale || 1,
+        headwear: extra.headwear || pick(HEADWEAR_KINDS),
       };
     }
 
@@ -733,8 +860,13 @@
         paintGeometry(mesh.geometry, data.lods[i].meta, ap);
       });
       // Height/width variation within the shape: a scale on the whole rig.
-      model.rig.scale.set(ap.widthScale, ap.heightScale, ap.widthScale);
+      // WIDEN_X (explicit request) stretches every zombie side to side --
+      // hit boxes included, since they ride the bones -- for a bigger
+      // target; the headwear and face are scaled back so the picture
+      // isn't stretched.
+      model.rig.scale.set(ap.widthScale * WIDEN_X, ap.heightScale, ap.widthScale);
       model.rig.position.y = FEET_Y * (1 - ap.heightScale); // keep the soles on the ground
+      model.rig.updateMatrix();
       // Bones back to rest.
       model.bones.forEach((bone, i) => {
         bone.position.copy(data.localRest[i]);
@@ -744,16 +876,22 @@
       });
       model.bones[B.head].scale.setScalar(ap.headScale);
       model.bones[B.head].updateMatrix();
-      model.face.geometry = getFaceGeometry(ap.faceKey);
+      model.headwear.geometry = getHeadwearGeometry(ap.headwear);
+      model.headwear.scale.x = 1 / WIDEN_X;
+      model.face.scale.x = 1 / WIDEN_X;
+      model.headwear.updateMatrix();
+      model.face.updateMatrix();
+      model.face.geometry = getFaceGeometry(ap.headwear, ap.faceKey);
       model.face.material = getFaceMaterial(ap.faceKey);
-      // Hit boxes follow the shape's girth.
+      // Hit boxes follow the shape's girth; the head one covers the headwear.
       const girth = data.shape.gl;
       for (const box of model.hitboxes) {
-        const s = box.userData.baseSize, o = box.userData.baseOffset;
+        const [s, o] = box.name === "Head" ? HEADWEAR[ap.headwear].hit : [box.userData.baseSize, box.userData.baseOffset];
         const isTorso = box.name === "Torso";
         const k = box.name === "Head" ? 1 : isTorso ? data.shape.gt : girth;
         box.scale.set(s[0] * Math.max(1, k), s[1], s[2] * Math.max(1, k));
         box.position.set(o[0], o[1], o[2]);
+        box.updateMatrix();
       }
       resetAnimState(model.anim, ap);
       setLod(model, 0);
@@ -761,7 +899,11 @@
 
     function setLod(model, lod) {
       model.lod = lod;
-      model.lodMeshes.forEach((mesh, i) => { mesh.visible = i === lod; });
+      model.lodMeshes.forEach((mesh, i) => {
+        if (i === lod) { if (!mesh.parent) model.rig.add(mesh); }
+        else if (mesh.parent) model.rig.remove(mesh);
+      });
+      model.headwear.castShadow = lod < 2; // same as the body: no shadow at the far LOD
     }
 
     // ------------------------------------------------------------------
@@ -1412,9 +1554,9 @@
       const bones = model.bones;
       for (let i = 0; i < BONE_COUNT; i++) {
         const r = bones[i].rotation;
-        r.x += (pose[i * 3] - r.x) * blend;
-        r.y += (pose[i * 3 + 1] - r.y) * blend;
-        r.z += (pose[i * 3 + 2] - r.z) * blend;
+        // One set() -- each separate x/y/z assignment would re-derive the
+        // bone's quaternion on its own (three.js's Euler change callback).
+        r.set(r.x + (pose[i * 3] - r.x) * blend, r.y + (pose[i * 3 + 1] - r.y) * blend, r.z + (pose[i * 3 + 2] - r.z) * blend);
       }
       anim.hipsOffset.lerp(anim.hipsOffsetTarget, blend);
       const rest = shapeData[model.shapeKey].localRest[0];
@@ -1431,6 +1573,7 @@
       release,
       randomAppearance,
       applyAppearance,
+      syncHitboxes,
       update,
       triggerAttack,
       setWindup,

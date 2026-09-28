@@ -95,7 +95,7 @@
         if (isNew || woke) {
           seen.add(e);
           wasDormant.set(e, false);
-          if (e.boss) continue; // boss minions appear around the boss by design
+          if (e.boss) continue; // the boss has its own spawn rules
           const px = player.camera.position.x, pz = player.camera.position.z;
           const ex = e.mesh.position.x, ez = e.mesh.position.z;
           const distance = Math.hypot(ex - px, ez - pz);

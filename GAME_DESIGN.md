@@ -39,6 +39,11 @@ There are two maps, picked on the mode screen (§6):
 - **Automated campus test:** `tests/campus-spawn-test.js`, run by opening `index.html#spawntest`
   (headless-friendly). It covers spawning, recycling, fences and directional respawns, plus a
   Classic-map sanity run.
+- **Frame-cost benchmark:** `tests/perf-test.js`, run by opening `index.html#perftest`, or
+  `node tests/run-perf.js out.json [cpuSlowdown] [devicePixelRatio]` (headless Chrome, real GPU).
+  Times every per-frame system and the render at 0/20/60 enemies and in rain at night, runs the
+  real loop for 10 s (frame times, hitches and what they compiled/uploaded), and checks that
+  shots still land on the right zombie's hit boxes.
 - No build step, no bundler, no external game-code dependencies.
 
 ---
@@ -264,13 +269,13 @@ Two separate, per-weapon-configurable systems, both firing from the same shot:
   - **Brute ("blue"):** 1.458× size (two 10% cuts from the original 1.8×), 1.05× speed,
     `170 × difficulty health multiplier + 240` HP (410 / 410 / 444), 35-damage hit that launches
     the player, 1.5s between hits. Even waves from 4 on (see Difficulty). Always drops 2 scrap,
-    50% ammo box.
+    47% ammo box (52% on Normal).
     - **Enemy throw:** if its target is 9–25 units away with line of sight and a regular (red)
       enemy is within 3 units, it picks that enemy up (0.35s), stands still holding it overhead
       for 1.3s (turning to face the target), then throws it on an arc at 9 units/sec (half
       gravity) aimed where the target stood at release — dodgeable, and the thrown enemy can be
       shot mid-air. A hit deals 10 (a red enemy's own contact damage) plus a shove, once; the thrown enemy then lands and keeps
-      chasing. If line of sight breaks before the throw, or the brute dies, it just drops the
+      chasing. Never throws at a target inside a building. If the target goes inside or line of sight breaks before the throw, or the brute dies, it just drops the
       enemy harmlessly. 6s cooldown per brute. Own animations for both (pick up / hold and wind
       up / throw; carried and thrown flailing).
   - **Boss (wave 10 only, dark orange):** exactly 2× size, 1.43× (1.3 × 1.1) the regular enemy's
@@ -317,8 +322,9 @@ Two separate, per-weapon-configurable systems, both firing from the same shot:
     spawn (falls back to the full list if every spawner is somehow excluded at once).
   - **Wave sizing (Normal):** wave *N* spawns `8 + 4N` base enemies (capped at **100** —
     `MAX_ENEMIES_PER_WAVE`, raised from an original 50), staggered one at a time such that the
-    time from the wave's first spawn to its last is exactly `(count) × 0.85` seconds (e.g. 100
-    zombies takes 85 seconds to finish spawning — `WAVE_SPAWN_DURATION_MULTIPLIER` in the code).
+    time from the wave's first spawn to its last is exactly `(count) × 1.15` seconds on Normal (e.g.
+    100 zombies takes 115 seconds to finish spawning — Normal's `waveSpawnSecondsPerEnemy`; Hard and
+    Legendary use `WAVE_SPAWN_DURATION_MULTIPLIER`, 1.0 s per zombie).
     This formula, plus every other number in this section, is Normal's — see **Difficulty
     system** below for how Hard/Legendary change it.
   - **Fast-enemy schedule (Normal)** — fully separate from the above, layered on top, not
@@ -327,13 +333,16 @@ Two separate, per-weapon-configurable systems, both firing from the same shot:
     - Wave 3: exactly 1, at a random point in the wave's spawn window.
     - Wave 4: exactly 3 — one fixed at 3s in, then two more 0.4s apart right at the end.
     - Wave 5+: `count = wave - 1`, each at an independent random time in the spawn window.
-  - **Wave 10 exception:** exactly 3 / 4 / 5 fast enemies on Normal / Hard / Legendary
-    (`greenEnemyCountByWave`), overriding the formula.
+  - **Boss wave (10):** normal fast-enemy count (9 / 10 / 10 on Normal / Hard / Legendary).
+    Half the post-spawn-phase (deferred) greens, rounded, are tied to the boss's health instead
+    of the enemies-alive count — one spawns at a normal spawn point as the boss drops past each
+    evenly spaced health threshold (all remaining spawn at once if the boss dies first). The boss
+    itself no longer summons greens around itself.
   - **Grace periods:** 10s before wave 1, 30s between every wave after on every difficulty
     (starting the moment the previous wave's *last enemy dies*, not when it finishes spawning). Grace periods (and all
     other wave/enemy/reload/recoil timers) are frozen while the game is paused or before the
     player has ever clicked to start.
-  - **25%** chance per kill to drop an ammo pickup (**30% on Normal**; brutes 50% / 55%), plus
+  - **32%** chance per kill to drop an ammo pickup (**37% on Normal**; brutes 47% / 52%), plus
     independent resource rolls: cloth 15%, planks 10%, scrap 6% (see §5).
 - **Spawning (Campus map)** — the wave manager above still decides *when* and *what* spawns (same
   counts, schedules and difficulty rules). A procedural spawn manager (`procedural-spawn.js`,
@@ -484,7 +493,7 @@ other player or affects their gameplay.
 - **12 slots** per player, toggled with `E` (`toggleInventory`). Tabs: Inventory / Crafting /
   Skills (Tab/Shift+Tab or L1/R1). Real-time — enemies keep moving while it's open.
 - **Starting kit:** empty.
-- **Items** (`ITEM_DEFS`): Bandages (heals 15), Medkit (heals 40), Rocks, Planks, Cloth, Scrap.
+- **Items** (`ITEM_DEFS`): Bandages (heals 20 on Normal and Hard, 15 on Legendary), Medkit (heals 40), Rocks, Planks, Cloth, Scrap.
   Right-click (or L2 on a controller) a healing item to use it — any item with a `healAmount`;
   does nothing at full health (compared as the HUD shows it, rounded up).
 - **Dropping items:** with the inventory open (KB+M), pressing the Drop bind over Cloth, Planks,
@@ -604,7 +613,14 @@ zone-by-zone build log, standing decisions and placeholder flags are in
   - Chain-link around the athletic fields (3 open gates) and the soccer field (2 gates).
   - A pool fence, and 1311's backyard fence (2 gates).
 - **Props:** bleachers you can walk up, light towers and goalposts, and about 1,000 trees
-  (deciduous and evergreen).
+  (deciduous and evergreen). Enemies climb the bleachers too: bleacher steps are `climbable`
+  colliders, the nav grid stores each cell's standing height (a move may climb two steps between
+  1 m cells and drop at most 1 m), and a sight/passage line over bleachers is only blocked where it
+  would climb more than a step at once (e.g. up the back of the grandstand). Enemies collide at
+  their real feet height, ease smoothly up/down each step (a real fall off anything taller), and
+  only hit a target within 1.1 m (times their size) above or below them.
+- **Streets** sit 0.12 m below the ground with a concrete curb; the walking height ramps over the
+  last 0.5 m before each curb (an invisible slope, like a player clip), so curbs are smooth to walk.
 - **Performance:**
   - 28 city-block zones, each its own chunk. Buildings, props and trees are instanced per zone,
     frustum-culled, and hidden past 220 m (trees past 150 m).
@@ -661,8 +677,11 @@ numbers against except where explicitly noted.
 
 - **Left/right alternation:** a single `steppingFoot` flag flips every time a step actually
   plays — no separate timer or gait simulation.
-- **Surface:** grass or concrete, decided per-step by `isInsideBuilding()` (see §4/§6) at the
-  player's current position.
+- **Surface:** grass or concrete, decided per-step at the player's (or enemy's) position. On the
+  campus it's `campusWorld.surfaceAt(x, z, feetY)`: concrete on streets, sidewalks, walks, plazas,
+  lots, driveways, the running track, indoors, or standing up on a structure (bleachers, steps,
+  roofs); grass on grass, dirt, turf and the construction pit. The tiny map still uses
+  `isInsideBuilding()` (see §4/§6).
 - **Cadence is distance-based, not timer-based:** the player's actual post-wall-collision
   horizontal movement is accumulated each frame; once it crosses a threshold, the next step
   plays and the accumulator resets. This is what makes sprinting naturally produce a faster
@@ -751,9 +770,11 @@ Gates three things, all at the moment an enemy dies:
   `withGlobalTauri` in `tauri.conf.json` plus an explicit `core:window:allow-close` capability,
   since neither is granted by Tauri's default permission set). Also shows the session high score
   (see §4's Score system) below the heading.
-- **Mode-select screen** (reached via Play): **Singleplayer** (the only wired-up option, proceeds
-  to the difficulty screen below), **Co-op** and **Custom** shown as disabled placeholders for
-  modes that don't exist yet. A corner **Back** button returns to the title screen's main panel.
+- **Mode-select screen** (reached via Play): **Singleplayer** (proceeds to the difficulty screen
+  below), **Multiplayer** (a **Select Players** screen: **2 Players** -> the co-op setup screen,
+  **3 Players** / **4 Players** -> the shared 3/4-player setup screen) and **Custom** (a
+  menu holding **Campus Map (Greybox)**, moved off the title screen). A corner **Back** button
+  returns to the title screen's main panel.
 - **Difficulty setup screen** (reached via Singleplayer): a difficulty selector — **Normal** /
   **Hard** / **Legendary**, single-select, the active one visually highlighted — plus a **Start**
   button that begins the run on whichever difficulty is currently selected, and a **Back** button
@@ -879,7 +900,7 @@ Being direct about the distance between "a collection of working mechanics" and 
   asked for — the high score resets to 0 every time the app is relaunched rather than being
   remembered long-term the way the difficulty choice and key bindings are. Worth deciding whether
   that's the intended final behavior or just where this stopped for now.
-- **Health recovery is crafted-only.** Bandages (15) and Medkits (40) heal, but there's no
+- **Health recovery is crafted-only.** Bandages (20 on Normal/Hard, 15 on Legendary) and Medkits (40) heal, but there's no
   regen and no health pickups dropped by enemies.
 - **One boss, one boss wave.** The boss only appears on wave 10; nothing escalates it after that,
   and there are no other special enemy behaviors beyond the green explosion, brute launch and boss
@@ -1679,6 +1700,12 @@ G-press) before falling back to "replace whichever's active" for two genuinely d
 `dropActiveSlotItem` split into a general `dropSlotItem(player, slotIndex)` to support dropping an
 arbitrary (not-necessarily-active) slot for this.
 
+**Co-op setup screen: helmet picker (explicit request)** — the right stick's up/down (W/S for a
+keyboard+mouse P1) steps each side's helmet: paper bag, bucket, cardboard box, traffic cone
+(`HELMETS` in player-model.js, rigid on the head bone, face picture moved onto each one's front).
+Left/right on the same stick still steps the face; only the axis pushed further counts. The pick
+carries into the match via `humanSystem.setHelmet`.
+
 **Co-op setup screen: character/face picker (large explicit feature request)** — both sides now
 show a small, independently-rendered, continuously-rotating turntable preview of that player's
 actual in-game body + face, with left/right arrow "buttons" flanking it to cycle the face:
@@ -1955,6 +1982,56 @@ worked on):**
    controls are still mouse-only for anything beyond what's described above (e.g. no
    controller-driven way to switch co-op setup's P1 scheme) — not asked for yet, just noting the
    boundary.
+
+### 2026-09-27 — 4-player split screen
+
+Built in the same order as the 2-player split screen above (roster -> match start -> rendering ->
+HUD -> death/spectating), each step checked in headless Chrome with fake gamepads (not yet
+user-verified on real controllers).
+- **Step 1 (roster + per-player plumbing).** `allPlayers` holds four player objects for the whole
+  session (P3/P4 get their own cameras and gamepad sources); `players` is now the *current match
+  roster* -- `[P1, P2]` normally, all four only while a 4-player match is live -- so every existing
+  per-player loop covers exactly who's playing. Body/view-model layers extended to
+  `PLAYER_BODY_LAYER = [1, 2, 5, 6]` / `VIEW_MODEL_LAYER = [3, 4, 7, 8]`, each camera seeing every
+  other player's body. P3/P4's HUD DOM (crosshair, hit marker, health, ammo, scope, interact
+  prompt, inventory panel/cursor/tooltip, spectator screen) is cloned from P2's at script start
+  (`PER_PLAYER_HUD_IDS`), and the P1/P2 ref pairs became index-based lists (`coopHudRefs`,
+  `coopCrosshairEls`, `inventoryEls`, ...). `matchP1Scheme` replaces in-match reads of
+  `coopSetup.p1Scheme` so pause/pointer-lock logic works for either setup screen.
+- **Step 2 (match start).** Everyone readying up on the 4 Player Setup screen starts co-op's
+  5-second countdown (any un-ready/disconnect/scheme switch cancels it), then `startQuadMatch()`:
+  grows the roster, assigns inputs (P1 keyboard+mouse or controller, P2-P4 their claimed pads),
+  resets everyone + the shared world, applies each player's face/helmet, spawns them in a row.
+  `isCoopMatchActive` is true for both co-op sizes; `isQuadMatch()` tells them apart.
+- **Step 3 (rendering).** `getPlayerViewportRect(i)` is the single source of each view's screen
+  rect (full / top-bottom halves / quadrants: P1 top-left, P2 top-right, P3 bottom-left, P4
+  bottom-right); `renderFrame`, `updateCameraAspectsForRenderMode` and the inventory cursor clamp
+  all use it. Shadow map drawn once per frame and reused by the other views, as before.
+- **Step 4 (HUD).** `body.quad-mode` (on top of `coop-mode`) moves every per-player element into
+  its quadrant, adds a vertical divider, and scales inventory panels to 85% to fit. P3/P4 elements
+  never show outside a 4-player match.
+- **Step 5 (death/spectating).** No "Full Screen" mode with 4 players: a dead player's quadrant
+  renders a living teammate's camera (`getSpectateViewIndex`) under a slim "YOU DIED / Watching
+  Player N" banner, their own HUD hidden; Triangle (Enter/click for keyboard P1) cycles who they
+  watch, and anyone watching a player who dies moves on automatically. Everyone dead -> the normal
+  death screen. `resetGame` shrinks the roster back to two and hides P3/P4's bodies/guns.
+- **Known gaps:** the sun's shadow map still centers on P1 only (players far from P1 get no
+  shadows), and four full scene renders per frame will cost more GPU time than two -- not yet
+  measured on real hardware.
+- **Verification pass (same day):** found and fixed Restart on the death screen relaunching a
+  4-player match as a 2-player one (it only remembered "was co-op"); now restarts the same size.
+
+**3-player split screen (same day, built on the 4-player work).** P1 gets the whole top half (like
+2 players); P2/P3 split the bottom half into bottom-left/bottom-right quadrants. The 4-player setup
+screen doubles as the 3-player one (`resetQuadSetup(playerCount)` hides the 4th column and sets
+the heading); `startQuadMatch` grows the roster to `quadSetup.slots.length` players and adds
+`body.trio-mode` instead of `quad-mode`. `isQuadMatch()` became `isThreePlusMatch()` (per-player
+spectating applies to both sizes) and the dead-HUD classes became `spectating-pN`.
+`getPlayerViewportRect` maps 3-player P2/P3 to the bottom quadrants. Because P1's view is twice as
+wide as a quadrant, `renderFrame` now reshapes a spectated teammate's camera to the view it's
+drawn into for that one draw (and restores it), so a dead P1 watching P2 isn't stretched. A dead
+P1's banner spans the full top half; `trio-mode` CSS positions P2/P3's HUD like 4-player's P3/P4
+and runs the vertical divider down the bottom half only.
 
 ---
 

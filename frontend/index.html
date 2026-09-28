@@ -1029,17 +1029,148 @@
     transform: none;
   }
 
+  /* ------------------------------------------------------------------
+     4-PLAYER SPLIT SCREEN HUD: body.quad-mode (added on top of coop-mode
+     by startQuadMatch) moves every per-player element into its player's
+     quadrant -- P1 top-left, P2 top-right, P3 bottom-left, P4 bottom-right,
+     same layout getPlayerViewportRect gives the 3D views. P3/P4's elements
+     (cloned from P2's at startup) never show outside a 4-player match.
+     The wave/score HUD keeps co-op's seam-centered spot, which is now
+     where the two dividers cross.
+     ------------------------------------------------------------------ */
+  body:not(.quad-mode):not(.trio-mode) .coop-p3,
+  body:not(.quad-mode) .coop-p4,
+  body:not(.quad-mode):not(.trio-mode) .scope-p3,
+  body:not(.quad-mode) .scope-p4 {
+    display: none !important;
+  }
+  #coop-divider-v {
+    display: none;
+    position: fixed;
+    left: 50vw;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    margin-left: -1px;
+    background: rgba(255, 255, 255, 0.5);
+    z-index: 10;
+    pointer-events: none;
+  }
+  body.quad-mode #coop-divider-v,
+  body.trio-mode #coop-divider-v {
+    display: block;
+  }
+
+  body.quad-mode .coop-p1.coop-crosshair,
+  body.quad-mode .coop-p1.coop-hit-marker { top: 25vh; left: 25vw; }
+  body.quad-mode .coop-p2.coop-crosshair,
+  body.quad-mode .coop-p2.coop-hit-marker { top: 25vh; left: 75vw; }
+  body.quad-mode .coop-p3.coop-crosshair,
+  body.quad-mode .coop-p3.coop-hit-marker { top: 75vh; left: 25vw; }
+  body.quad-mode .coop-p4.coop-crosshair,
+  body.quad-mode .coop-p4.coop-hit-marker { top: 75vh; left: 75vw; }
+
+  body.quad-mode .coop-health-hud { width: 180px; }
+  body.quad-mode .coop-p1.coop-health-hud { left: 20px; bottom: calc(50vh + 20px); }
+  body.quad-mode .coop-p2.coop-health-hud { left: calc(50vw + 20px); bottom: calc(50vh + 20px); }
+  body.quad-mode .coop-p3.coop-health-hud { left: 20px; bottom: 20px; }
+  body.quad-mode .coop-p4.coop-health-hud { left: calc(50vw + 20px); bottom: 20px; }
+
+  body.quad-mode .coop-p1.coop-ammo-hud { right: calc(50vw + 20px); bottom: calc(50vh + 20px); }
+  body.quad-mode .coop-p2.coop-ammo-hud { right: 20px; bottom: calc(50vh + 20px); }
+  body.quad-mode .coop-p3.coop-ammo-hud { right: calc(50vw + 20px); bottom: 20px; }
+  body.quad-mode .coop-p4.coop-ammo-hud { right: 20px; bottom: 20px; }
+
+  body.quad-mode #interact-prompt-p1 { top: 35%; left: 25%; }
+  body.quad-mode #interact-prompt-p2 { top: 35%; left: 75%; }
+  body.quad-mode #interact-prompt-p3 { top: 85%; left: 25%; }
+  body.quad-mode #interact-prompt-p4 { top: 85%; left: 75%; }
+
+  body.quad-mode .scope-overlay { width: 50%; height: 50%; }
+  body.quad-mode .scope-overlay.scope-p1 { left: 0; top: 0; }
+  body.quad-mode .scope-overlay.scope-p2 { left: 50%; top: 0; }
+  body.quad-mode .scope-overlay.scope-p3 { left: 0; top: 50%; }
+  body.quad-mode .scope-overlay.scope-p4 { left: 50%; top: 50%; }
+
+  /* A dead 4-player teammate's quadrant shows whoever they're watching
+     (see getSpectateViewIndex), so instead of 2-player's half-covering
+     prompt it's a slim banner along the top of the quadrant, and their
+     own (now meaningless) health/ammo/crosshair are hidden. */
+  .coop-spectating-label {
+    display: none;
+  }
+  body.quad-mode .coop-spectating-label,
+  body.trio-mode .coop-spectating-label {
+    display: block;
+    font-size: 15px;
+    margin-bottom: 6px;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+  }
+  body.quad-mode .coop-spectator-screen,
+  body.trio-mode .coop-spectator-screen {
+    width: 50vw;
+    height: auto;
+    padding: 8px 0 10px;
+    background: rgba(80, 0, 0, 0.6);
+  }
+  body.quad-mode .coop-spectator-screen h1,
+  body.trio-mode .coop-spectator-screen h1 {
+    font-size: 22px;
+    margin: 0 0 2px 0;
+  }
+  body.quad-mode .coop-spectator-screen .menu-button,
+  body.trio-mode .coop-spectator-screen .menu-button {
+    font-size: 14px;
+    padding: 4px 12px;
+    margin: 0;
+  }
+  body.quad-mode .coop-p1.coop-spectator-screen { left: 0; top: 0; }
+  body.quad-mode .coop-p2.coop-spectator-screen { left: 50vw; top: 0; }
+  body.quad-mode .coop-p3.coop-spectator-screen { left: 0; top: 50vh; }
+  body.quad-mode .coop-p4.coop-spectator-screen { left: 50vw; top: 50vh; }
+
+  /* 3 players: P1 keeps co-op's own top-half layout (the coop-mode rules
+     above); P2/P3 split the bottom half into the bottom-left and
+     bottom-right quadrants, positioned exactly like 4-player's P3/P4. The
+     vertical divider only runs down the bottom half. */
+  body.trio-mode #coop-divider-v { top: 50vh; height: 50%; }
+  body.trio-mode .coop-p2.coop-crosshair,
+  body.trio-mode .coop-p2.coop-hit-marker { top: 75vh; left: 25vw; }
+  body.trio-mode .coop-p3.coop-crosshair,
+  body.trio-mode .coop-p3.coop-hit-marker { top: 75vh; left: 75vw; }
+  body.trio-mode .coop-p2.coop-health-hud,
+  body.trio-mode .coop-p3.coop-health-hud { width: 180px; }
+  body.trio-mode .coop-p2.coop-health-hud { left: 20px; bottom: 20px; }
+  body.trio-mode .coop-p3.coop-health-hud { left: calc(50vw + 20px); bottom: 20px; }
+  body.trio-mode .coop-p2.coop-ammo-hud { right: calc(50vw + 20px); bottom: 20px; }
+  body.trio-mode .coop-p3.coop-ammo-hud { right: 20px; bottom: 20px; }
+  body.trio-mode #interact-prompt-p2 { top: 85%; left: 25%; }
+  body.trio-mode #interact-prompt-p3 { top: 85%; left: 75%; }
+  body.trio-mode .scope-overlay.scope-p2 { left: 0; top: 50%; width: 50%; height: 50%; }
+  body.trio-mode .scope-overlay.scope-p3 { left: 50%; top: 50%; width: 50%; height: 50%; }
+  body.trio-mode .coop-p1.coop-spectator-screen { left: 0; top: 0; width: 100vw; }
+  body.trio-mode .coop-p2.coop-spectator-screen { left: 0; top: 50vh; }
+  body.trio-mode .coop-p3.coop-spectator-screen { left: 50vw; top: 50vh; }
+  body.spectating-p1 .coop-p1.coop-health-hud, body.spectating-p1 .coop-p1.coop-ammo-hud, body.spectating-p1 .coop-p1.coop-crosshair, body.spectating-p1 .coop-p1.coop-hit-marker,
+  body.spectating-p2 .coop-p2.coop-health-hud, body.spectating-p2 .coop-p2.coop-ammo-hud, body.spectating-p2 .coop-p2.coop-crosshair, body.spectating-p2 .coop-p2.coop-hit-marker,
+  body.spectating-p3 .coop-p3.coop-health-hud, body.spectating-p3 .coop-p3.coop-ammo-hud, body.spectating-p3 .coop-p3.coop-crosshair, body.spectating-p3 .coop-p3.coop-hit-marker,
+  body.spectating-p4 .coop-p4.coop-health-hud, body.spectating-p4 .coop-p4.coop-ammo-hud, body.spectating-p4 .coop-p4.coop-crosshair, body.spectating-p4 .coop-p4.coop-hit-marker {
+    display: none;
+  }
+
   /* Item inventory: 3 rows of 4 slots, toggled by the inventory keybind
      and centered on screen. Unlike the pause/controls overlay this never
      pauses the game (see animate()'s isWorldPaused) -- it does release
      pointer lock (see setInventoryOpen), which is what shows the OS
      cursor and freezes player movement/look for free via their own
      existing pointer-lock checks.
-     The light gray "dim" tint is scoped to just this panel's own
+     The dark semi-opaque backdrop is scoped to just this panel's own
      backdrop box and the individual slot cells -- it does NOT cover the
      canvas/crosshair/HUD behind it. */
   #inventory-panel,
-  #inventory-panel-p2 {
+  #inventory-panel-p2,
+  #inventory-panel-p3,
+  #inventory-panel-p4 {
     position: fixed;
     top: 50%;
     left: 50%;
@@ -1047,8 +1178,8 @@
     font-family: Arial, Helvetica, sans-serif;
     z-index: 18;
     text-align: center;
-    background: rgba(210, 210, 210, 0.22);
-    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(18, 20, 24, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.45);
     border-radius: 10px;
     padding: 16px 20px 20px;
     pointer-events: none;
@@ -1061,7 +1192,9 @@
     box-sizing: border-box;
   }
   #inventory-panel.hidden,
-  #inventory-panel-p2.hidden {
+  #inventory-panel-p2.hidden,
+  #inventory-panel-p3.hidden,
+  #inventory-panel-p4.hidden {
     display: none;
   }
   /* Explicit request: fully separate inventories, one per half -- each
@@ -1084,6 +1217,24 @@
   body.coop-spectator-fullscreen-p2 #inventory-panel-p2 {
     top: 50%;
   }
+  /* 4 players: each panel centers on its own quadrant instead. */
+  body.quad-mode #inventory-panel,
+  body.quad-mode #inventory-panel-p2,
+  body.quad-mode #inventory-panel-p3,
+  body.quad-mode #inventory-panel-p4 {
+    transform: translate(-50%, -50%) scale(0.85); /* a quadrant is only half the window tall */
+  }
+  body.quad-mode #inventory-panel { top: 25%; left: 25%; }
+  body.quad-mode #inventory-panel-p2 { top: 25%; left: 75%; }
+  body.quad-mode #inventory-panel-p3 { top: 75%; left: 25%; }
+  body.quad-mode #inventory-panel-p4 { top: 75%; left: 75%; }
+  /* 3 players: P1's panel stays co-op's top-half one; P2/P3 get quadrants. */
+  body.trio-mode #inventory-panel-p2,
+  body.trio-mode #inventory-panel-p3 {
+    transform: translate(-50%, -50%) scale(0.85);
+  }
+  body.trio-mode #inventory-panel-p2 { top: 75%; left: 25%; }
+  body.trio-mode #inventory-panel-p3 { top: 75%; left: 75%; }
   /* Tab bar (explicit request): [ Inventory ][ Crafting ][ Skills ]
      along the top of the panel, replacing the old static "Inventory"
      header text -- browser-tab-style pill buttons, same visual language
@@ -1128,7 +1279,9 @@
     display: none;
   }
   #inventory-grid,
-  #inventory-grid-p2 {
+  #inventory-grid-p2,
+  #inventory-grid-p3,
+  #inventory-grid-p4 {
     display: grid;
     grid-template-columns: repeat(4, 64px);
     grid-template-rows: repeat(3, 64px);
@@ -1464,6 +1617,16 @@
     font-size: 11px;
     margin-top: 2px;
   }
+  /* Skill node "SP Cost: X" line -- only the number is color coded by
+     cost (see SKILL_COST_COLORS). */
+  .inventory-tooltip-cost {
+    color: #ddd;
+    font-size: 11px;
+    margin-top: 2px;
+  }
+  .inventory-tooltip-cost-value {
+    font-weight: bold;
+  }
   /* Hides the real OS cursor everywhere while either player's inventory
      is open (updateGlobalCursorHiding) -- the custom .inventory-cursor
      dot above takes over entirely instead, for both a keyboard+mouse
@@ -1742,7 +1905,9 @@
     text-shadow: 0 3px 10px rgba(0, 0, 0, 0.9);
   }
   #title-setup h2,
-  #title-mode h2 {
+  #title-mode h2,
+  #title-player-count h2,
+  #title-custom h2 {
     font-size: 28px;
     margin: 0 0 20px 0;
     text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
@@ -1767,7 +1932,9 @@
   .corner-back-button:hover {
     background: rgba(255, 255, 255, 0.3);
   }
-  #mode-options {
+  #mode-options,
+  #player-count-options,
+  #custom-options {
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -1795,7 +1962,7 @@
     font-size: 16px;
     font-weight: bold;
   }
-  /* Co-op/Custom: visible but not selectable yet. */
+  /* Placeholder options: visible but not selectable yet. */
   .mode-option.mode-option-disabled {
     cursor: not-allowed;
     opacity: 0.5;
@@ -1807,7 +1974,8 @@
     text-decoration: line-through;
   }
   #difficulty-options,
-  #coop-difficulty-options {
+  #coop-difficulty-options,
+  #quad-difficulty-options {
     display: flex;
     align-items: stretch;
     gap: 12px;
@@ -2194,6 +2362,120 @@
     min-height: 36px;
     text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
   }
+
+  /* 4-player setup screen: same pieces as the co-op setup screen (boxes,
+     scheme icons, ready prompts, difficulty row), but four columns, so
+     each player's character preview sits above their own box instead of
+     out at the screen edges. Sizes are in vh so all four columns plus the
+     difficulty row still fit the 720-tall default window. */
+  #quad-setup-bg-image,
+  #quad-setup-bg-tint {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+  #quad-setup-bg-image {
+    object-fit: cover;
+    filter: blur(2px) brightness(0.55);
+  }
+  #quad-setup-bg-tint {
+    background: rgba(0, 0, 0, 0.45);
+  }
+  #title-quad-setup h2 {
+    font-size: 26px;
+    margin: 0 0 8px 0;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
+  }
+  /* No outer frame or column dividers -- each player's model just floats
+     above their own ready-up box. */
+  #quad-setup-players {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 16px;
+    margin-bottom: 6px;
+  }
+  .quad-setup-side {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px 12px;
+  }
+  .quad-setup-side.hidden {
+    display: none;
+  }
+  /* Kept in the layout (visibility, not display) while that player isn't
+     connected yet, so all four boxes stay lined up. */
+  .quad-setup-model {
+    position: relative;
+    height: 36vh;
+    aspect-ratio: 240 / 340;
+  }
+  .quad-setup-model.hidden {
+    visibility: hidden;
+  }
+  .quad-setup-model-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .quad-setup-face-arrow {
+    position: absolute;
+    top: 18%; /* head height, same as .coop-setup-face-arrow */
+    transform: translateY(-50%);
+    padding: 0.8vh 1.1vh;
+    font-size: 1.8vh;
+    font-family: inherit;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 5px;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+  .quad-setup-face-arrow-left {
+    left: -1.5vh;
+  }
+  .quad-setup-face-arrow-right {
+    right: -1.5vh;
+  }
+  .quad-setup-face-arrow:hover {
+    background: rgba(255, 255, 255, 0.25);
+  }
+  .quad-setup-face-arrow.flash {
+    background: rgba(255, 220, 100, 0.35);
+    border-color: #ffdc64;
+    box-shadow: 0 0 8px rgba(255, 220, 100, 0.6);
+  }
+  .quad-setup-box {
+    min-height: 0;
+    gap: 6px;
+    padding: 10px 12px;
+  }
+  .quad-setup-box .coop-setup-scheme-icon {
+    height: 9vh;
+  }
+  .quad-setup-box .coop-setup-scheme-icon.scheme-keyboard {
+    transform: scale(1.18); /* see #coop-setup-p1-icon.scheme-keyboard */
+  }
+  #quad-setup-status {
+    font-size: 20px;
+    font-weight: bold;
+    min-height: 26px;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
+  }
+  #quad-setup-difficulty-label {
+    font-size: 16px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+  #quad-difficulty-options {
+    margin-bottom: 0;
+  }
 </style>
 </head>
 <body>
@@ -2207,7 +2489,6 @@
     <div id="title-main-buttons">
       <button id="title-play-button" class="menu-button">Play</button>
       <button id="title-settings-button" class="menu-button">Settings</button>
-      <button id="title-campus-button" class="menu-button">Campus Map (Greybox)</button>
       <button id="title-exit-button" class="menu-button">Exit</button>
     </div>
   </div>
@@ -2218,11 +2499,35 @@
       <div class="mode-option" data-mode="singleplayer">
         <div class="mode-name">Singleplayer</div>
       </div>
-      <div class="mode-option" data-mode="coop">
-        <div class="mode-name">Co-op</div>
+      <div class="mode-option" data-mode="multiplayer">
+        <div class="mode-name">Multiplayer</div>
       </div>
-      <div class="mode-option mode-option-disabled" data-mode="custom">
+      <div class="mode-option" data-mode="custom">
         <div class="mode-name">Custom</div>
+      </div>
+    </div>
+  </div>
+  <div id="title-custom" class="title-panel">
+    <button id="custom-back-button" class="corner-back-button">&larr; Back</button>
+    <h2>Custom</h2>
+    <div id="custom-options">
+      <div id="title-campus-button" class="mode-option">
+        <div class="mode-name">Campus Map (Greybox)</div>
+      </div>
+    </div>
+  </div>
+  <div id="title-player-count" class="title-panel">
+    <button id="player-count-back-button" class="corner-back-button">&larr; Back</button>
+    <h2>Select Players</h2>
+    <div id="player-count-options">
+      <div class="mode-option" data-players="2">
+        <div class="mode-name">2 Players</div>
+      </div>
+      <div class="mode-option" data-players="3">
+        <div class="mode-name">3 Players</div>
+      </div>
+      <div class="mode-option" data-players="4">
+        <div class="mode-name">4 Players</div>
       </div>
     </div>
   </div>
@@ -2304,6 +2609,102 @@
       <div id="coop-setup-countdown"></div>
       <div id="coop-setup-difficulty-label">Difficulty</div>
       <div id="coop-difficulty-options">
+        <div class="difficulty-option" data-difficulty="normal">
+          <div class="difficulty-name">Normal</div>
+        </div>
+        <div class="difficulty-option" data-difficulty="hard">
+          <div class="difficulty-name">Hard</div>
+          <ul class="difficulty-details">
+            <li>More enemies</li>
+            <li>Faster enemies</li>
+          </ul>
+        </div>
+        <div class="difficulty-option" data-difficulty="legendary">
+          <div class="difficulty-name">Legendary</div>
+          <ul class="difficulty-details">
+            <li>More enemies</li>
+            <li>Fastest enemies</li>
+            <li>Enemies have more health</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="title-quad-setup" class="title-panel">
+    <img id="quad-setup-bg-image" alt="">
+    <div id="quad-setup-bg-tint"></div>
+    <button id="quad-setup-back-button" class="corner-back-button">&larr; Back</button>
+    <div class="title-panel-content">
+      <h2 id="quad-setup-heading">4 Player Setup</h2>
+      <div id="quad-setup-players">
+        <div class="quad-setup-side" data-slot="0">
+          <div class="quad-setup-model">
+            <canvas class="quad-setup-model-canvas"></canvas>
+            <button type="button" class="quad-setup-face-arrow quad-setup-face-arrow-left" data-slot="0" data-dir="-1" aria-label="Previous face">&#9664;</button>
+            <button type="button" class="quad-setup-face-arrow quad-setup-face-arrow-right" data-slot="0" data-dir="1" aria-label="Next face">&#9654;</button>
+          </div>
+          <div class="coop-setup-label">Player 1</div>
+          <div class="coop-setup-box quad-setup-box">
+            <div class="coop-setup-scheme">
+              <button type="button" class="coop-scheme-button quad-scheme-button active" data-scheme="keyboard">Keyboard + Mouse</button>
+              <button type="button" class="coop-scheme-button quad-scheme-button" data-scheme="controller">Controller</button>
+            </div>
+            <img class="coop-setup-scheme-icon quad-setup-icon" alt="">
+            <div class="coop-setup-ready-prompt quad-setup-ready-prompt"></div>
+          </div>
+        </div>
+        <div class="quad-setup-side" data-slot="1">
+          <div class="quad-setup-model">
+            <canvas class="quad-setup-model-canvas"></canvas>
+            <button type="button" class="quad-setup-face-arrow quad-setup-face-arrow-left" data-slot="1" data-dir="-1" aria-label="Previous face">&#9664;</button>
+            <button type="button" class="quad-setup-face-arrow quad-setup-face-arrow-right" data-slot="1" data-dir="1" aria-label="Next face">&#9654;</button>
+          </div>
+          <div class="coop-setup-label">Player 2</div>
+          <div class="coop-setup-box quad-setup-box">
+            <div class="coop-setup-scheme spacer" aria-hidden="true">
+              <button type="button" class="coop-scheme-button" tabindex="-1">Keyboard + Mouse</button>
+              <button type="button" class="coop-scheme-button" tabindex="-1">Controller</button>
+            </div>
+            <img class="coop-setup-scheme-icon quad-setup-icon" alt="">
+            <div class="coop-setup-ready-prompt quad-setup-ready-prompt"></div>
+          </div>
+        </div>
+        <div class="quad-setup-side" data-slot="2">
+          <div class="quad-setup-model">
+            <canvas class="quad-setup-model-canvas"></canvas>
+            <button type="button" class="quad-setup-face-arrow quad-setup-face-arrow-left" data-slot="2" data-dir="-1" aria-label="Previous face">&#9664;</button>
+            <button type="button" class="quad-setup-face-arrow quad-setup-face-arrow-right" data-slot="2" data-dir="1" aria-label="Next face">&#9654;</button>
+          </div>
+          <div class="coop-setup-label">Player 3</div>
+          <div class="coop-setup-box quad-setup-box">
+            <div class="coop-setup-scheme spacer" aria-hidden="true">
+              <button type="button" class="coop-scheme-button" tabindex="-1">Keyboard + Mouse</button>
+              <button type="button" class="coop-scheme-button" tabindex="-1">Controller</button>
+            </div>
+            <img class="coop-setup-scheme-icon quad-setup-icon" alt="">
+            <div class="coop-setup-ready-prompt quad-setup-ready-prompt"></div>
+          </div>
+        </div>
+        <div class="quad-setup-side" data-slot="3">
+          <div class="quad-setup-model">
+            <canvas class="quad-setup-model-canvas"></canvas>
+            <button type="button" class="quad-setup-face-arrow quad-setup-face-arrow-left" data-slot="3" data-dir="-1" aria-label="Previous face">&#9664;</button>
+            <button type="button" class="quad-setup-face-arrow quad-setup-face-arrow-right" data-slot="3" data-dir="1" aria-label="Next face">&#9654;</button>
+          </div>
+          <div class="coop-setup-label">Player 4</div>
+          <div class="coop-setup-box quad-setup-box">
+            <div class="coop-setup-scheme spacer" aria-hidden="true">
+              <button type="button" class="coop-scheme-button" tabindex="-1">Keyboard + Mouse</button>
+              <button type="button" class="coop-scheme-button" tabindex="-1">Controller</button>
+            </div>
+            <img class="coop-setup-scheme-icon quad-setup-icon" alt="">
+            <div class="coop-setup-ready-prompt quad-setup-ready-prompt"></div>
+          </div>
+        </div>
+      </div>
+      <div id="quad-setup-status"></div>
+      <div id="quad-setup-difficulty-label">Difficulty</div>
+      <div id="quad-difficulty-options">
         <div class="difficulty-option" data-difficulty="normal">
           <div class="difficulty-name">Normal</div>
         </div>
@@ -2455,6 +2856,7 @@
 <!-- Co-op split-screen HUD (Part 1 Step 4 Slice B2) -- see its own CSS
      comment above. Shown instead of the elements above via body.coop-mode. -->
 <div id="coop-divider"></div>
+<div id="coop-divider-v"></div>
 
 <div id="crosshair-p1" class="coop-crosshair coop-p1 aim-hidden"></div>
 <div id="crosshair-p2" class="coop-crosshair coop-p2 aim-hidden"></div>
@@ -2542,10 +2944,12 @@
      content is set in JS (startCoopMatch) rather than hardcoded here. -->
 <div id="coop-spectator-screen-p1" class="coop-spectator-screen coop-p1">
   <h1>YOU DIED</h1>
+  <div id="coop-spectating-label-p1" class="coop-spectating-label"></div>
   <button id="coop-spectator-fullscreen-button-p1" class="menu-button"></button>
 </div>
 <div id="coop-spectator-screen-p2" class="coop-spectator-screen coop-p2">
   <h1>YOU DIED</h1>
+  <div id="coop-spectating-label-p2" class="coop-spectating-label"></div>
   <button id="coop-spectator-fullscreen-button-p2" class="menu-button"></button>
 </div>
 
@@ -2562,6 +2966,36 @@
 <script>
 (function () {
   "use strict";
+
+  // ------------------------------------------------------------------
+  // 4-PLAYER HUD DOM: Players 3 and 4 get their own copies of every
+  // per-player HUD element (crosshair, hit marker, health, ammo, scope,
+  // interact prompt, inventory panel/cursor/tooltip, spectator screen),
+  // cloned from Player 2's here -- before anything below looks them up
+  // by id -- rather than written out twice more in the HTML. Every id
+  // ending in -p2 becomes -p3/-p4, and the coop-p2/scope-p2 classes and
+  // data-side="p2" follow, so the CSS (body.quad-mode rules) and the
+  // index-based ref arrays pick them up the same way as P1/P2's.
+  // ------------------------------------------------------------------
+  const PER_PLAYER_HUD_IDS = [
+    "interact-prompt", "scope-overlay", "crosshair", "hit-marker", "health-hud", "ammo-hud",
+    "inventory-panel", "inventory-cursor", "inventory-tooltip", "coop-spectator-screen",
+  ];
+  for (const baseId of PER_PLAYER_HUD_IDS) {
+    const source = document.getElementById(baseId + "-p2");
+    let insertAfter = source;
+    for (const n of [3, 4]) {
+      const clone = source.cloneNode(true);
+      for (const el of [clone, ...clone.querySelectorAll("*")]) {
+        if (el.id) el.id = el.id.replace(/-p2$/, "-p" + n);
+        if (el.classList.contains("coop-p2")) el.classList.replace("coop-p2", "coop-p" + n);
+        if (el.classList.contains("scope-p2")) el.classList.replace("scope-p2", "scope-p" + n);
+        if (el.dataset.side === "p2") el.dataset.side = "p" + n;
+      }
+      insertAfter.after(clone);
+      insertAfter = clone;
+    }
+  }
 
   // ------------------------------------------------------------------
   // TUNABLE CONSTANTS
@@ -2613,6 +3047,10 @@
   const PITCH_LIMIT = Math.PI / 2 - 0.01; // just under straight up/down
   const GRAVITY = -18.0;           // units per second^2
   const JUMP_SPEED = 7.0;          // initial upward velocity on jump
+  // Fall damage (see updateMovement's gravity block): a jump peaks at
+  // ~1.4 m, so only real drops (e.g. off the top of the bleachers) hurt.
+  const FALL_DAMAGE_SAFE_HEIGHT = 3.0;  // meters fallen before any damage
+  const FALL_DAMAGE_PER_METER = 15;     // HP per meter past the safe height (4 m bleacher top -> 15)
 
   // Physics-based horizontal movement (Quake-style accelerate/friction
   // model): input steers a velocity vector instead of setting position
@@ -2642,12 +3080,19 @@
   const SLIDE_PEAK_SPEED = 6.0 * 0.85 * 1.8 * SLIDE_PEAK_SPEED_MULTIPLIER;
 
   const MAX_HEALTH = 100;
-  const BANDAGE_HEAL_AMOUNT = 15;      // HP restored per bandage used -- see useHealingItem
+  const BANDAGE_HEAL_AMOUNT = 15;      // HP restored per bandage used -- see useHealingItem; a difficulty's bandageHealAmount overrides it
+  const bandageHealAmount = () => currentDifficulty.bandageHealAmount ?? BANDAGE_HEAL_AMOUNT;
   const MEDKIT_HEAL_AMOUNT = 40;       // HP restored per medkit used -- see useHealingItem
   const ENEMY_MAX_HEALTH = 60;          // enemy's own hit points (see WEAPON_DEFS' gun.damage / melee.damage below)
   const ENEMY_SPEED = 3.025;            // slower than player's walk speed -- 10% faster than the previous 2.75
   const ENEMY_DAMAGE_PER_HIT = 10;      // damage applied per contact "tick"
   const ENEMY_HIT_INTERVAL = 0.5;       // seconds between contact damage ticks
+  // An enemy has to stay in contact this long before its first hit lands
+  // (explicit request) -- brushing past a zombie no longer costs health
+  // instantly. The timer keeps running through repeated hits while
+  // contact is unbroken, so a player who stays put is still hit every
+  // ENEMY_HIT_INTERVAL; it only resets once contact breaks.
+  const ENEMY_CONTACT_ATTACK_DELAY = 0.1; // seconds
   const ENEMY_CONTACT_DISTANCE = 1.0;   // horizontal distance that counts as "touching"
   const ENEMY_SIZE = { width: 0.6, height: 1.8, depth: 0.6 }; // roughly person-sized
   const ENEMY_TURN_SPEED = 3.0;         // radians/sec the enemy can turn — not an instant snap
@@ -2680,8 +3125,8 @@
   // per-spawn delay isn't fixed -- it's recomputed each wave (see
   // updateWaveManager) so that the time from the wave's first zombie
   // spawning to its last is exactly (zombie count) x WAVE_SPAWN_DURATION_MULTIPLIER
-  // seconds -- e.g. 100 zombies takes 85 seconds to finish spawning at the
-  // current 0.85 multiplier. Fast ("green") enemies (see below) are spawned
+  // seconds -- e.g. 100 zombies takes 100 seconds to finish spawning at the
+  // current 1.0 multiplier. Fast ("green") enemies (see below) are spawned
   // on a completely separate schedule layered on top of this -- they're
   // never part of this count or this stagger loop. A grace period counts
   // down before the next wave -- 5s only before the very first wave, 10s
@@ -2691,11 +3136,12 @@
   const ROUND_START_SOUND_LEAD = 2.5;     // seconds before a wave starts that round_start_01 plays (was 1.5 -- explicit request)
   const BETWEEN_WAVE_GRACE_PERIOD = 30;  // seconds after a wave is fully cleared, before the next spawns (every difficulty -- was 25)
   const MAX_ENEMIES_PER_WAVE = 100;      // caps f(w) regardless of difficulty
-  const WAVE_SPAWN_DURATION_MULTIPLIER = 0.85; // seconds of spawn time per zombie in the wave (was 2)
+  const WAVE_SPAWN_DURATION_MULTIPLIER = 1.0; // seconds of spawn time per zombie in the wave (was 0.85, before that 2) -- a difficulty's waveSpawnSecondsPerEnemy overrides it
+  const waveSpawnSecondsPerEnemy = () => currentDifficulty.waveSpawnSecondsPerEnemy ?? WAVE_SPAWN_DURATION_MULTIPLIER;
 
   // Fast ("green") enemies: a faster variant spawned on its own schedule,
   // independent of the zombie stagger loop above -- see
-  // computeGreenEnemySpawnTimes below and its call site in
+  // computeGreenEnemySchedule below and its call site in
   // updateWaveManager. Moves at ~238% of the normal enemy's speed --
   // i.e. a 2.384x multiplier (was 3.3x, reduced 15% per spec, then
   // another 15% -- explicit request). Stacks with every difficulty's own
@@ -2707,44 +3153,84 @@
   // below -- they detonate for one big hit instead, dealing this much
   // damage and destroying themselves in the process.
   const GREEN_ENEMY_EXPLOSION_DAMAGE = 30;
-  const GREEN_WAVE4_FIRST_TIME = 3;       // seconds into wave 4's spawning period for its first fast enemy
-  const GREEN_WAVE4_LATE_PAIR_GAP = 0.4;  // seconds between wave 4's last two (spawned back-to-back near the end)
 
-  // The sorted list of times (seconds since this wave's spawning period
-  // began) at which its fast enemies should spawn, given how long that
-  // period lasts (spawnPeriodDuration = zombie count x WAVE_SPAWN_DURATION_MULTIPLIER,
-  // same span the zombie stagger loop takes). Called once per wave, the moment its
-  // spawning period starts, so spawnPeriodDuration is already known.
-  //   wave < 3:  none.
-  //   wave === 3: exactly 1, at a random point in the period.
-  //   wave === 4: exactly 3 -- one fixed at GREEN_WAVE4_FIRST_TIME, then
-  //               two more GREEN_WAVE4_LATE_PAIR_GAP apart right at the
-  //               end of the period.
-  //   wave >= 5: f(w) = w - 1, each at an independent random point in
-  //              the period (e.g. wave 10 spawns 9 of them, spread
-  //              randomly across however long its zombies take to spawn).
-  function computeGreenEnemySpawnTimes(wave, spawnPeriodDuration) {
-    if (wave < 3) return [];
+  // Green spawn pacing (explicit request -- avoid a burst of greens at the
+  // start of the wave and then a green-free cleanup of the regular horde):
+  //   - GREEN_DEFERRED_FRACTION of the wave's greens (rounded) are held
+  //     back until the spawning period is over, and then spawn as the
+  //     horde thins out -- see computeGreenDeferredThresholds.
+  //   - the rest are spread evenly across the spawning period, each
+  //     nudged randomly within its own slot by up to GREEN_SPAWN_JITTER.
+  const GREEN_DEFERRED_FRACTION = 0.35;       // e.g. 5 greens -> 2 held back, 3 -> 1, 1 -> 0
+  const GREEN_SPAWN_JITTER = 0.7;             // fraction of one slot's width a spawn can wander (0 = perfectly even)
+  // Deferred greens trigger when the number of enemies still alive drops
+  // to a threshold picked between these fractions of however many were
+  // alive when the spawning period ended (e.g. 15 alive, 2 deferred ->
+  // roughly 12 and 5 left).
+  const GREEN_DEFERRED_HIGH_FRACTION = 0.85;
+  const GREEN_DEFERRED_LOW_FRACTION = 0.15;
+  // On a boss wave (explicit request), this share of the deferred greens
+  // (rounded) is tied to the boss's health instead of the enemies-alive
+  // count: each spawns (from a normal spawn point, never at the boss) as
+  // the boss's health drops past its threshold -- see
+  // computeGreenBossHealthThresholds. If the boss dies first, any still
+  // waiting spawn immediately.
+  const GREEN_BOSS_TIED_FRACTION = 0.5;
 
-    if (wave === 3) {
-      return [Math.random() * spawnPeriodDuration];
-    }
+  // How many fast enemies wave `wave` gets (the caller adds the
+  // difficulty's greenEnemyWaveShift -- see updateWaveManager):
+  //   wave < 3: none.  wave 3: 1.  wave 4: 3.  waves 5-8: wave - 1 (4..7).
+  //   Past wave 8 (explicit request) only +1 every 2 waves: 9 -> 7,
+  //   10 -> 8, 11 -> 8, 12 -> 9, ...
+  function computeGreenEnemyCount(wave) {
+    if (wave < 3) return 0;
+    if (wave === 3) return 1;
+    if (wave === 4) return 3;
+    if (wave <= 8) return wave - 1;
+    return 7 + Math.floor((wave - 8) / 2);
+  }
 
-    if (wave === 4) {
-      const lastTime = spawnPeriodDuration;
-      return [
-        GREEN_WAVE4_FIRST_TIME,
-        Math.max(0, lastTime - GREEN_WAVE4_LATE_PAIR_GAP),
-        lastTime,
-      ];
-    }
-
-    const count = wave - 1;
+  // Splits `count` greens into { times, deferredCount }: `times` is the
+  // sorted list of seconds (since this wave's spawning period began) for
+  // the ones that spawn during the period, evenly spaced with jitter;
+  // deferredCount is how many wait for the post-spawn thin-out instead.
+  function computeGreenEnemySchedule(count, spawnPeriodDuration) {
+    const deferredCount = Math.round(count * GREEN_DEFERRED_FRACTION);
+    const inPeriodCount = count - deferredCount;
+    const slot = inPeriodCount > 0 ? spawnPeriodDuration / inPeriodCount : 0;
     const times = [];
-    for (let i = 0; i < count; i++) {
-      times.push(Math.random() * spawnPeriodDuration);
+    for (let i = 0; i < inPeriodCount; i++) {
+      const offset = 0.5 + (Math.random() - 0.5) * GREEN_SPAWN_JITTER;
+      times.push((i + offset) * slot);
     }
-    return times.sort((a, b) => a - b);
+    return { times, deferredCount };
+  }
+
+  // Descending "enemies left alive" thresholds for the deferred greens,
+  // given how many enemies were alive when the spawning period ended.
+  // Evenly spread across [LOW, HIGH] x aliveAtEnd, jittered within each
+  // slot, and never below 1 -- so every deferred green spawns before the
+  // wave can clear (if the player already wiped everything out, they
+  // just come immediately).
+  function computeGreenDeferredThresholds(deferredCount, aliveAtEnd) {
+    const high = aliveAtEnd * GREEN_DEFERRED_HIGH_FRACTION;
+    const low = aliveAtEnd * GREEN_DEFERRED_LOW_FRACTION;
+    const slot = deferredCount > 0 ? (high - low) / deferredCount : 0;
+    const thresholds = [];
+    for (let i = 0; i < deferredCount; i++) {
+      const offset = 0.5 + (Math.random() - 0.5) * GREEN_SPAWN_JITTER;
+      thresholds.push(Math.max(1, Math.round(high - (i + offset) * slot)));
+    }
+    return thresholds;
+  }
+
+  // Descending boss-health fractions for the boss-tied deferred greens
+  // (see GREEN_BOSS_TIED_FRACTION), evenly spaced -- e.g. 2 -> 2/3 and 1/3
+  // of max health, 1 -> 1/2.
+  function computeGreenBossHealthThresholds(count) {
+    const thresholds = [];
+    for (let i = 0; i < count; i++) thresholds.push((count - i) / (count + 1));
+    return thresholds;
   }
 
   // Brute ("blue") enemies: a big, slow-to-kill heavy hitter that shows
@@ -2769,7 +3255,7 @@
   const BRUTE_KNOCKBACK_DECAY_RATE = 4.5;     // 1/second
   const BRUTE_KNOCKBACK_UPWARD_SPEED = 4;     // units/second (JUMP_SPEED is 7)
   const BRUTE_SCRAP_DROP_COUNT = 2;           // always dropped on death
-  const BRUTE_AMMO_DROP_CHANCE = 0.5;
+  const BRUTE_AMMO_DROP_CHANCE = 0.47;
   const BRUTE_SPAWN_PERIOD_FRACTION = 0.8;    // brutes spawn within the first 80% of the wave's spawning period
 
   // Brute enemy-throw (explicit request): a brute whose target is more
@@ -2847,11 +3333,6 @@
     spawnWave: 10,                // the boss appears on this wave only
     spawnWaveFraction: 0.5,       // how far through that wave's spawning period it appears
     headScale: 1.3,               // boss-only: head (and its face) this much bigger relative to its body
-    // Dropping to minionHealthFraction of its max health spawns
-    // minionCount fast ("green") enemies around it, once (see damageEnemy).
-    minionHealthFraction: 1 / 3,
-    minionCount: 3,
-    minionSpawnRadius: 1.5,       // game units from the boss's center
     // Clearing a boss wave (any wave the boss is scheduled on -- see
     // updateWaveManager) pays out more than a normal one.
     waveClearSkillPoints: 2,      // vs. 1 for a normal wave
@@ -2871,8 +3352,8 @@
   // exactly the f(w) = 8 + 4w already live above (MAX_ENEMIES_PER_WAVE
   // still caps the result the same way regardless of difficulty).
   // greenEnemyWaveShift is added to the wave number passed into
-  // computeGreenEnemySpawnTimes above -- e.g. shift 1 means Hard's wave
-  // 2 gets the schedule Normal's wave 3 would (computeGreenEnemySpawnTimes
+  // computeGreenEnemyCount above -- e.g. shift 1 means Hard's wave
+  // 2 gets the count Normal's wave 3 would (computeGreenEnemyCount
   // itself is completely unaware of difficulty; only its caller adds
   // the shift).
   // ------------------------------------------------------------------
@@ -2886,9 +3367,11 @@
       bruteEnemyStartCount: 1, // brutes on wave 4 -- see computeBruteEnemyCount
       bruteThrowSpeedMultiplier: 1.0, // scales BRUTE_THROW_SPEED -- see the brute's throw release
       startingExtraMagazines: 2, // extra starting-pistol magazines in reserve -- see resetPlayerState
-      greenEnemyCountByWave: { 10: 3 }, // exact fast-enemy counts for specific waves, overriding computeGreenEnemySpawnTimes -- see updateWaveManager
-      ammoDropChanceBonus: 0.05, // added to every enemy's ammo-box drop chance (25% -> 30%, brutes 50% -> 55%) -- see damageEnemy
+      ammoDropChanceBonus: 0.05, // added to every enemy's ammo-box drop chance (32% -> 37%, brutes 47% -> 52%) -- see damageEnemy
+      enemyContactDamage: 8, // a normal (red) enemy's contact hit on a player or turret -- overrides ENEMY_DAMAGE_PER_HIT (explicit request)
       enemyCountFormula: (wave) => 8 + 4 * wave,
+      waveSpawnSecondsPerEnemy: 1.15, // spawn phase lasts 1.15 s per regular enemy (explicit request) -- Hard/Legendary keep WAVE_SPAWN_DURATION_MULTIPLIER
+      bandageHealAmount: 20, // explicit request (Normal and Hard) -- Legendary keeps BANDAGE_HEAL_AMOUNT
       roundClearScore: 100,
     },
     hard: {
@@ -2900,9 +3383,9 @@
       bruteEnemyStartCount: 2,
       bruteThrowSpeedMultiplier: 1.08,
       startingExtraMagazines: 1,
-      greenEnemyCountByWave: { 10: 4 },
       ammoDropChanceBonus: 0,
       enemyCountFormula: (wave) => 10 + 5 * wave,
+      bandageHealAmount: 20, // same as Normal (explicit request)
       roundClearScore: 150,
     },
     legendary: {
@@ -2914,7 +3397,6 @@
       bruteEnemyStartCount: 2, // same as Hard
       bruteThrowSpeedMultiplier: 1.15, // relative to Normal directly, like enemySpeedMultiplier
       startingExtraMagazines: 0,
-      greenEnemyCountByWave: { 10: 5 },
       ammoDropChanceBonus: 0,
       enemyCountFormula: (wave) => 10 + 5 * wave, // same count formula as Hard
       roundClearScore: 200,
@@ -3003,9 +3485,17 @@
   // the SMG, etc.; the shotgun overrides it with ammoPickupAmount, 8
   // shells) when the player walks over it;
   // despawns on its own if left uncollected too long.
-  const AMMO_DROP_CHANCE = 0.25;              // 25% chance per enemy kill
+  const AMMO_DROP_CHANCE = 0.32;              // 32% chance per enemy kill (37% on Normal -- see ammoDropChanceBonus)
   const AMMO_PICKUP_LIFETIME = 60;           // seconds before an uncollected pickup despawns
-  const AMMO_PICKUP_COLLECT_DISTANCE = 0.8;  // horizontal distance that counts as "walked over"
+  const AMMO_PICKUP_COLLECT_DISTANCE = 1.1;  // horizontal distance that counts as "walked over" (was 0.8 -- explicit request)
+  // Through a boarded doorway (explicit request): a player standing within
+  // AMMO_PICKUP_BARRICADE_PLAYER_RANGE of a barricade's center collects any
+  // box lying within AMMO_PICKUP_BARRICADE_BOX_RANGE of that same center,
+  // on either side of the boards -- the barricade's collision would
+  // otherwise keep them from ever getting within the normal distance of
+  // a box dropped by a zombie clawing at it from outside.
+  const AMMO_PICKUP_BARRICADE_PLAYER_RANGE = 1.8;
+  const AMMO_PICKUP_BARRICADE_BOX_RANGE = 2.0;
   const AMMO_PICKUP_HOVER_HEIGHT = 0.5;      // height above the ground the pickup floats at
   const AMMO_PICKUP_SIZE = 0.35;             // pickup cube's side length
 
@@ -3018,7 +3508,7 @@
   // No despawn timer.
   const RESOURCE_DROP_CHANCES = {                  // chance per kill, rolled separately for each
     cloth: 0.15,
-    planks: 0.10,
+    planks: 0.20,                                  // was 0.10 -- +10 points (explicit request)
     scrap: 0.06,
   };
   const RESOURCE_DROP_TOSS_SPEED = 1.8;           // max initial horizontal speed, random direction
@@ -3166,7 +3656,7 @@
   // SMG (explicit request) -- full-auto: holding fire keeps shooting (see
   // gun.isAutomatic), one shot every SMG_FIRE_COOLDOWN via the same
   // per-slot fireCooldown the shotgun's pump uses.
-  const SMG_DAMAGE = 18;
+  const SMG_DAMAGE = 20;
   const SMG_MAGAZINE_SIZE = 25;
   const SMG_FIRE_COOLDOWN = 1 / 12;              // seconds between shots while held -- 12 shots/sec (720 rounds/min)
   const SMG_RELOAD_DURATION = 1.6;               // faster than the pistol/Glock's 2.25
@@ -3341,7 +3831,12 @@
   scene.add(camera);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(window.devicePixelRatio || 1);
+  // Capped (performance pass): on a laptop's 125-150% display scaling the
+  // raw devicePixelRatio renders 1.5-2.25x the pixels for barely visible
+  // gain -- the HUD is DOM, so it stays crisp regardless -- and MSAA
+  // already smooths the edges.
+  const MAX_PIXEL_RATIO = 1;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   // PCFShadowMap (not the "Soft" variant) -- cheaper multi-tap filtering,
@@ -5570,8 +6065,8 @@
       id: "glock",
       displayName: "Glock",
       gun: {
-        damage: 25,          // per bullet, body shots
-        headshotDamage: 32,  // per bullet, head shots
+        damage: 30,          // per bullet, body shots (was 25 -- explicit request)
+        headshotDamage: 37,  // per bullet, head shots (was 32 -- explicit request)
         magazineCapacity: 18,
         maxLoadedAmmo: 19,
         defaultReserveAmmo: 54, // 3 magazines' worth
@@ -7071,7 +7566,7 @@
   // off the target on each shot and settles, and drifts very slightly
   // with breathing. Runs every frame for every player (from animate),
   // so it can never be left up after aim ends for any reason.
-  const scopeOverlayEls = [document.getElementById("scope-overlay-p1"), document.getElementById("scope-overlay-p2")];
+  const scopeOverlayEls = [1, 2, 3, 4].map((n) => document.getElementById(`scope-overlay-p${n}`));
 
   function updateScopeOverlays(deltaSeconds) {
     for (let i = 0; i < players.length; i++) {
@@ -8547,7 +9042,7 @@
   }
 
   function getWeatherViewerCameras() {
-    return isCoopMatchActive ? [players[0].camera, players[1].camera] : [camera];
+    return isCoopMatchActive ? players.map((p) => p.camera) : [camera];
   }
 
   function updateRainVisuals(deltaSeconds) {
@@ -8584,6 +9079,11 @@
   // that only comes up in heavier rain. Muffled under a roof.
   let rainAudio = null;
   let rainAudioLevel = 0;
+  // Built once and reused by every storm -- generating 4 s of stereo noise
+  // is ~40 ms of main-thread work (far more on a laptop), which used to
+  // land as a visible hitch the moment rain started. Built ahead of time
+  // while the title screen is idle (see prebuildRainNoiseBuffer).
+  let rainNoiseBuffer = null;
 
   function buildRainNoiseBuffer() {
     const rate = audioContext.sampleRate;
@@ -8615,9 +9115,15 @@
     return buffer;
   }
 
+  function prebuildRainNoiseBuffer() {
+    if (!rainNoiseBuffer) rainNoiseBuffer = buildRainNoiseBuffer();
+    if (!windNoiseBuffer) windNoiseBuffer = buildWindNoiseBuffer();
+  }
+  setTimeout(prebuildRainNoiseBuffer, 3000); // after startup settles, long before any storm
+
   function startRainAudio() {
     const source = audioContext.createBufferSource();
-    source.buffer = buildRainNoiseBuffer();
+    source.buffer = rainNoiseBuffer || (rainNoiseBuffer = buildRainNoiseBuffer());
     source.loop = true;
     const muffle = audioContext.createBiquadFilter();
     muffle.type = "lowpass";
@@ -8656,6 +9162,7 @@
   let windTreeNear = 0;
   let windSheltered = 0;
   let windSampleTimer = 0;
+  let windNoiseBuffer = null; // built once, ahead of time -- same reasoning as rainNoiseBuffer
   function buildWindNoiseBuffer() {
     const rate = audioContext.sampleRate;
     const length = Math.floor(rate * 6);
@@ -8680,7 +9187,7 @@
   }
   function startWindAudio() {
     const source = audioContext.createBufferSource();
-    source.buffer = buildWindNoiseBuffer();
+    source.buffer = windNoiseBuffer || (windNoiseBuffer = buildWindNoiseBuffer());
     source.loop = true;
     source.loopEnd = source.buffer.duration - 0.25;
     const muffle = audioContext.createBiquadFilter();
@@ -9094,7 +9601,9 @@
 
   // Returns the boarded-up barricade this move ran into, if any (see
   // BARRICADES) -- enemies use it to start breaking the boards.
-  function moveWithWallCollision(position, deltaX, deltaZ, radius, feetY = 0) {
+  // `crouched` (players only) lets the mover squeeze through a barricade
+  // whose middle boards are gone.
+  function moveWithWallCollision(position, deltaX, deltaZ, radius, feetY = 0, crouched = false) {
     const distance = Math.hypot(deltaX, deltaZ);
     const steps = Math.max(1, Math.ceil(distance / WALL_COLLISION_MAX_STEP));
     const stepX = deltaX / steps;
@@ -9104,7 +9613,7 @@
       position.x += stepX;
       position.z += stepZ;
       resolveWallCollisions(position, radius, feetY);
-      if (activeBarricades.length) barricadeContact = resolveBarricadeCollisions(position, radius) || barricadeContact;
+      if (activeBarricades.length) barricadeContact = resolveBarricadeCollisions(position, radius, crouched) || barricadeContact;
       if (turrets.length) resolveTurretCollisions(position, radius); // deployed turrets are solid (see TURRETS)
     }
     return barricadeContact;
@@ -9403,12 +9912,14 @@
   // ------------------------------------------------------------------
   // ZOMBIE MODEL (explicit request): enemies now use the low-poly
   // skinned zombie from zombie-model.js -- one shared rig, 4 body shapes
-  // x 3 LODs, randomized clothing/skin/damage, a curved face, and zombie
+  // x 3 LODs, randomized clothing/skin/damage, headwear with the face on it, and zombie
   // walk/idle/attack animation. buildHumanoidModel above is still the
   // co-op player bodies' (and setup screen previews') model. Purely
   // visual: enemyState.mesh is still the root Group whose position/
   // rotation the AI drives, and hits land on invisible per-bone boxes
-  // (the head one is named "Head", so headshots work exactly as before).
+  // (the head one is named "Head", so headshots work exactly as before;
+  // it covers the zombie's headwear -- paper bag, bucket, box, trash can
+  // or cone -- which carries the face picture, see zombie-model.js).
   // ------------------------------------------------------------------
   const zombieSystem = createZombieSystem(THREE, {
     feetY: -ENEMY_SIZE.height / 2,
@@ -9427,12 +9938,27 @@
   // Nearest viewer (either co-op player) -- picks the zombie's LOD.
   function zombieViewerDistance(position) {
     let best = Infinity;
-    const count = isCoopMatchActive ? 2 : 1;
+    const count = isCoopMatchActive ? players.length : 1;
     for (let i = 0; i < count; i++) {
       const cam = players[i].camera.position;
       best = Math.min(best, Math.hypot(cam.x - position.x, cam.z - position.z));
     }
     return best;
+  }
+
+  // Every shot/melee trace against the zombies goes through here: their
+  // hit boxes skip the per-frame world-matrix update (see syncHitboxes in
+  // zombie-model.js), so they're brought up to date first -- once per
+  // rendered frame, however many pellets are traced.
+  let hitboxesSyncedFrame = -1;
+  function raycastEnemies(raycaster) {
+    if (hitboxesSyncedFrame !== renderer.info.render.frame) {
+      hitboxesSyncedFrame = renderer.info.render.frame;
+      for (const enemyState of enemies) {
+        if (enemyState.zombie && !enemyState.dormant) zombieSystem.syncHitboxes(enemyState.zombie);
+      }
+    }
+    return raycaster.intersectObjects(enemyMeshes, true);
   }
 
   function dressZombie(zombie, variant, faceKey, headScale) {
@@ -10214,6 +10740,7 @@
       speed,
       sizeScale,
       hitCooldown: 0,
+      contactTime: 0, // seconds in unbroken contact with its target -- see ENEMY_CONTACT_ATTACK_DELAY
       isGreen,
       isBrute,
       // Footsteps (explicit request, green/fast enemies only -- see
@@ -10273,17 +10800,6 @@
     return enemyState;
   }
 
-  // Evenly spaced around the boss, starting at a random angle.
-  function spawnBossMinions(bossState) {
-    const startAngle = Math.random() * Math.PI * 2;
-    for (let i = 0; i < BOSS_ENEMY.minionCount; i++) {
-      const angle = startAngle + (i / BOSS_ENEMY.minionCount) * Math.PI * 2;
-      spawnEnemy({
-        x: bossState.mesh.position.x + Math.cos(angle) * BOSS_ENEMY.minionSpawnRadius,
-        z: bossState.mesh.position.z + Math.sin(angle) * BOSS_ENEMY.minionSpawnRadius,
-      }, "green");
-    }
-  }
 
   // Top-of-screen boss health bar (explicit request): shown while any
   // boss is alive, tracking the first one. Refreshed whenever a boss
@@ -10498,9 +11014,14 @@
     });
   }
 
+  // Set at the start of every run; animate() then pre-warms the GPU once
+  // before that run's first frame (see prewarmRendererForRun).
+  let rendererPrewarmPending = false;
+
   // Shows the chosen map and hides the other. Called at the start of every
   // run (singleplayer and co-op), before players are placed.
   function applySelectedMap() {
+    rendererPrewarmPending = true;
     isCampusMap = selectedMapId === "campus";
     if (isCampusMap) ensureCampusWorld();
     ground.visible = !isCampusMap;
@@ -10522,7 +11043,7 @@
   function placePlayersAtMapSpawn(list) {
     if (!isCampusMap) return;
     list.forEach((player, i) => {
-      const offset = list.length > 1 ? (i === 0 ? -1 : 1) : 0;
+      const offset = (i - (list.length - 1) / 2) * 2; // 1 player: 0; 2: -1/+1; 4: -3/-1/+1/+3
       player.camera.position.set(campusWorld.spawn.x + offset, EYE_HEIGHT, campusWorld.spawn.z);
       player.campusGroundY = 0;
       applyCameraRotation(player);
@@ -10564,6 +11085,8 @@
     enemyState.repathTimer = 0;
     enemyState.knockbackVelocity.set(0, 0, 0);
     enemyState.campusGroundY = 0;
+    enemyState.visualGroundY = 0;
+    enemyState.groundFallSpeed = 0;
     enemyState.recyclerNearestDistance = 0;
   }
 
@@ -10606,6 +11129,9 @@
   // their normal pathing) stop and tear at it on their own timer. Shots
   // are stopped by wood but pass through the gaps (filterHitsByBarricades).
   // Players repair with the interact key (a board per plank item).
+  // Once both middle boards are fully gone (only the low and high ones
+  // left), the gap is big enough for a crouched/sliding player to squeeze
+  // through (isBarricadeCrawlable) -- zombies are still blocked.
   //
   // Cheap by design: shared plank/stub geometry and a few shared wood
   // materials; nothing runs per frame except a short wobble after a hit,
@@ -10613,7 +11139,7 @@
   // ------------------------------------------------------------------
   const BARRICADE_ROWS = 4;
   const BARRICADE_HIT_INTERVAL = 1.0;     // s between one zombie's strikes on the boards
-  const BARRICADE_PLANK_HP = 12;          // strikes to fully destroy one board (half of it splits it); brutes hit for 2
+  const BARRICADE_PLANK_HP = 12 * 1.1;    // strikes to fully destroy one board (half of it splits it); brutes hit for 2 -- +10% (explicit request)
   const BARRICADE_REPAIR_RANGE = 2.2;     // m from the doorway's center
   // Zombies break the middle boards first (split, then the stubs), then the outer ones.
   const BARRICADE_BREAK_ORDER = [[1, 1], [2, 1], [1, 0], [2, 0], [0, 1], [3, 1], [0, 0], [3, 0]];
@@ -10756,11 +11282,23 @@
     if (!isCampusMap) activeBarricades = [];
   }
 
+  // Middle boards (rows 1 and 2) completely torn off: a crouched player fits
+  // through the gap between the bottom and top boards.
+  function isBarricadeCrawlable(b) {
+    return b.rows[1] === 0 && b.rows[2] === 0;
+  }
+  // Player eye height at least halfway down into a crouch (or a slide).
+  function isPlayerLowForBarricadeGap(player) {
+    return player.currentEyeHeight <= (EYE_HEIGHT + CROUCH_EYE_HEIGHT) / 2;
+  }
+
   // Circle vs each blocking barricade's box: pushes the mover out, returns
-  // the barricade it touched (or null).
-  function resolveBarricadeCollisions(position, radius) {
+  // the barricade it touched (or null). `crouched` lets a low player pass
+  // through a crawlable one.
+  function resolveBarricadeCollisions(position, radius, crouched = false) {
     let hit = null;
     for (const b of activeBarricades) {
+      if (crouched && isBarricadeCrawlable(b)) continue;
       const box = b.box;
       const cx = Math.max(box.minX, Math.min(position.x, box.maxX));
       const cz = Math.max(box.minZ, Math.min(position.z, box.maxZ));
@@ -10798,6 +11336,20 @@
   }
 
   const barricadeImpactPoint = new THREE.Vector3();
+  // Barricade sounds were only panned (spatialForPosition), never
+  // attenuated, so a board being torn at across the map sounded like it
+  // was right beside you. Full volume within REF, fading linearly to
+  // silent at MAX, measured to the nearest living player.
+  const BARRICADE_AUDIO_REF_DISTANCE = 4;
+  const BARRICADE_AUDIO_MAX_DISTANCE = 40;
+  function barricadeAudioFalloff(position) {
+    let distance = Infinity;
+    for (const p of isCoopMatchActive ? players : [players[0]]) {
+      distance = Math.min(distance, p.camera.position.distanceTo(position));
+    }
+    if (distance <= BARRICADE_AUDIO_REF_DISTANCE) return 1;
+    return Math.max(0, 1 - (distance - BARRICADE_AUDIO_REF_DISTANCE) / (BARRICADE_AUDIO_MAX_DISTANCE - BARRICADE_AUDIO_REF_DISTANCE));
+  }
   const WOOD_CHIP_PARTICLE_OPTIONS = { ...WOOD_SPLINTER_PARTICLE_OPTIONS, count: 4, speedMax: 2.2 };
   // One strike on the board currently being torn at (middle first). It
   // only changes shape when its health crosses half (split) or zero (gone);
@@ -10815,12 +11367,12 @@
         // Splinters and a crack from where the board gave way.
         b.rows[row] = state;
         spawnParticleBurst(barricadeImpactPoint, WOOD_SPLINTER_PARTICLE_OPTIONS);
-        playClip("bat_hit_03", { volume: state === 1 ? 1.0 : 0.8, detune: state === 1 ? 250 : 500, detuneRange: 80, position: barricadeImpactPoint });
+        playClip("bat_hit_03", { volume: (state === 1 ? 1.0 : 0.8) * barricadeAudioFalloff(barricadeImpactPoint), detune: state === 1 ? 250 : 500, detuneRange: 80, position: barricadeImpactPoint });
         b.wobble = 0.25;
         refreshBarricade(b);
       } else {
         spawnParticleBurst(barricadeImpactPoint, WOOD_CHIP_PARTICLE_OPTIONS);
-        playClip("bat_hit_03", { volume: 0.45, detune: -150, detuneRange: 120, position: barricadeImpactPoint });
+        playClip("bat_hit_03", { volume: 0.45 * barricadeAudioFalloff(barricadeImpactPoint), detune: -150, detuneRange: 120, position: barricadeImpactPoint });
         b.wobble = Math.max(b.wobble, 0.12);
       }
       return;
@@ -10876,8 +11428,7 @@
   // text does.
   const interactPromptEls = {
     single: document.getElementById("interact-prompt"),
-    p1: document.getElementById("interact-prompt-p1"),
-    p2: document.getElementById("interact-prompt-p2"),
+    perPlayer: [1, 2, 3, 4].map((n) => document.getElementById(`interact-prompt-p${n}`)),
   };
   const interactPromptShown = new Map();
   function interactKeyLabel(player) {
@@ -10910,8 +11461,9 @@
   function updateInteractPrompts() {
     const inMatch = isCoopMatchActive || isSingleplayerMatchActive;
     setInteractPrompt(interactPromptEls.single, inMatch && !isCoopMatchActive ? interactPromptFor(players[0]) : "");
-    setInteractPrompt(interactPromptEls.p1, isCoopMatchActive ? interactPromptFor(players[0]) : "");
-    setInteractPrompt(interactPromptEls.p2, isCoopMatchActive ? interactPromptFor(players[1]) : "");
+    interactPromptEls.perPlayer.forEach((el, i) => {
+      setInteractPrompt(el, isCoopMatchActive && players[i] ? interactPromptFor(players[i]) : "");
+    });
   }
 
   // The only per-frame work: a brief wobble after a hit or repair.
@@ -10926,7 +11478,7 @@
 
   // ------------------------------------------------------------------
   // TURRETS (explicit request): a deployable auto-turret, unlocked by the
-  // Turrets skill tree's Basic Turret node and crafted from scrap.
+  // Turrets skill tree's Basic Turret Recipe node and crafted from scrap.
   //
   //   craft -> it's in your hands (no gun, no melee, no reload -- you can
   //   still move and look) -> Interact places it in front of you -> it
@@ -10964,7 +11516,7 @@
     pitchMin: -0.3,             // rad (down)
     pitchMax: 0.55,             // rad (up)
     aimTolerance: 0.07,         // rad -- only fires when this close to on target
-    maxHealth: 250,             // zombies hit it for ENEMY_DAMAGE_PER_HIT every ENEMY_HIT_INTERVAL
+    maxHealth: 358,             // +10% over the old 325 (explicit request); zombies hit it for the difficulty's enemyContactDamage every ENEMY_HIT_INTERVAL
     ammo: Infinity,             // rounds per placement (finite later: turret.ammo counts down per shot)
     deployedScale: 1.55,        // placed turrets are drawn this much bigger (~1.1 m tall, 2/3 of a player); carried ones stay hand-sized
     radius: 0.55,               // m -- its footprint when placed (collision + placement)
@@ -11668,10 +12220,8 @@
   const deathScreenEl = document.getElementById("death-screen");
   // Index-matched to players[] -- coopSpectatorScreenEls[i] is shown
   // over players[i]'s own half when THEY die solo (see triggerDeath).
-  const coopSpectatorScreenEls = [
-    document.getElementById("coop-spectator-screen-p1"),
-    document.getElementById("coop-spectator-screen-p2"),
-  ];
+  const coopSpectatorScreenEls = [1, 2, 3, 4].map((n) => document.getElementById(`coop-spectator-screen-p${n}`));
+  const coopSpectatingLabelEls = [1, 2, 3, 4].map((n) => document.getElementById(`coop-spectating-label-p${n}`));
   const ammoHudEl = document.getElementById("ammo-hud");
   const ammoLoadedEl = document.getElementById("ammo-loaded");
   const ammoReserveEl = document.getElementById("ammo-reserve");
@@ -11684,29 +12234,21 @@
   // as a function (not a plain object) so its singleplayer branch can
   // safely reference hitMarkerEl below, which isn't declared until later
   // in the file; by the time this is actually called, it already is.
-  const hudRefsP1 = {
-    healthTextEl: document.getElementById("health-text-p1"),
-    healthMaxTextEl: document.getElementById("health-max-text-p1"),
-    healthBarFillEl: document.getElementById("health-bar-fill-p1"),
-    staminaBarFillEl: document.getElementById("stamina-bar-fill-p1"),
-    ammoHudEl: document.getElementById("ammo-hud-p1"),
-    ammoLoadedEl: document.getElementById("ammo-loaded-p1"),
-    ammoReserveEl: document.getElementById("ammo-reserve-p1"),
-    hitMarkerEl: document.getElementById("hit-marker-p1"),
-  };
-  const hudRefsP2 = {
-    healthTextEl: document.getElementById("health-text-p2"),
-    healthMaxTextEl: document.getElementById("health-max-text-p2"),
-    healthBarFillEl: document.getElementById("health-bar-fill-p2"),
-    staminaBarFillEl: document.getElementById("stamina-bar-fill-p2"),
-    ammoHudEl: document.getElementById("ammo-hud-p2"),
-    ammoLoadedEl: document.getElementById("ammo-loaded-p2"),
-    ammoReserveEl: document.getElementById("ammo-reserve-p2"),
-    hitMarkerEl: document.getElementById("hit-marker-p2"),
-  };
+  // One set per player slot (P3/P4's elements are cloned from P2's at
+  // startup -- see 4-PLAYER HUD DOM at the top of this script).
+  const coopHudRefs = [1, 2, 3, 4].map((n) => ({
+    healthTextEl: document.getElementById(`health-text-p${n}`),
+    healthMaxTextEl: document.getElementById(`health-max-text-p${n}`),
+    healthBarFillEl: document.getElementById(`health-bar-fill-p${n}`),
+    staminaBarFillEl: document.getElementById(`stamina-bar-fill-p${n}`),
+    ammoHudEl: document.getElementById(`ammo-hud-p${n}`),
+    ammoLoadedEl: document.getElementById(`ammo-loaded-p${n}`),
+    ammoReserveEl: document.getElementById(`ammo-reserve-p${n}`),
+    hitMarkerEl: document.getElementById(`hit-marker-p${n}`),
+  }));
   function hudRefsFor(player) {
     if (isCoopMatchActive) {
-      return player === players[0] ? hudRefsP1 : hudRefsP2;
+      return coopHudRefs[players.indexOf(player)];
     }
     return { healthTextEl, healthMaxTextEl, healthBarFillEl, staminaBarFillEl, ammoHudEl, ammoLoadedEl, ammoReserveEl, hitMarkerEl };
   }
@@ -11918,19 +12460,7 @@
       }
       zombieSystem.flinch(enemyState.zombie, side);
     }
-    if (enemyState.boss) {
-      // Boss drops to a third of its health (explicit request): calls in
-      // BOSS_ENEMY.minionCount fast enemies from where it stands, once.
-      if (
-        !enemyState.boss.hasSpawnedMinions &&
-        enemyState.health > 0 &&
-        enemyState.health <= enemyState.maxHealth * BOSS_ENEMY.minionHealthFraction
-      ) {
-        enemyState.boss.hasSpawnedMinions = true;
-        spawnBossMinions(enemyState);
-      }
-      updateBossHealthBar();
-    }
+    if (enemyState.boss) updateBossHealthBar();
     if (enemyState.health <= 0) {
       // Green enemies always go out with a (harmless) explosion, however
       // they die (explicit request) -- the contact detonation's damage is
@@ -12279,7 +12809,8 @@
       ? activeBloodDecals.shift().decal
       : acquireBloodDecal();
 
-    decal.mesh.position.set(position.x, BLOOD_DECAL_Y, position.z);
+    const groundY = isCampusMap && campusWorld ? campusWorld.groundHeightAt(position.x, position.z) : 0; // sunken streets, pits
+    decal.mesh.position.set(position.x, groundY + BLOOD_DECAL_Y, position.z);
     decal.mesh.rotation.z = Math.random() * Math.PI * 2; // randomized per instance so pools don't look identical
     const size = BLOOD_DECAL_MIN_SIZE + Math.random() * (BLOOD_DECAL_MAX_SIZE - BLOOD_DECAL_MIN_SIZE);
     decal.mesh.scale.set(size, size, 1);
@@ -12342,6 +12873,17 @@
     return null;
   }
 
+  function isAmmoPickupReachableThroughBarricade(player, pickup) {
+    if (!barricades || !isCampusMap) return false;
+    for (const b of barricades) {
+      const playerDistance = Math.hypot(player.camera.position.x - b.center.x, player.camera.position.z - b.center.z);
+      if (playerDistance > AMMO_PICKUP_BARRICADE_PLAYER_RANGE) continue;
+      const boxDistance = Math.hypot(pickup.mesh.position.x - b.center.x, pickup.mesh.position.z - b.center.z);
+      if (boxDistance <= AMMO_PICKUP_BARRICADE_BOX_RANGE) return true;
+    }
+    return false;
+  }
+
   function updateAmmoPickups(deltaSeconds) {
     // Was hardcoded to bare `camera`/players[0] only -- P2 could never
     // collect an ammo pickup no matter how close they stood to it. Now
@@ -12363,7 +12905,7 @@
 
         const dx = player.camera.position.x - pickup.mesh.position.x;
         const dz = player.camera.position.z - pickup.mesh.position.z;
-        if (Math.hypot(dx, dz) >= AMMO_PICKUP_COLLECT_DISTANCE) continue;
+        if (Math.hypot(dx, dz) >= AMMO_PICKUP_COLLECT_DISTANCE && !isAmmoPickupReachableThroughBarricade(player, pickup)) continue;
 
         const targetSlot = findAmmoPickupTargetSlot(player);
         if (!targetSlot) continue; // neither slot has a gun to give it to -- leave it on the ground rather than silently discarding it
@@ -13050,8 +13592,8 @@
       category: "healing",
       icon: "\u{1FA79}",
       maxStack: null,
-      healAmount: BANDAGE_HEAL_AMOUNT,
-      description: "Heals 15 Health",
+      get healAmount() { return bandageHealAmount(); }, // depends on the difficulty
+      get description() { return `Heals ${bandageHealAmount()} Health`; },
     },
     medkit: {
       id: "medkit",
@@ -13207,7 +13749,7 @@
     {
       id: "bandage",
       displayName: "Bandage",
-      description: "A medical bandage. Restores 15 HP.",
+      get description() { return `A medical bandage. Restores ${bandageHealAmount()} HP.`; },
       resultItemId: "bandages",
       resultQuantity: 1,
       cost: [{ itemId: "cloth", quantity: 3 }],
@@ -13498,24 +14040,27 @@
       skillTreeBuilt: false,
       tooltip: document.getElementById("inventory-tooltip-p1"),
     },
-    {
-      panel: document.getElementById("inventory-panel-p2"),
-      grid: document.getElementById("inventory-grid-p2"),
-      cursor: document.getElementById("inventory-cursor-p2"),
-      tabButtons: document.querySelectorAll('#inventory-panel-p2 .inventory-tab-button'),
-      tabContents: {
-        inventory: document.querySelector('#inventory-panel-p2 [data-tab-content="inventory"]'),
-        crafting: document.querySelector('#inventory-panel-p2 [data-tab-content="crafting"]'),
-        skills: document.querySelector('#inventory-panel-p2 [data-tab-content="skills"]'),
-      },
-      craftingList: document.getElementById("crafting-recipe-list-p2"),
-      craftingInfo: document.getElementById("crafting-info-p2"),
-      skillPointsValue: document.querySelector('#inventory-panel-p2 .skill-points-value'),
-      skillTreeViewport: document.querySelector('#inventory-panel-p2 .skill-tree-viewport'),
-      skillTreeLayer: document.querySelector('#inventory-panel-p2 .skill-tree-layer'),
-      skillTreeBuilt: false,
-      tooltip: document.getElementById("inventory-tooltip-p2"),
-    },
+    ...[2, 3, 4].map((n) => {
+      const panelSelector = `#inventory-panel-p${n}`;
+      return {
+        panel: document.getElementById(`inventory-panel-p${n}`),
+        grid: document.getElementById(`inventory-grid-p${n}`),
+        cursor: document.getElementById(`inventory-cursor-p${n}`),
+        tabButtons: document.querySelectorAll(`${panelSelector} .inventory-tab-button`),
+        tabContents: {
+          inventory: document.querySelector(`${panelSelector} [data-tab-content="inventory"]`),
+          crafting: document.querySelector(`${panelSelector} [data-tab-content="crafting"]`),
+          skills: document.querySelector(`${panelSelector} [data-tab-content="skills"]`),
+        },
+        craftingList: document.getElementById(`crafting-recipe-list-p${n}`),
+        craftingInfo: document.getElementById(`crafting-info-p${n}`),
+        skillPointsValue: document.querySelector(`${panelSelector} .skill-points-value`),
+        skillTreeViewport: document.querySelector(`${panelSelector} .skill-tree-viewport`),
+        skillTreeLayer: document.querySelector(`${panelSelector} .skill-tree-layer`),
+        skillTreeBuilt: false,
+        tooltip: document.getElementById(`inventory-tooltip-p${n}`),
+      };
+    }),
   ];
   function inventoryElsFor(player) {
     return inventoryEls[players.indexOf(player)];
@@ -13661,7 +14206,8 @@
   }
 
   // Same tooltip element/placement as an item's, over a skill tree node:
-  // name, description, then a status line (cost / requirement / unlocked).
+  // name, description, "SP Cost: X", then a status line (requirement /
+  // unlocked) when there's anything to add.
   function showSkillNodeTooltip(player, node) {
     const els = inventoryElsFor(player);
     const nodeEl = els.skillTreeLayer.querySelector('[data-node-id="' + node.id + '"]');
@@ -13677,6 +14223,16 @@
       descEl.textContent = node.description;
       els.tooltip.appendChild(descEl);
     }
+    const cost = getSkillCost(node);
+    const costEl = document.createElement("div");
+    costEl.className = "inventory-tooltip-cost";
+    costEl.textContent = "SP Cost: ";
+    const costValueEl = document.createElement("span");
+    costValueEl.className = "inventory-tooltip-cost-value";
+    costValueEl.textContent = cost;
+    costValueEl.style.color = SKILL_COST_COLORS[cost] ?? SKILL_COST_COLORS[2];
+    costEl.appendChild(costValueEl);
+    els.tooltip.appendChild(costEl);
     const statusEl = document.createElement("div");
     statusEl.className = "inventory-tooltip-status";
     if (state === "unlocked") statusEl.textContent = "Unlocked";
@@ -13690,8 +14246,7 @@
         "Requires " + getSkillParentIds(node).map((id) => SKILL_TREE_NODES_BY_ID[id].name)
           .join(node.parentsRequired === "any" ? " or " : " and ");
     }
-    else statusEl.textContent = "Cost: " + getSkillCost(node) + (getSkillCost(node) === 1 ? " Skill Point" : " Skill Points");
-    els.tooltip.appendChild(statusEl);
+    if (statusEl.textContent) els.tooltip.appendChild(statusEl); // available: the SP Cost line above already says everything
 
     const rect = nodeEl.getBoundingClientRect();
     els.tooltip.style.left = rect.left + rect.width / 2 + "px";
@@ -13870,6 +14425,7 @@
   // Turrets tree: its own column right of Health (one node for now; room
   // below it for upgrades).
   const SKILL_TURRET_X = SKILL_HEALTH_X + SKILL_NODE_SPACING_X * 1.2;
+  const SKILL_AMMO_X = SKILL_TURRET_X + SKILL_NODE_SPACING_X;
   const SKILL_TREE_NODES = [
     {
       id: "run_24_min_5k", name: "22 Minute 5k", tier: 1, position: { x: SKILL_5K_X, y: 0 }, parentId: null,
@@ -13979,12 +14535,25 @@
     },
     // TURRETS tree.
     {
-      id: "basic_turret", name: "Basic Turret", tier: 1, position: { x: SKILL_TURRET_X, y: 0 }, parentId: null, cost: 2,
+      id: "basic_turret", name: "Basic Turret Recipe", tier: 1, position: { x: SKILL_TURRET_X, y: 0 }, parentId: null, cost: 2,
       description: "Turrets: unlocks crafting the Basic Turret", effect: { unlocksRecipeId: "basic_turret" },
+    },
+    // AMMO tree: its own column right of Turrets. Each node's
+    // ammoSaveChance is a per-shot chance the round isn't used up -- the
+    // best unlocked one applies, they don't stack (see getAmmoSaveChance).
+    {
+      id: "ammo_conservation_1", name: "Ammo Conservation I", tier: 1, position: { x: SKILL_AMMO_X, y: 0 }, parentId: null,
+      description: "10% Chance to Not Consume Ammo", effect: { ammoSaveChance: 0.1 },
+    },
+    {
+      id: "ammo_conservation_2", name: "Ammo Conservation II", tier: 2, position: { x: SKILL_AMMO_X, y: SKILL_NODE_SPACING_Y }, parentId: "ammo_conservation_1",
+      description: "20% Chance to Not Consume Ammo", effect: { ammoSaveChance: 0.2 },
     },
   ];
   const SKILL_TREE_NODES_BY_ID = Object.fromEntries(SKILL_TREE_NODES.map((n) => [n.id, n]));
   const SKILL_UNLOCK_COST = 1; // skill points per node, unless the node has its own `cost`
+  // Tooltip color for each cost's number (anything higher falls back to 2's).
+  const SKILL_COST_COLORS = { 1: "#3ee8e0", 2: "#ff7ac8" }; // aqua, pink
   const getSkillCost = (node) => (node.cost !== undefined ? node.cost : SKILL_UNLOCK_COST);
 
   // A node has either a single `parentId` (null for a root) or, when it
@@ -14098,6 +14667,17 @@
       if (effect && effect.freeSlides) return true;
     }
     return false;
+  }
+
+  // Ammo Conservation: chance a shot doesn't use up its round (see
+  // tryFire). Highest unlocked chance wins rather than stacking.
+  function getAmmoSaveChance(player) {
+    let chance = 0;
+    for (const id of player.unlockedSkillIds) {
+      const effect = SKILL_TREE_NODES_BY_ID[id].effect;
+      if (effect && effect.ammoSaveChance) chance = Math.max(chance, effect.ammoSaveChance);
+    }
+    return chance;
   }
 
   // One point per player for every wave cleared (see updateWaveManager).
@@ -14320,17 +14900,11 @@
   // physical mouse drag can't drop into the other half's panel either)
   // and the controller-driven virtual cursor.
   function clampCursorToPlayerHalf(player, x, y) {
-    const clampedX = Math.max(0, Math.min(window.innerWidth, x));
-    const playerIndex = players.indexOf(player);
-    const usesFullHeight = !isCoopMatchActive || coopFullscreenSurvivorIndex === playerIndex;
-    if (usesFullHeight) {
-      return { x: clampedX, y: Math.max(0, Math.min(window.innerHeight, y)) };
-    }
-    const halfHeight = window.innerHeight / 2;
-    const isTopHalf = playerIndex === 0;
-    const minY = isTopHalf ? 0 : halfHeight;
-    const maxY = isTopHalf ? halfHeight : window.innerHeight;
-    return { x: clampedX, y: Math.max(minY, Math.min(maxY, y)) };
+    const rect = getPlayerViewportRect(players.indexOf(player)); // a quadrant in a 4-player match
+    return {
+      x: Math.max(rect.x, Math.min(rect.x + rect.width, x)),
+      y: Math.max(rect.y, Math.min(rect.y + rect.height, y)),
+    };
   }
 
   // Moves the custom cursor dot to wherever player.cursor currently is --
@@ -14469,8 +15043,8 @@
   document.querySelectorAll(".inventory-tab-button").forEach((el) => {
     el.addEventListener("click", function (event) {
       event.stopPropagation();
-      const player = players[el.dataset.side === "p1" ? 0 : 1];
-      setInventoryActiveTab(player, el.dataset.tab);
+      const player = players[Number(el.dataset.side.slice(1)) - 1];
+      if (player) setInventoryActiveTab(player, el.dataset.tab);
     });
   });
 
@@ -14650,7 +15224,7 @@
   }
 
   const crosshairEl = document.getElementById("crosshair");
-  const coopCrosshairEls = [document.getElementById("crosshair-p1"), document.getElementById("crosshair-p2")];
+  const coopCrosshairEls = [1, 2, 3, 4].map((n) => document.getElementById(`crosshair-p${n}`));
 
   // Hides the real OS cursor everywhere the instant either player's
   // inventory is open (explicit request: replaced entirely by the custom
@@ -14727,11 +15301,9 @@
       // Seeds the cursor at the center of wherever this player's own
       // view actually is, rather than leaving it at (0, 0) or wherever
       // it last was, the first time this player's inventory opens.
-      const usesFullHeight = !isCoopMatchActive || coopFullscreenSurvivorIndex === playerIndex;
-      const halfHeight = usesFullHeight ? window.innerHeight : window.innerHeight / 2;
-      const topOffset = usesFullHeight || playerIndex === 0 ? 0 : window.innerHeight / 2;
-      player.cursor.x = window.innerWidth / 2;
-      player.cursor.y = topOffset + halfHeight / 2;
+      const viewRect = getPlayerViewportRect(playerIndex);
+      player.cursor.x = viewRect.x + viewRect.width / 2;
+      player.cursor.y = viewRect.y + viewRect.height / 2;
       updateInventoryCursorEl(player);
       if (playerNeedsPointerLock(player)) {
         suppressNextPauseOnUnlock = true;
@@ -14973,6 +15545,7 @@
     // singleplayer-shaped death screen (with its Restart/Main Menu
     // buttons) actually show.
     if (isCoopMatchActive && !players.every((p) => p.isDead)) {
+      if (isThreePlusMatch()) startQuadSpectating(players.indexOf(player));
       coopSpectatorScreenEls[players.indexOf(player)].classList.add("visible");
       setCursorHidden(false); // the "Full Screen" prompt needs a real, visible mouse cursor to click, same reasoning as the singleplayer death screen below
       return;
@@ -14983,8 +15556,7 @@
     // Co-op, last player down: the full death screen replaces the first
     // player's own half-screen spectator prompt instead of stacking on
     // top of it (explicit request: only one death screen).
-    coopSpectatorScreenEls[0].classList.remove("visible");
-    coopSpectatorScreenEls[1].classList.remove("visible");
+    coopSpectatorScreenEls.forEach((el) => el.classList.remove("visible"));
     deathScreenEl.classList.add("visible");
     document.exitPointerLock();
     setCursorHidden(false); // Restart/Main Menu need a real, visible mouse cursor to click
@@ -14998,6 +15570,53 @@
   // freeze logic to know whether a controller (not just pointer lock)
   // can trigger the shared pause.
   let isCoopMatchActive = false;
+
+  // Player 1's input scheme for the co-op match that's live right now --
+  // copied from whichever setup screen started it (coopSetup for 2
+  // players, quadSetup for 4), so the pause/pointer-lock logic below
+  // doesn't care which one that was.
+  let matchP1Scheme = "keyboard";
+
+  // True while the live co-op match is a 3- or 4-player one (the roster
+  // has grown past two -- see startQuadMatch). Per-player spectating keys
+  // off this; a 2-player match keeps its top/bottom halves and "Full
+  // Screen" survivor mode.
+  function isThreePlusMatch() {
+    return isCoopMatchActive && players.length >= 3;
+  }
+
+  // Where a player's own view sits on screen, in CSS pixels from the
+  // top-left: the whole window in singleplayer (or for a 2-player
+  // "Full Screen" survivor), top/bottom half in a 2-player match, and a
+  // quadrant in a 4-player one (P1 top-left, P2 top-right, P3
+  // bottom-left, P4 bottom-right). A 3-player match gives P1 the whole
+  // top half (like 2 players) and P2/P3 the bottom-left/bottom-right
+  // quadrants. Rounded so the views tile the canvas exactly. Shared by renderFrame, the camera aspects and
+  // the inventory cursor's clamping.
+  function getPlayerViewportRect(playerIndex) {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    if (!isCoopMatchActive || coopFullscreenSurvivorIndex === playerIndex) {
+      return { x: 0, y: 0, width, height };
+    }
+    const topHeight = Math.ceil(height / 2);
+    if (!isThreePlusMatch() || (players.length === 3 && playerIndex === 0)) {
+      return playerIndex === 0
+        ? { x: 0, y: 0, width, height: topHeight }
+        : { x: 0, y: topHeight, width, height: height - topHeight };
+    }
+    // Quadrant 0-3 (TL, TR, BL, BR); with 3 players P2/P3 take 2/3.
+    const quadrant = players.length === 3 ? playerIndex + 1 : playerIndex;
+    const leftWidth = Math.ceil(width / 2);
+    const isLeft = quadrant % 2 === 0;
+    const isTop = quadrant < 2;
+    return {
+      x: isLeft ? 0 : leftWidth,
+      y: isTop ? 0 : topHeight,
+      width: isLeft ? leftWidth : width - leftWidth,
+      height: isTop ? topHeight : height - topHeight,
+    };
+  }
 
   // null while both players are alive (normal split-screen) or outside
   // co-op entirely; 0 or 1 once one player has died and their still-alive
@@ -15046,14 +15665,14 @@
       // pollGenericMenuNav already covers every pause-menu button via a
       // controller's own Square button, so nothing needs the cursor
       // popping up on top of pure controller play just because it paused.
-      if (coopSetup.p1Scheme === "keyboard") setCursorHidden(false);
+      if (matchP1Scheme === "keyboard") setCursorHidden(false);
     } else {
       overlay.classList.add("hidden");
       // Mirrors the show above -- re-hides it the instant play actually
       // resumes, for the same controller-driven case.
       setCursorHidden(true);
       if (
-        coopSetup.p1Scheme === "keyboard" &&
+        matchP1Scheme === "keyboard" &&
         document.pointerLockElement !== canvas &&
         !players[0].isDead &&
         !(options && options.reacquiringPointerLock)
@@ -15222,6 +15841,7 @@
     player.verticalVelocity = 0;
     player.isGrounded = true;
     player.jumpOffset = 0;
+    player.fallPeakY = null;
     player.currentEyeHeight = EYE_HEIGHT;
     player.velocity.set(0, 0, 0);
     player.bruteKnockbackVelocity.set(0, 0, 0);
@@ -15300,11 +15920,14 @@
     waveSpawnStaggerDelay = 0;
     waveGreenSpawnTimes = [];
     waveGreenSpawnedCount = 0;
+    waveGreenDeferredCount = 0;
+    waveGreenDeferredThresholds = [];
     waveSpawningElapsed = 0;
     waveBruteSpawnTimes = [];
     waveBruteSpawnedCount = 0;
     waveBossSpawnTimes = [];
     waveBossSpawnedCount = 0;
+    waveGreenBossHealthThresholds = [];
     updateWaveHudUI();
   }
 
@@ -15324,8 +15947,20 @@
     setCursorHidden(false); // back to the title screen, which always wants a real, visible cursor -- startSingleplayerGame re-hides it afterward for its own controller branch
     coopFullscreenSurvivorIndex = null;
     document.body.classList.remove("coop-spectator-fullscreen", "coop-spectator-fullscreen-p1", "coop-spectator-fullscreen-p2");
-    coopSpectatorScreenEls[0].classList.remove("visible");
-    coopSpectatorScreenEls[1].classList.remove("visible");
+    document.body.classList.remove("quad-mode", "trio-mode", "spectating-p1", "spectating-p2", "spectating-p3", "spectating-p4");
+    coopSpectatorScreenEls.forEach((el) => el.classList.remove("visible"));
+    // A 3/4-player match ending: Players 3/4 leave the roster (back to
+    // [P1, P2] -- see allPlayers), with their inventory panels closed and
+    // bodies/guns hidden so nothing of theirs lingers in the next game.
+    for (const extra of players.slice(2)) {
+      setInventoryOpen(extra, false);
+      resetPlayerSkills(extra);
+      extra.viewModelRoot.visible = false;
+      extra.human.root.visible = false;
+      extra.isDead = false;
+      extra.spectateIndex = null;
+    }
+    players.length = 2;
     updateCameraAspectsForRenderMode(); // restores players[0].camera's aspect to full-window -- a just-ended co-op match leaves it set to half-height's (or the fullscreen survivor's) much wider aspect otherwise
     document.body.classList.remove("coop-mode"); // switches the HUD back to the singleplayer elements -- see hudRefsFor
     deathScreenEl.classList.remove("visible");
@@ -15526,7 +16161,7 @@
       // A both-controller match never involves pointer lock at all (see
       // startCoopMatch) -- requesting it here would just grab the OS
       // mouse cursor for no reason.
-      if (coopSetup.p1Scheme === "controller") return;
+      if (matchP1Scheme === "controller") return;
     } else if (!playerNeedsPointerLock(players[0])) {
       // A controller-driven singleplayer session -- same reasoning as
       // co-op's own controller case just above, no pointer lock to
@@ -15799,8 +16434,11 @@
     // reapplied from the still-live coopSetup) instead of just falling
     // back to the singleplayer branch.
     const wasCoopMatch = isCoopMatchActive;
+    const wasQuadMatch = isThreePlusMatch(); // same idea for a 3/4-player match -- restart it from the still-live quadSetup
     resetGame();
-    if (wasCoopMatch) {
+    if (wasQuadMatch) {
+      startQuadMatch();
+    } else if (wasCoopMatch) {
       startCoopMatch();
     } else if (playerNeedsPointerLock(players[0])) {
       canvas.requestPointerLock();
@@ -15832,18 +16470,73 @@
     updateCameraAspectsForRenderMode(); // the survivor's camera now needs the full window's aspect, not their half's
   }
 
-  const coopSpectatorFullscreenButtonEls = [
-    document.getElementById("coop-spectator-fullscreen-button-p1"),
-    document.getElementById("coop-spectator-fullscreen-button-p2"),
-  ];
-  coopSpectatorFullscreenButtonEls[0].addEventListener("click", function (event) {
-    event.stopPropagation();
-    enterCoopSpectatorFullscreen(1); // shown on P1's death screen -- P2 is the one still alive
+  const coopSpectatorFullscreenButtonEls = [1, 2, 3, 4].map((n) => document.getElementById(`coop-spectator-fullscreen-button-p${n}`));
+  coopSpectatorFullscreenButtonEls.forEach((el, deadIndex) => {
+    el.addEventListener("click", function (event) {
+      event.stopPropagation();
+      confirmCoopSpectatorPrompt(deadIndex);
+    });
   });
-  coopSpectatorFullscreenButtonEls[1].addEventListener("click", function (event) {
-    event.stopPropagation();
-    enterCoopSpectatorFullscreen(0); // shown on P2's death screen -- P1 is the one still alive
-  });
+
+  // A dead player's own confirm press (their prompt's button, Triangle,
+  // or Enter for a keyboard+mouse P1): with 2 players that's "Full
+  // Screen" for the one survivor; with 4 it steps to the next living
+  // teammate to watch.
+  function confirmCoopSpectatorPrompt(deadIndex) {
+    if (isThreePlusMatch()) cycleSpectateTarget(deadIndex);
+    else enterCoopSpectatorFullscreen(1 - deadIndex);
+  }
+
+  // ------------------------------------------------------------------
+  // 4-PLAYER SPECTATING: a dead player's quadrant keeps rendering, but
+  // through a living teammate's camera (renderFrame asks
+  // getSpectateViewIndex which camera to draw there), with a small
+  // "YOU DIED / Watching Player N" banner instead of 2-player's
+  // half-covering prompt. No "Full Screen" mode -- the other survivors
+  // still need their own quadrants.
+  // ------------------------------------------------------------------
+  function nextLivingTeammateIndex(deadIndex, fromIndex) {
+    for (let step = 1; step <= players.length; step++) {
+      const candidate = (fromIndex + step) % players.length;
+      if (candidate !== deadIndex && !players[candidate].isDead) return candidate;
+    }
+    return null;
+  }
+
+  function getSpectateViewIndex(index) {
+    const player = players[index];
+    if (!isThreePlusMatch() || !player.isDead || player.spectateIndex == null) return index;
+    return player.spectateIndex;
+  }
+
+  function updateSpectatingLabel(deadIndex) {
+    const target = players[deadIndex].spectateIndex;
+    coopSpectatingLabelEls[deadIndex].textContent = target == null ? "" : `Watching Player ${target + 1}`;
+  }
+
+  function cycleSpectateTarget(deadIndex) {
+    const player = players[deadIndex];
+    const next = nextLivingTeammateIndex(deadIndex, player.spectateIndex == null ? deadIndex : player.spectateIndex);
+    if (next === null || next === player.spectateIndex) return;
+    player.spectateIndex = next;
+    playClip("menu_click_01", { volume: 0.5 });
+    updateSpectatingLabel(deadIndex);
+  }
+
+  // Called from triggerDeath when a 4-player teammate goes down with
+  // someone still alive: they start watching the next living teammate,
+  // and anyone who was already watching THEM moves on too.
+  function startQuadSpectating(deadIndex) {
+    players[deadIndex].spectateIndex = nextLivingTeammateIndex(deadIndex, deadIndex);
+    updateSpectatingLabel(deadIndex);
+    document.body.classList.add(`spectating-p${deadIndex + 1}`);
+    players.forEach((other, otherIndex) => {
+      if (other.isDead && otherIndex !== deadIndex && other.spectateIndex === deadIndex) {
+        other.spectateIndex = nextLivingTeammateIndex(otherIndex, deadIndex);
+        updateSpectatingLabel(otherIndex);
+      }
+    });
+  }
 
   document.addEventListener("pointerlockchange", onPointerLockChange, false);
   document.addEventListener("mousemove", onMouseMove, false);
@@ -15873,12 +16566,16 @@
   document.getElementById("audio-bg-image").src = FACE_TEXTURE_DEFS.austinsface.dataUri;
   document.getElementById("game-settings-bg-image").src = FACE_TEXTURE_DEFS.chasesface.dataUri;
   document.getElementById("coop-setup-bg-image").src = FACE_TEXTURE_DEFS.landersface.dataUri;
+  document.getElementById("quad-setup-bg-image").src = FACE_TEXTURE_DEFS.landersface.dataUri;
 
   const titlePanels = {
     main: document.getElementById("title-main"),
     mode: document.getElementById("title-mode"),
+    "player-count": document.getElementById("title-player-count"),
+    custom: document.getElementById("title-custom"),
     setup: document.getElementById("title-setup"),
     "coop-setup": document.getElementById("title-coop-setup"),
+    "quad-setup": document.getElementById("title-quad-setup"),
   };
 
   function showTitlePanel(view) {
@@ -15902,9 +16599,9 @@
     showTitlePanel("main");
   });
 
-  // Custom is still shown crossed out (see .mode-option-disabled) as a
-  // placeholder for a mode that doesn't exist yet, so clicking it is a
-  // deliberate no-op. Singleplayer's difficulty-setup screen (title-setup)
+  // Custom opens its own menu, which for now only holds the Campus Map
+  // greybox (moved off the title screen's main buttons).
+  // Singleplayer's difficulty-setup screen (title-setup)
   // stays exactly as it was -- Co-op has its own combined setup screen
   // (title-coop-setup) with difficulty selection built into it instead
   // (see #coop-difficulty-options further below, sharing
@@ -15915,9 +16612,38 @@
     showTitlePanel("setup");
   });
 
-  document.querySelector('.mode-option[data-mode="coop"]').addEventListener("click", function () {
+  document.querySelector('.mode-option[data-mode="custom"]').addEventListener("click", function () {
+    showTitlePanel("custom");
+  });
+
+  document.getElementById("custom-back-button").addEventListener("click", function () {
+    showTitlePanel("mode");
+  });
+
+  // Multiplayer goes to a player-count picker first: 2 Players is the
+  // existing co-op setup screen, 3 and 4 Players share their own setup
+  // screen (see 3/4-PLAYER SETUP SCREEN below).
+  document.querySelector('.mode-option[data-mode="multiplayer"]').addEventListener("click", function () {
+    showTitlePanel("player-count");
+  });
+
+  document.querySelector('.mode-option[data-players="2"]').addEventListener("click", function () {
     resetCoopSetup();
     showTitlePanel("coop-setup");
+  });
+
+  document.querySelector('.mode-option[data-players="3"]').addEventListener("click", function () {
+    resetQuadSetup(3);
+    showTitlePanel("quad-setup");
+  });
+
+  document.querySelector('.mode-option[data-players="4"]').addEventListener("click", function () {
+    resetQuadSetup(4);
+    showTitlePanel("quad-setup");
+  });
+
+  document.getElementById("player-count-back-button").addEventListener("click", function () {
+    showTitlePanel("mode");
   });
 
   document.getElementById("title-settings-button").addEventListener("click", function () {
@@ -16293,6 +17019,10 @@
     // reconnecting shows the same face rather than re-randomizing.
     p1FaceKey: null,
     p2FaceKey: null,
+    // Helmet picker (explicit request) -- right stick up/down (W/S on
+    // keyboard+mouse); everyone starts in the paper bag.
+    p1HelmetKey: "bag",
+    p2HelmetKey: "bag",
   };
   const coopReadyButtonWasPressed = { p1: false, p2: false }; // for edge-detecting COOP_READY_BUTTON_INDEX per side
   const coopDifficultyStickWasPastDeadzone = { p1: false, p2: false }; // for edge-detecting the left stick's X axis per side, same idea as coopReadyButtonWasPressed above
@@ -16305,6 +17035,11 @@
   // immediately, same feel as before); timeUntilNextStep then counts down
   // while held to drive the repeat.
   const coopFaceStepState = {
+    p1: { isPastDeadzone: false, direction: 0, timeUntilNextStep: 0 },
+    p2: { isPastDeadzone: false, direction: 0, timeUntilNextStep: 0 },
+  };
+  // Same hold-to-repeat for the helmet picker on the right stick's Y axis.
+  const coopHelmetStepState = {
     p1: { isPastDeadzone: false, direction: 0, timeUntilNextStep: 0 },
     p2: { isPastDeadzone: false, direction: 0, timeUntilNextStep: 0 },
   };
@@ -16339,6 +17074,8 @@
     coopSetup.countdownRemaining = null;
     coopSetup.p1FaceKey = null;
     coopSetup.p2FaceKey = null;
+    coopSetup.p1HelmetKey = "bag";
+    coopSetup.p2HelmetKey = "bag";
     coopReadyButtonWasPressed.p1 = false;
     coopReadyButtonWasPressed.p2 = false;
     document.querySelectorAll("#coop-setup-p1 .coop-scheme-button").forEach((el) => {
@@ -16406,6 +17143,8 @@
     if (p2ModelVisible && !coopSetup.p2FaceKey) coopSetup.p2FaceKey = pickRandomPlayerFaceKey();
     if (coopSetup.p1FaceKey) applyFaceToSetupPreview(p1ModelPreview, coopSetup.p1FaceKey);
     if (coopSetup.p2FaceKey) applyFaceToSetupPreview(p2ModelPreview, coopSetup.p2FaceKey);
+    humanSystem.setHelmet(p1ModelPreview.character, coopSetup.p1HelmetKey);
+    humanSystem.setHelmet(p2ModelPreview.character, coopSetup.p2HelmetKey);
 
     if (coopSetup.countdownRemaining === null) {
       coopEls.countdown.textContent = "";
@@ -16494,6 +17233,14 @@
     cycleSetupFace("p1", event.code === "KeyA" ? -1 : 1);
   });
 
+  // ...and W/S step the helmet (up = previous, down = next, same as the stick).
+  document.addEventListener("keydown", function (event) {
+    if (event.code !== "KeyW" && event.code !== "KeyS") return;
+    if (!titlePanels["coop-setup"].classList.contains("active")) return;
+    if (coopSetup.p1Scheme !== "keyboard") return;
+    cycleSetupHelmet("p1", event.code === "KeyW" ? -1 : 1);
+  });
+
   // Enter confirms the co-op solo-death "Full Screen" prompt for a
   // keyboard+mouse P1 specifically (their death screen shows the Enter
   // icon, not Triangle, for exactly this reason -- see
@@ -16503,13 +17250,13 @@
   document.addEventListener("keydown", function (event) {
     if (event.code !== "Enter") return;
     if (!isCoopMatchActive || coopFullscreenSurvivorIndex !== null) return;
-    if (coopSetup.p1Scheme !== "keyboard" || !players[0].isDead) return;
+    if (matchP1Scheme !== "keyboard" || !players[0].isDead) return;
     if (!coopSpectatorScreenEls[0].classList.contains("visible")) return;
-    enterCoopSpectatorFullscreen(1);
+    confirmCoopSpectatorPrompt(0);
   });
 
   document.getElementById("coop-setup-back-button").addEventListener("click", function () {
-    showTitlePanel("mode");
+    showTitlePanel("player-count");
   });
 
   // Un-readies and un-assigns a side immediately if its gamepad
@@ -16688,6 +17435,20 @@
     updateCoopSetupUI();
   }
 
+  // Steps the given side's helmet (explicit request: paper bag, bucket,
+  // cardboard box, traffic cone -- see HELMETS in player-model.js), looping
+  // at either end. Only once that side's model is showing.
+  function cycleSetupHelmet(side, direction) {
+    if (!(side === "p1" ? coopSetup.p1FaceKey : coopSetup.p2FaceKey)) return;
+    const keys = humanSystem.helmetKeys;
+    const current = side === "p1" ? coopSetup.p1HelmetKey : coopSetup.p2HelmetKey;
+    const next = keys[(keys.indexOf(current) + direction + keys.length) % keys.length];
+    if (side === "p1") coopSetup.p1HelmetKey = next;
+    else coopSetup.p2HelmetKey = next;
+    playClip("menu_click_01", { volume: 0.5 }); // same click as the face picker
+    updateCoopSetupUI();
+  }
+
   // Right-stick (LOOK, not move -- explicit request: "the joystick that
   // currently moves the camera angle") left/right cycles that side's
   // face selection, mirroring checkCoopDifficultyStep's own left-stick
@@ -16706,6 +17467,7 @@
     const state = coopFaceStepState[side];
     if (!usesController || gamepadIndex === null) {
       state.isPastDeadzone = false;
+      coopHelmetStepState[side].isPastDeadzone = false;
       return;
     }
 
@@ -16713,18 +17475,32 @@
     const pad = pads[gamepadIndex];
     if (!pad) {
       state.isPastDeadzone = false;
+      coopHelmetStepState[side].isPastDeadzone = false;
       return;
     }
 
+    // Up/down on the same stick steps the helmet (explicit request). Only
+    // the axis it's pushed further along counts, so a diagonal push never
+    // steps both at once.
     const stickX = pad.axes[GAMEPAD_AXIS_LOOK_X] || 0;
-    const isPastDeadzone = Math.abs(stickX) > GAMEPAD_STICK_DEADZONE;
-    const direction = stickX > 0 ? 1 : -1;
+    const stickY = pad.axes[GAMEPAD_AXIS_LOOK_Y] || 0;
+    const horizontal = Math.abs(stickX) >= Math.abs(stickY);
+    stepHeldStickAxis(coopHelmetStepState[side], horizontal ? 0 : stickY, deltaSeconds, (dir) => cycleSetupHelmet(side, dir)); // down = next
+    stepHeldStickAxis(state, horizontal ? stickX : 0, deltaSeconds, (dir) => cycleSetupFace(side, dir));
+  }
+
+  // One stick axis driving a list picker: steps once on the initial push,
+  // then auto-repeats while held (FACE_STEP_REPEAT_*); `state` is one side's
+  // entry in coopFaceStepState / coopHelmetStepState.
+  function stepHeldStickAxis(state, value, deltaSeconds, step) {
+    const isPastDeadzone = Math.abs(value) > GAMEPAD_STICK_DEADZONE;
+    const direction = value > 0 ? 1 : -1;
 
     if (isPastDeadzone && !state.isPastDeadzone) {
       // Fresh push -- steps immediately (identical to the old purely
       // edge-triggered feel), then arms the longer initial delay before
       // auto-repeat kicks in.
-      cycleSetupFace(side, direction);
+      step(direction);
       state.direction = direction;
       state.timeUntilNextStep = FACE_STEP_REPEAT_INITIAL_DELAY;
     } else if (isPastDeadzone && direction !== state.direction) {
@@ -16732,7 +17508,7 @@
       // restarts the initial delay, rather than instantly reversing at the
       // faster repeat rate (same "a fresh push always resets the delay"
       // reasoning as the branch above).
-      cycleSetupFace(side, direction);
+      step(direction);
       state.direction = direction;
       state.timeUntilNextStep = FACE_STEP_REPEAT_INITIAL_DELAY;
     } else if (isPastDeadzone) {
@@ -16740,7 +17516,7 @@
       // step instead of waiting for a release+re-push.
       state.timeUntilNextStep -= deltaSeconds;
       if (state.timeUntilNextStep <= 0) {
-        cycleSetupFace(side, direction);
+        step(direction);
         state.timeUntilNextStep += FACE_STEP_REPEAT_INTERVAL;
       }
     }
@@ -16794,6 +17570,7 @@
     if (isCoopMatchActive) return;
 
     isCoopMatchActive = true;
+    matchP1Scheme = coopSetup.p1Scheme;
     isSingleplayerMatchActive = false; // should already be false (see its own comment) -- explicit here too since animate() falls back to the singleplayer branch, and its freeze logic, the instant isCoopMatchActive ever goes false again
     isMatchPaused = false;
     document.body.classList.add("coop-mode"); // switches the HUD to the per-half elements -- see hudRefsFor
@@ -16836,6 +17613,8 @@
     // in updateCoopSetupUI, never got a render tick to run).
     setPlayerFace(players[0], coopSetup.p1FaceKey || pickRandomPlayerFaceKey());
     setPlayerFace(players[1], coopSetup.p2FaceKey || pickRandomPlayerFaceKey());
+    humanSystem.setHelmet(players[0].human, coopSetup.p1HelmetKey); // and helmet, the same way
+    humanSystem.setHelmet(players[1].human, coopSetup.p2HelmetKey);
 
     // Spawn offsets are an arbitrary, reasonable default -- not spec'd,
     // just enough that the two players aren't standing exactly on top of
@@ -16894,7 +17673,7 @@
   document.addEventListener("pointerlockerror", function () {
     if (
       isCoopMatchActive &&
-      coopSetup.p1Scheme === "keyboard" &&
+      matchP1Scheme === "keyboard" &&
       document.pointerLockElement !== canvas &&
       !players[0].isDead
     ) {
@@ -16907,7 +17686,7 @@
     document.removeEventListener("keydown", retryCoopPointerLockOnce);
     if (
       isCoopMatchActive &&
-      coopSetup.p1Scheme === "keyboard" &&
+      matchP1Scheme === "keyboard" &&
       document.pointerLockElement !== canvas &&
       !players[0].isDead
     ) {
@@ -17584,8 +18363,23 @@
   // InputSource. players[1]'s gamepad source isn't assigned to a
   // physical gamepad index until startCoopMatch actually starts a match
   // (see its own comment, further below) -- idle/inert until then.
-  const players = [createPlayer(camera, inputSources[0]), createPlayer(player2Camera, createGamepadInputSource())];
-  players[1].viewModelRoot.visible = false; // hidden outside co-op -- see resetGame's own comment
+  //
+  // 4-player split screen: allPlayers holds all four player objects for
+  // the whole session, while `players` is the CURRENT MATCH ROSTER --
+  // [P1, P2] normally (singleplayer only ever drives players[0]; a 2-player
+  // co-op match drives both), and all four only while a 4-player match is
+  // live (see startQuadMatch/resetGame, which grow and shrink it back).
+  // Everything that loops over `players` therefore covers exactly the
+  // people actually playing, with no separate player-count checks.
+  const allPlayers = [createPlayer(camera, inputSources[0]), createPlayer(player2Camera, createGamepadInputSource())];
+  for (let i = 2; i < 4; i++) {
+    const extraCamera = new THREE.PerspectiveCamera(NORMAL_FOV, window.innerWidth / window.innerHeight, 0.1, 1000);
+    extraCamera.position.set(0, EYE_HEIGHT, 0);
+    scene.add(extraCamera);
+    allPlayers.push(createPlayer(extraCamera, createGamepadInputSource()));
+  }
+  const players = allPlayers.slice(0, 2);
+  for (let i = 1; i < allPlayers.length; i++) allPlayers[i].viewModelRoot.visible = false; // hidden outside co-op -- see resetGame's own comment
 
   // Split-screen body: the same humanoid model as the enemies (see
   // buildHumanoidModel), with the same walk/idle animation -- so each
@@ -17599,7 +18393,7 @@
   // explicitly opt into these layers, e.g. hitscan/melee against
   // enemies), and each camera enables the OTHER player's layer on top
   // of its default layer 0.
-  const PLAYER_BODY_LAYER = [1, 2]; // players[0] -> layer 1, players[1] -> layer 2
+  const PLAYER_BODY_LAYER = [1, 2, 5, 6]; // allPlayers[0..3] -- 3/4 are the view-model layers below
   // Co-op player bodies (explicit request: realistic people): a human
   // character from player-model.js -- clothing, hair, curved matte PNG face,
   // human locomotion and a third-person weapon held in both hands -- built
@@ -17635,11 +18429,11 @@
     player.faceKey = faceKey;
   }
 
-  players.forEach((player, index) => {
+  allPlayers.forEach((player, index) => {
     // Every mesh goes on this player's own layer only, so only the OTHER
-    // player's camera sees it (see PLAYER_BODY_LAYER above).
+    // players' cameras see it (see PLAYER_BODY_LAYER above).
     const faceKey = pickRandomPlayerFaceKey();
-    player.appearance = humanSystem.randomAppearance(index > 0 ? players[0].appearance : undefined);
+    player.appearance = humanSystem.randomAppearance(index > 0 ? allPlayers[index - 1].appearance : undefined);
     const human = humanSystem.createCharacter(player.appearance, faceKey, PLAYER_BODY_LAYER[index]);
     human.root.visible = false;
     scene.add(human.root);
@@ -17648,8 +18442,11 @@
     player.bodyRig = { lastHealth: player.health, deadPos: null };
     setPlayerFace(player, faceKey);
   });
-  camera.layers.enable(PLAYER_BODY_LAYER[1]);
-  player2Camera.layers.enable(PLAYER_BODY_LAYER[0]);
+  allPlayers.forEach((player, index) => {
+    allPlayers.forEach((other, otherIndex) => {
+      if (otherIndex !== index) player.camera.layers.enable(PLAYER_BODY_LAYER[otherIndex]);
+    });
+  });
 
   // First-person view models (bug fix, user-reported): the reverse of the
   // bodies above -- each player's gun/fists rig goes on a layer ONLY their
@@ -17658,8 +18455,8 @@
   // them from the very first frame (it's parented to that player's
   // camera, not their body). Layers don't inherit, so every object in
   // the rig is set individually.
-  const VIEW_MODEL_LAYER = [3, 4]; // players[0] -> layer 3, players[1] -> layer 4
-  players.forEach((player, index) => {
+  const VIEW_MODEL_LAYER = [3, 4, 7, 8]; // allPlayers[0..3]
+  allPlayers.forEach((player, index) => {
     player.viewModelRoot.traverse((object) => object.layers.set(VIEW_MODEL_LAYER[index]));
     player.camera.layers.enable(VIEW_MODEL_LAYER[index]);
   });
@@ -17700,7 +18497,10 @@
       humanSystem.setWeapon(human, carrying ? "turret" : def ? def.id : null);
       const slot = getActiveSlot(player);
       const isBladed = player.meleeSwingIsBat || player.meleeSwingIsKatana;
-      const other = players[1 - index];
+      let nearestViewerDistance = Infinity;
+      for (const other of players) {
+        if (other !== player) nearestViewerDistance = Math.min(nearestViewerDistance, Math.hypot(other.camera.position.x - at.x, other.camera.position.z - at.z));
+      }
       const hurt = player.health < rig.lastHealth;
       rig.lastHealth = player.health;
       humanSystem.update(human, deltaSeconds, {
@@ -17724,8 +18524,8 @@
         melee: player.isMeleeSwinging ? { t: Math.min(1, player.meleeSwingElapsed / HUMAN_MELEE_DURATION), fist: player.meleeSwingFist } : null,
         dead: player.isDead,
         hurt,
-        // Only the other player ever sees this body -- LOD by their distance.
-        distance: Math.hypot(other.camera.position.x - at.x, other.camera.position.z - at.z),
+        // Only the other players ever see this body -- LOD by the nearest one.
+        distance: nearestViewerDistance,
       });
     }
   }
@@ -17899,6 +18699,357 @@
       humanSystem.update(p2ModelPreview.character, deltaSeconds, PREVIEW_IDLE_STATE);
       p2ModelPreview.renderer.render(p2ModelPreview.scene, p2ModelPreview.camera);
     }
+  }
+
+  // ------------------------------------------------------------------
+  // 3/4-PLAYER SETUP SCREEN: reached from Multiplayer -> 3 Players or
+  // 4 Players (one screen for both -- the 4th column is simply hidden for
+  // 3, see resetQuadSetup). Same rules as the co-op setup screen above,
+  // generalized to more slots: Player 1 picks Keyboard + Mouse or
+  // Controller, everyone else is always
+  // controller, and every player gets the face (right stick left/right)
+  // and helmet (right stick up/down) pickers plus ready-up. Gamepads are
+  // claimed the same way -- first pad to send input takes the first slot
+  // still waiting (P1 first if they're on controller). Everyone ready
+  // starts the same 5-second countdown as co-op, then startQuadMatch.
+  // ------------------------------------------------------------------
+  const QUAD_PLAYER_COUNT = 4; // most slots the screen has (quadEls/quadSetupInput); quadSetup.slots.length is this visit's player count
+
+  function createQuadSlotState() {
+    return { gamepadIndex: null, ready: false, faceKey: null, helmetKey: "bag" };
+  }
+  function createQuadStickState() {
+    return { isPastDeadzone: false, direction: 0, timeUntilNextStep: 0 };
+  }
+
+  const quadSetup = {
+    p1Scheme: "keyboard", // "keyboard" | "controller" -- P2-P4 are always controller
+    slots: Array.from({ length: QUAD_PLAYER_COUNT }, createQuadSlotState), // one per player this visit (3 or 4)
+    countdownRemaining: null, // null = no countdown running; otherwise seconds left
+  };
+  const quadSetupInput = Array.from({ length: QUAD_PLAYER_COUNT }, () => ({
+    readyWasPressed: false,
+    difficultyStickWasPastDeadzone: false,
+    face: createQuadStickState(),
+    helmet: createQuadStickState(),
+  }));
+
+  const quadEls = Array.from(document.querySelectorAll(".quad-setup-side")).map((sideEl) => ({
+    box: sideEl.querySelector(".quad-setup-box"),
+    icon: sideEl.querySelector(".quad-setup-icon"),
+    readyPrompt: sideEl.querySelector(".quad-setup-ready-prompt"),
+    model: sideEl.querySelector(".quad-setup-model"),
+    modelCanvas: sideEl.querySelector(".quad-setup-model-canvas"),
+  }));
+  const quadStatusEl = document.getElementById("quad-setup-status");
+  const quadSideEls = Array.from(document.querySelectorAll(".quad-setup-side"));
+  const quadHeadingEl = document.getElementById("quad-setup-heading");
+
+  // Four more WebGL contexts, so only built the first time this screen is
+  // actually opened rather than on every launch. P1/P2 wear the same
+  // outfits as their in-game bodies; P3/P4 get their own random ones.
+  let quadModelPreviews = null;
+  function ensureQuadModelPreviews() {
+    if (quadModelPreviews) return;
+    quadModelPreviews = quadEls.map((els, i) => {
+      const appearance = i < players.length ? players[i].appearance : humanSystem.randomAppearance(players[0].appearance);
+      return createSetupModelPreview(els.modelCanvas, appearance);
+    });
+  }
+
+  function quadSlotUsesController(slot) {
+    return slot > 0 || quadSetup.p1Scheme === "controller";
+  }
+
+  // Keyboard+mouse needs no detection; a controller slot only counts once
+  // a gamepad's been claimed for it.
+  function quadSlotConnected(slot) {
+    return !quadSlotUsesController(slot) || quadSetup.slots[slot].gamepadIndex !== null;
+  }
+
+  function resetQuadSetup(playerCount) {
+    ensureQuadModelPreviews();
+    quadSetup.p1Scheme = "keyboard";
+    quadSetup.slots = Array.from({ length: playerCount }, createQuadSlotState);
+    quadSideEls.forEach((el, slot) => el.classList.toggle("hidden", slot >= playerCount));
+    quadHeadingEl.textContent = `${playerCount} Player Setup`;
+    quadSetup.countdownRemaining = null;
+    quadSetupInput.forEach((input) => {
+      input.readyWasPressed = false;
+    });
+    setP1QuadSchemeButtons("keyboard");
+    updateQuadSetupUI();
+  }
+
+  function setP1QuadSchemeButtons(scheme) {
+    document.querySelectorAll(".quad-scheme-button").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.scheme === scheme);
+    });
+  }
+
+  function updateQuadSetupUI() {
+    quadEls.forEach((els, slot) => {
+      const state = quadSetup.slots[slot];
+      if (!state) return; // 4th column on a 3-player visit
+      const usesController = quadSlotUsesController(slot);
+      const connected = quadSlotConnected(slot);
+
+      els.box.classList.toggle("ready", state.ready);
+      els.icon.src = usesController ? CONTROLLER_ICON_DATA_URI : KEYBOARD_MOUSE_ICON_DATA_URI;
+      els.icon.classList.toggle("connected", connected);
+      els.icon.classList.toggle("scheme-keyboard", !usesController);
+      els.readyPrompt.innerHTML = readyPromptHTML(usesController ? "controller" : "keyboard", state.ready);
+      els.readyPrompt.classList.toggle("clickable", !usesController);
+
+      els.model.classList.toggle("hidden", !connected);
+      if (connected && !state.faceKey) state.faceKey = pickRandomPlayerFaceKey();
+      if (quadModelPreviews) {
+        if (state.faceKey) applyFaceToSetupPreview(quadModelPreviews[slot], state.faceKey);
+        humanSystem.setHelmet(quadModelPreviews[slot].character, state.helmetKey);
+      }
+    });
+
+    quadStatusEl.textContent = quadSetup.countdownRemaining === null ? "" : `Starting in ${Math.ceil(quadSetup.countdownRemaining)}...`;
+  }
+
+  // Everyone ready starts the countdown; anyone un-readying (or their
+  // controller disconnecting, or P1 switching scheme) cancels it.
+  function syncQuadCountdown() {
+    const allReady = quadSetup.slots.every((state) => state.ready);
+    if (allReady && quadSetup.countdownRemaining === null) quadSetup.countdownRemaining = COOP_READY_COUNTDOWN_SECONDS;
+    else if (!allReady) quadSetup.countdownRemaining = null;
+  }
+
+  function toggleQuadReady(slot) {
+    const state = quadSetup.slots[slot];
+    state.ready = !state.ready;
+    playClip("ready_up_01", { volume: 0.8 }); // same as co-op's ready up
+    syncQuadCountdown();
+    updateQuadSetupUI();
+  }
+
+  function updateQuadCountdown(deltaSeconds) {
+    if (quadSetup.countdownRemaining === null) return;
+    quadSetup.countdownRemaining -= deltaSeconds;
+    if (quadSetup.countdownRemaining <= 0) {
+      quadSetup.countdownRemaining = null;
+      startQuadMatch();
+      return;
+    }
+    updateQuadSetupUI();
+  }
+
+  // Starts a live 3- or 4-player match (however many slots the setup
+  // screen had) -- startCoopMatch's bigger twin: grows the roster (see
+  // allPlayers), hands each player a real InputSource (P1 keyboard+mouse
+  // or their own gamepad source; everyone else their gamepad source bound
+  // to the pad claimed on the setup screen), resets everyone plus the
+  // shared world, applies each player's picked face/helmet, spawns them
+  // side by side, and hands off to gameplay. body.quad-mode (4 players)
+  // or body.trio-mode (3), on top of coop-mode, lays out the HUD.
+  function startQuadMatch() {
+    if (isCoopMatchActive) return; // never restart a live match -- see startCoopMatch
+
+    const playerCount = quadSetup.slots.length;
+    players.length = 2;
+    players.push(...allPlayers.slice(2, playerCount));
+    isCoopMatchActive = true;
+    matchP1Scheme = quadSetup.p1Scheme;
+    isSingleplayerMatchActive = false;
+    isMatchPaused = false;
+    document.body.classList.add("coop-mode", playerCount === 4 ? "quad-mode" : "trio-mode");
+    showTitlePanel(null); // stops this screen's own polling -- see startCoopMatch's CRITICAL comment
+
+    if (matchP1Scheme === "controller") {
+      player1GamepadInputSource.assignGamepad(quadSetup.slots[0].gamepadIndex);
+      players[0].input = player1GamepadInputSource;
+    } else {
+      players[0].input = inputSources[0];
+    }
+    for (let i = 1; i < players.length; i++) players[i].input.assignGamepad(quadSetup.slots[i].gamepadIndex);
+
+    players.forEach((player) => resetPlayerState(player));
+    resetSharedWorldState();
+
+    players.forEach((player, i) => {
+      const slot = quadSetup.slots[i];
+      setPlayerFace(player, slot.faceKey || pickRandomPlayerFaceKey());
+      humanSystem.setHelmet(player.human, slot.helmetKey);
+      player.spectateIndex = null;
+      player.camera.position.set((i - (players.length - 1) / 2) * 2, EYE_HEIGHT, 0); // side by side, same spacing as co-op's +/-1
+      applyCameraRotation(player);
+      coopSpectatingLabelEls[i].textContent = "";
+      coopSpectatorFullscreenButtonEls[i].innerHTML = `${readyIconHTML(i === 0 ? matchP1Scheme : "controller")}Next Player`;
+    });
+    applySelectedMap();
+    placePlayersAtMapSpawn(players.slice());
+    updateCameraAspectsForRenderMode();
+
+    titleScreenEl.classList.add("hidden");
+    overlay.classList.add("hidden");
+    setCursorHidden(true);
+    if (matchP1Scheme === "keyboard") canvas.requestPointerLock(); // same gesture-window reliance/fallback as startCoopMatch
+  }
+
+  function cycleQuadFace(slot, direction) {
+    const state = quadSetup.slots[slot];
+    if (!state.faceKey) return;
+    state.faceKey = cyclePlayerFaceKey(state.faceKey, direction);
+    playClip("menu_click_01", { volume: 0.5 }); // same as co-op's face picker
+    flashFaceArrow(document.querySelector(`.quad-setup-face-arrow[data-slot="${slot}"][data-dir="${direction}"]`));
+    updateQuadSetupUI();
+  }
+
+  function cycleQuadHelmet(slot, direction) {
+    const state = quadSetup.slots[slot];
+    if (!state.faceKey) return; // only once that player's model is showing
+    const keys = humanSystem.helmetKeys;
+    state.helmetKey = keys[(keys.indexOf(state.helmetKey) + direction + keys.length) % keys.length];
+    playClip("menu_click_01", { volume: 0.5 });
+    updateQuadSetupUI();
+  }
+
+  // Switching P1's scheme un-readies them and forces a fresh controller
+  // detection, same as co-op's own scheme buttons.
+  function setQuadP1Scheme(scheme, gamepadIndex) {
+    const state = quadSetup.slots[0];
+    quadSetup.p1Scheme = scheme;
+    state.gamepadIndex = gamepadIndex;
+    state.ready = false;
+    quadSetup.countdownRemaining = null;
+    setP1QuadSchemeButtons(scheme);
+    updateQuadSetupUI();
+  }
+
+  document.querySelectorAll(".quad-scheme-button").forEach((el) => {
+    el.addEventListener("click", function () {
+      if (el.dataset.scheme === quadSetup.p1Scheme) return;
+      playClip("menu_confirm_01", { volume: 0.42 });
+      setQuadP1Scheme(el.dataset.scheme, null);
+    });
+  });
+
+  quadEls[0].readyPrompt.addEventListener("click", function () {
+    if (quadSetup.p1Scheme === "keyboard") toggleQuadReady(0);
+  });
+
+  // Mouse clicks on the face arrows only ever come from a keyboard+mouse
+  // P1 -- controller players use their right stick instead.
+  document.querySelectorAll(".quad-setup-face-arrow").forEach((el) => {
+    el.addEventListener("click", function (event) {
+      event.stopPropagation();
+      const slot = Number(el.dataset.slot);
+      if (quadSlotUsesController(slot)) return;
+      cycleQuadFace(slot, Number(el.dataset.dir));
+    });
+  });
+
+  // Keyboard+mouse P1: Enter readies up, A/D cycle the face, W/S the helmet.
+  document.addEventListener("keydown", function (event) {
+    if (!titlePanels["quad-setup"].classList.contains("active")) return;
+    if (quadSetup.p1Scheme !== "keyboard") return;
+    if (event.code === "Enter") toggleQuadReady(0);
+    else if (event.code === "KeyA" || event.code === "KeyD") cycleQuadFace(0, event.code === "KeyA" ? -1 : 1);
+    else if (event.code === "KeyW" || event.code === "KeyS") cycleQuadHelmet(0, event.code === "KeyW" ? -1 : 1);
+  });
+
+  document.getElementById("quad-setup-back-button").addEventListener("click", function () {
+    showTitlePanel("player-count");
+  });
+
+  window.addEventListener("gamepaddisconnected", function (event) {
+    const slot = quadSetup.slots.findIndex((state) => state.gamepadIndex === event.gamepad.index);
+    if (slot === -1) return;
+    quadSetup.slots[slot].gamepadIndex = null;
+    quadSetup.slots[slot].ready = false;
+    quadSetup.countdownRemaining = null;
+    updateQuadSetupUI();
+  });
+
+  function padHasInput(pad) {
+    return pad.buttons.some((b) => b.pressed) || pad.axes.some((a) => Math.abs(a) > GAMEPAD_INPUT_DETECT_DEADZONE);
+  }
+
+  // Polled once per animate() frame while this screen is active, same
+  // idea as pollCoopSetupGamepads.
+  function pollQuadSetupGamepads(deltaSeconds) {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+
+    if (pads.some((pad) => pad && padHasInput(pad))) setCursorHidden(true);
+
+    for (const pad of pads) {
+      if (!pad || !padHasInput(pad)) continue;
+      if (quadSetup.slots.some((state) => state.gamepadIndex === pad.index)) continue;
+
+      // P1 on controller claims first; otherwise the first of P2-P4 still
+      // waiting. With P2-P4 all taken, one more controller auto-switches a
+      // keyboard+mouse P1 over to it (same as co-op's second-controller rule).
+      if (quadSetup.p1Scheme === "controller" && quadSetup.slots[0].gamepadIndex === null) {
+        quadSetup.slots[0].gamepadIndex = pad.index;
+        updateQuadSetupUI();
+        continue;
+      }
+      const waitingSlot = quadSetup.slots.findIndex((state, slot) => slot > 0 && state.gamepadIndex === null);
+      if (waitingSlot !== -1) {
+        quadSetup.slots[waitingSlot].gamepadIndex = pad.index;
+        updateQuadSetupUI();
+      } else if (quadSetup.p1Scheme === "keyboard") {
+        setQuadP1Scheme("controller", pad.index);
+      }
+    }
+
+    for (let slot = 0; slot < quadSetup.slots.length; slot++) {
+      pollQuadSlotPad(slot, pads, deltaSeconds);
+    }
+  }
+
+  // One claimed controller's own inputs: Triangle readies up, left stick
+  // left/right steps the shared difficulty, right stick picks face/helmet.
+  function pollQuadSlotPad(slot, pads, deltaSeconds) {
+    const input = quadSetupInput[slot];
+    const gamepadIndex = quadSetup.slots[slot].gamepadIndex;
+    const pad = quadSlotUsesController(slot) && gamepadIndex !== null ? pads[gamepadIndex] : null;
+    if (!pad) {
+      input.face.isPastDeadzone = false;
+      input.helmet.isPastDeadzone = false;
+      return;
+    }
+
+    const readyButton = pad.buttons[COOP_READY_BUTTON_INDEX];
+    const readyIsPressed = !!readyButton && readyButton.pressed;
+    if (readyIsPressed && !input.readyWasPressed) toggleQuadReady(slot);
+    input.readyWasPressed = readyIsPressed;
+
+    const moveX = pad.axes[GAMEPAD_AXIS_MOVE_X] || 0;
+    const moveIsPastDeadzone = Math.abs(moveX) > GAMEPAD_STICK_DEADZONE;
+    if (moveIsPastDeadzone && !input.difficultyStickWasPastDeadzone) stepDifficulty(moveX > 0 ? 1 : -1);
+    input.difficultyStickWasPastDeadzone = moveIsPastDeadzone;
+
+    const lookX = pad.axes[GAMEPAD_AXIS_LOOK_X] || 0;
+    const lookY = pad.axes[GAMEPAD_AXIS_LOOK_Y] || 0;
+    const horizontal = Math.abs(lookX) >= Math.abs(lookY);
+    stepHeldStickAxis(input.helmet, horizontal ? 0 : lookY, deltaSeconds, (dir) => cycleQuadHelmet(slot, dir));
+    stepHeldStickAxis(input.face, horizontal ? lookX : 0, deltaSeconds, (dir) => cycleQuadFace(slot, dir));
+  }
+
+  // Canvas size comes from CSS (vh-based), so the renderer just follows
+  // it whenever the window size changes.
+  function updateQuadSetupModelPreviews(deltaSeconds) {
+    if (!quadModelPreviews) return;
+    quadEls.forEach((els, slot) => {
+      if (slot >= quadSetup.slots.length || els.model.classList.contains("hidden")) return;
+      const preview = quadModelPreviews[slot];
+      const width = els.modelCanvas.clientWidth;
+      const height = els.modelCanvas.clientHeight;
+      if (width !== preview.renderedWidth || height !== preview.renderedHeight) {
+        preview.renderer.setSize(width, height, false);
+        preview.renderedWidth = width;
+        preview.renderedHeight = height;
+      }
+      advanceSetupModelRotation(preview, deltaSeconds);
+      humanSystem.update(preview.character, deltaSeconds, PREVIEW_IDLE_STATE);
+      preview.renderer.render(preview.scene, preview.camera);
+    });
   }
 
   // Player 1's OWN potential gamepad source, for when they pick
@@ -18694,7 +19845,7 @@
       return;
     }
 
-    slot.loadedAmmo -= 1;
+    if (Math.random() >= getAmmoSaveChance(player)) slot.loadedAmmo -= 1;
     if (def.gun.fireCooldown) slot.fireCooldownRemaining = def.gun.fireCooldown;
     if (def.gun.burst) {
       // Queue the rest of the burst, and keep the trigger dead until it's
@@ -18732,7 +19883,7 @@
       applyHipFireSpread(player, raycaster, def.gun.hipSpreadAngle);
     }
 
-    let hits = raycaster.intersectObjects(enemyMeshes, true);
+    let hits = raycastEnemies(raycaster);
     if (isCampusMap) hits = hits.filter((h) => !worldBlocksShot(player.camera.position, h.point));
     hits = filterHitsByBarricades(raycaster, hits);
     if (hits.length > 0) {
@@ -18815,7 +19966,7 @@
     for (let i = 0; i < pellets.count; i++) {
       raycaster.setFromCamera(screenCenter, player.camera);
       applyHipFireSpread(player, raycaster, spreadAngle);
-      let hits = raycaster.intersectObjects(enemyMeshes, true);
+      let hits = raycastEnemies(raycaster);
       let bodyHit = findNearestEnemyBodyHit(raycaster.ray);
       if (isCampusMap) {
         hits = hits.filter((h) => !worldBlocksShot(player.camera.position, h.point));
@@ -19274,7 +20425,7 @@
   function resolveMeleeHit(player, damage, range, isBat) {
     raycaster.setFromCamera(screenCenter, player.camera);
     raycaster.far = range;
-    const hits = raycaster.intersectObjects(enemyMeshes, true);
+    const hits = raycastEnemies(raycaster);
     raycaster.far = Infinity; // restore -- fireWeapon shares this same raycaster
 
     if (hits.length > 0) {
@@ -20244,8 +21395,17 @@
   // the crouch/walk/sprint volume for whichever of those is currently
   // true, then flips the foot -- shared by both the distance-based
   // trigger below and the jump-landing trigger in updateMovement.
+  // Which footstep set a body at (x, z) with its feet at feetY hears: on
+  // the campus, whatever it's standing on (see campusWorld.surfaceAt --
+  // streets, sidewalks, lots, bleachers... are hard); elsewhere, the
+  // building's concrete floor or the grass outside it.
+  function footstepSurfaceAt(x, z, feetY) {
+    if (isCampusMap) return campusWorld.surfaceAt(x, z, feetY);
+    return isInsideBuilding(x, z) ? "concrete" : "grass";
+  }
+
   function playFootstepSound(player, isCrouching) {
-    const surface = isInsideBuilding(player.camera.position.x, player.camera.position.z) ? "concrete" : "grass";
+    const surface = footstepSurfaceAt(player.camera.position.x, player.camera.position.z, (player.campusGroundY || 0) + player.jumpOffset);
     const volumeMap = isCrouching
       ? FOOTSTEP_VOLUME_CROUCH
       : player.isSprinting
@@ -20346,7 +21506,7 @@
     const distanceVolume = distance <= REGULAR_FOOTSTEP_LOUD_DISTANCE
       ? 1
       : 1 - (distance - REGULAR_FOOTSTEP_LOUD_DISTANCE) / (REGULAR_FOOTSTEP_MAX_DISTANCE - REGULAR_FOOTSTEP_LOUD_DISTANCE);
-    const surface = isInsideBuilding(pos.x, pos.z) ? "concrete" : "grass";
+    const surface = footstepSurfaceAt(pos.x, pos.z, enemyState.campusGroundY || 0);
     // Heavier bodies (brute, boss) land a little deeper and harder.
     const heavy = enemyState.boss || enemyState.isBrute;
     playClip(FOOTSTEP_CLIPS[surface][steppingFoot], {
@@ -20370,7 +21530,7 @@
     const distanceVolume = distance <= ENEMY_FOOTSTEP_LOUD_DISTANCE
       ? 1
       : 1 - (distance - ENEMY_FOOTSTEP_LOUD_DISTANCE) / (ENEMY_FOOTSTEP_MAX_DISTANCE - ENEMY_FOOTSTEP_LOUD_DISTANCE);
-    const surface = isInsideBuilding(enemyState.mesh.position.x, enemyState.mesh.position.z) ? "concrete" : "grass";
+    const surface = footstepSurfaceAt(enemyState.mesh.position.x, enemyState.mesh.position.z, enemyState.campusGroundY || 0);
     playClip(FOOTSTEP_CLIPS[surface][steppingFoot], {
       position: enemyState.mesh.position,
       volume: distanceVolume * FOOTSTEP_VOLUME_WALK[surface] * ENEMY_FOOTSTEP_LOUD_VOLUME_MULTIPLIER,
@@ -20600,7 +21760,7 @@
     // see moveWithWallCollision above.
     const preMoveX = player.camera.position.x;
     const preMoveZ = player.camera.position.z;
-    moveWithWallCollision(player.camera.position, player.velocity.x * deltaSeconds, player.velocity.z * deltaSeconds, PLAYER_RADIUS, player.campusGroundY || 0);
+    moveWithWallCollision(player.camera.position, player.velocity.x * deltaSeconds, player.velocity.z * deltaSeconds, PLAYER_RADIUS, (player.campusGroundY || 0) + player.jumpOffset, isPlayerLowForBarricadeGap(player));
     // Measured from the actual post-collision position, not from
     // velocity/deltaSeconds directly -- otherwise holding a movement key
     // while stuck against a wall would keep racking up phantom step
@@ -20617,7 +21777,8 @@
         player.bruteKnockbackVelocity.x * deltaSeconds,
         player.bruteKnockbackVelocity.z * deltaSeconds,
         PLAYER_RADIUS,
-        player.campusGroundY || 0
+        (player.campusGroundY || 0) + player.jumpOffset,
+        isPlayerLowForBarricadeGap(player)
       );
       player.bruteKnockbackVelocity.multiplyScalar(Math.exp(-BRUTE_KNOCKBACK_DECAY_RATE * deltaSeconds));
     } else {
@@ -20629,6 +21790,22 @@
     // unconditionally (see hasControl's own comment) -- a player who
     // opened the inventory mid-jump still falls and lands normally.
     const wasGrounded = player.isGrounded;
+
+    // Campus: stand on whatever's underfoot (a construction-pit step, a
+    // bleacher step reached by stepping up) -- the tiny map is all flat.
+    // A grounded drop no taller than a step (walking down the bleachers)
+    // snaps down; anything bigger, or any drop while airborne, becomes
+    // jumpOffset so the player actually falls instead of teleporting to
+    // the new ground height (explicit bug report: walking off the side of
+    // the bleachers dropped you straight to the bottom).
+    if (isCampusMap) {
+      const feetY = (player.campusGroundY || 0) + player.jumpOffset;
+      const supportY = campusSupportHeight(player.camera.position, PLAYER_RADIUS, feetY);
+      const drop = feetY - supportY;
+      player.jumpOffset = (wasGrounded && drop <= campusWorld.stepUpHeight + 0.01) ? 0 : Math.max(0, drop);
+      player.campusGroundY = supportY;
+    }
+
     player.verticalVelocity += GRAVITY * deltaSeconds;
     player.jumpOffset += player.verticalVelocity * deltaSeconds;
 
@@ -20639,6 +21816,22 @@
     } else {
       player.isGrounded = false;
     }
+
+    // Fall damage: track the highest the feet got while airborne, and on
+    // landing charge FALL_DAMAGE_PER_METER for every meter fallen past
+    // FALL_DAMAGE_SAFE_HEIGHT (a plain jump never hurts). Skipped for a
+    // boss throw, which has its own landing damage below.
+    const absoluteFeetY = (isCampusMap ? player.campusGroundY : 0) + player.jumpOffset;
+    if (!wasGrounded) {
+      player.fallPeakY = Math.max(player.fallPeakY ?? absoluteFeetY, absoluteFeetY);
+      if (player.isGrounded) {
+        const fallHeight = player.fallPeakY - absoluteFeetY;
+        if (fallHeight > FALL_DAMAGE_SAFE_HEIGHT && player.pendingThrowLandingDamage <= 0 && !player.grabbedBy) {
+          takeDamage(player, Math.round((fallHeight - FALL_DAMAGE_SAFE_HEIGHT) * FALL_DAMAGE_PER_METER));
+        }
+      }
+    }
+    if (player.isGrounded) player.fallPeakY = null;
 
     // Boss throw (see BOSS_STATE_UPDATERS.grabbing): damage lands on the
     // first frame back on the ground.
@@ -20659,11 +21852,6 @@
       playFootstepSound(player, isCrouching);
     }
 
-    // Campus: stand on whatever's underfoot (a construction-pit step, a
-    // bleacher step reached by stepping up) -- the tiny map is all flat.
-    if (isCampusMap) {
-      player.campusGroundY = campusSupportHeight(player.camera.position, PLAYER_RADIUS, player.campusGroundY);
-    }
     player.camera.position.y = player.currentEyeHeight + player.jumpOffset + (isCampusMap ? player.campusGroundY : 0);
 
     if (isCampusMap) {
@@ -20772,7 +21960,6 @@
       jumpStart: new THREE.Vector2(),
       slamTarget: new THREE.Vector2(),
       slamMarker: null,
-      hasSpawnedMinions: false, // see BOSS_ENEMY.minionHealthFraction
     };
   }
 
@@ -21050,6 +22237,14 @@
     carried.thrownState = { velocity: new THREE.Vector3(), hasHit: true };
   }
 
+  // Explicit request: brutes never throw at a player who's inside a
+  // building -- they don't start a throw, and one already holding an
+  // enemy sets it back down right where it stands (see
+  // dropIfBruteTargetInside).
+  function isPlayerInside(player) {
+    return !!player && isInsideBuilding(player.camera.position.x, player.camera.position.z);
+  }
+
   function tryStartBruteThrow(enemyState, distanceToTarget, deltaSeconds) {
     const bruteThrow = enemyState.bruteThrow;
     if (bruteThrow.cooldown > 0) return false;
@@ -21057,6 +22252,7 @@
     if (bruteThrow.searchTimer > 0) return false;
     bruteThrow.searchTimer = BRUTE_THROW_SEARCH_INTERVAL;
     if (distanceToTarget <= BRUTE_THROW_MIN_RANGE || distanceToTarget > BRUTE_THROW_MAX_RANGE) return false;
+    if (isPlayerInside(enemyState.targetPlayer)) return false;
     if (!enemyState.hasLineOfSightCached) return false;
 
     let closest = null;
@@ -21102,6 +22298,16 @@
     return true;
   }
 
+  // The target went inside: set the held enemy back down in front of the
+  // brute (a gentle drop, harmless -- like dropCarriedEnemy) and give up
+  // the throw. Returns true if it did (the caller stops there).
+  function dropIfBruteTargetInside(enemyState) {
+    if (!isPlayerInside(enemyState.targetPlayer)) return false;
+    dropCarriedEnemy(enemyState.bruteThrow.carried);
+    finishBruteThrow(enemyState);
+    return true;
+  }
+
   function finishBruteThrow(enemyState) {
     enemyState.bruteThrow.carried = null;
     enemyState.bruteThrow.cooldown = BRUTE_THROW_COOLDOWN;
@@ -21119,6 +22325,7 @@
         finishBruteThrow(enemyState);
         return;
       }
+      if (dropIfBruteTargetInside(enemyState)) return;
       if (dropIfBruteLostSight(enemyState, deltaSeconds)) return;
       turnEnemyToward(enemyState,
         bruteThrow.pickupFrom.x - enemyState.mesh.position.x,
@@ -21149,6 +22356,7 @@
         finishBruteThrow(enemyState);
         return;
       }
+      if (dropIfBruteTargetInside(enemyState)) return;
       if (dropIfBruteLostSight(enemyState, deltaSeconds)) return;
       turnEnemyToward(enemyState,
         target.camera.position.x - enemyState.mesh.position.x,
@@ -21204,7 +22412,8 @@
     const intendedZ = thrown.velocity.z * deltaSeconds;
     const beforeX = mesh.position.x;
     const beforeZ = mesh.position.z;
-    moveWithWallCollision(mesh.position, intendedX, intendedZ, radius);
+    const halfHeight = (ENEMY_SIZE.height / 2) * enemyState.sizeScale;
+    moveWithWallCollision(mesh.position, intendedX, intendedZ, radius, Math.max(0, mesh.position.y - halfHeight));
     const intended = Math.hypot(intendedX, intendedZ);
     if (intended > 0 && Math.hypot(mesh.position.x - beforeX, mesh.position.z - beforeZ) < intended * 0.5) {
       thrown.velocity.x = 0; // smacked into a wall -- drops straight down
@@ -21236,9 +22445,14 @@
       }
     }
 
-    const groundY = (ENEMY_SIZE.height / 2) * enemyState.sizeScale;
-    if (mesh.position.y <= groundY && thrown.velocity.y <= 0) {
-      mesh.position.y = groundY;
+    // Lands on the ground -- or on a bleacher step / roof it came down onto.
+    const feetY = mesh.position.y - halfHeight;
+    const landY = isCampusMap ? campusWorld.supportHeightAt(mesh.position.x, mesh.position.z, radius, Math.max(feetY, 0)) : 0;
+    if (feetY <= landY && thrown.velocity.y <= 0) {
+      mesh.position.y = landY + halfHeight;
+      enemyState.campusGroundY = landY;
+      enemyState.visualGroundY = landY;
+      enemyState.groundFallSpeed = 0;
       mesh.rotation.x = 0;
       enemyState.thrownState = null;
       enemyState.knockbackVelocity.set(0, 0, 0);
@@ -21247,6 +22461,35 @@
       enemyState.losCheckTimer = 0;
       enemyState.hitCooldown = 0.5; // a beat to get back up before it can hit anyone
     }
+  }
+
+  // ENEMY HEIGHT ON THE CAMPUS: campusGroundY is where an enemy's feet
+  // really are (collisions and stepping use it). What's drawn eases toward
+  // it -- quickly up each bleacher step or curb, the same back down a
+  // step, and a real fall (gravity) off anything taller -- so walking up
+  // and down the bleachers is smooth instead of popping step to step.
+  const ENEMY_STEP_EASE_RATE = 14;       // 1/second, exponential ease over a step
+  const ENEMY_FALL_GRAVITY = 20;          // m/s^2, for drops taller than a step
+  const ENEMY_VERTICAL_REACH_M = 1.1;     // hits only land within this height of the enemy's feet (times its size)
+  function easeEnemyGroundY(enemyState, deltaSeconds) {
+    const target = enemyState.campusGroundY || 0;
+    let y = enemyState.visualGroundY ?? target;
+    if (y > target + campusWorld.stepUpHeight + 0.01 || (enemyState.groundFallSpeed || 0) > 0) {
+      enemyState.groundFallSpeed = (enemyState.groundFallSpeed || 0) + ENEMY_FALL_GRAVITY * deltaSeconds;
+      y = Math.max(target, y - enemyState.groundFallSpeed * deltaSeconds);
+      if (y <= target) enemyState.groundFallSpeed = 0;
+    } else {
+      y += (target - y) * Math.min(1, ENEMY_STEP_EASE_RATE * deltaSeconds);
+      if (Math.abs(target - y) < 0.002) y = target;
+    }
+    enemyState.visualGroundY = y;
+    return y;
+  }
+
+  // Where a target stands (a deployed turret sits where it was placed).
+  function targetStandingY(target) {
+    if (target.isTurretTarget) return target.camera.position.y;
+    return isCampusMap ? target.campusGroundY || 0 : 0;
   }
 
   function updateEnemies(deltaSeconds) {
@@ -21314,6 +22557,7 @@
           continue;
         }
       }
+      if (enemyState.carriedBy || enemyState.thrownState) enemyState.contactTime = 0; // not touching anyone -- see ENEMY_CONTACT_ATTACK_DELAY
       if (enemyState.carriedBy) {
         updateEnemyAnimation(enemyState, deltaSeconds, { movedDistance: 0, isWalking: false, sizeScale: enemyState.sizeScale });
         continue;
@@ -21351,6 +22595,11 @@
       // one fixed contact range regardless of its actual size.
       const contactDistance = ENEMY_CONTACT_DISTANCE * enemyState.sizeScale;
       const enemyRadius = (ENEMY_SIZE.width / 2) * enemyState.sizeScale;
+      // Campus: where its feet are (ground, or up on a bleacher step) --
+      // collisions step up from here, and it can only hit what's within
+      // ENEMY_VERTICAL_REACH_M above or below it.
+      const enemyFeetY = isCampusMap ? enemyState.campusGroundY || 0 : 0;
+      const withinReachVertically = Math.abs(targetStandingY(targetPlayer) - enemyFeetY) <= ENEMY_VERTICAL_REACH_M * enemyState.sizeScale;
 
       // Running into an enemy while sliding cancels the slide immediately
       // (and starts its cooldown), independent of the damage-tick timing.
@@ -21423,7 +22672,8 @@
           mesh.position,
           enemyState.knockbackVelocity.x * deltaSeconds,
           enemyState.knockbackVelocity.z * deltaSeconds,
-          enemyRadius
+          enemyRadius,
+          enemyFeetY
         );
         enemyState.knockbackVelocity.multiplyScalar(Math.max(0, 1 - KNOCKBACK_DECAY_RATE * deltaSeconds));
         updateEnemyFootsteps(enemyState, Math.hypot(mesh.position.x - preMoveX, mesh.position.z - preMoveZ));
@@ -21439,7 +22689,8 @@
           mesh.position,
           enemyMoveDir.x * enemyState.speed * deltaSeconds,
           enemyMoveDir.z * enemyState.speed * deltaSeconds,
-          enemyRadius
+          enemyRadius,
+          enemyFeetY
         );
         if (barricade) enemyAttackBarricade(enemyState, barricade, deltaSeconds);
         // Footsteps (every enemy -- see ENEMY FOOTSTEPS) -- same
@@ -21456,8 +22707,8 @@
         // atan2(x, z) of that (already-normalized) direction vector.
         turnEnemyToward(enemyState, enemyMoveDir.x, enemyMoveDir.z, ENEMY_TURN_SPEED * deltaSeconds);
       }
-      if (isCampusMap) enemyState.campusGroundY = campusSupportHeight(mesh.position, enemyRadius, 0);
-      mesh.position.y = (ENEMY_SIZE.height / 2) * enemyState.sizeScale + (isCampusMap ? enemyState.campusGroundY : 0);
+      if (isCampusMap) enemyState.campusGroundY = campusSupportHeight(mesh.position, enemyRadius, enemyFeetY);
+      mesh.position.y = (ENEMY_SIZE.height / 2) * enemyState.sizeScale + (isCampusMap ? easeEnemyGroundY(enemyState, deltaSeconds) : 0);
 
       // Walk only on real chase movement -- being shoved by knockback
       // slides the enemy with its limbs easing back to idle instead.
@@ -21498,11 +22749,14 @@
       // them until they're let go (see takeDamage's own grabbedBy check).
       // Visual only: the zombie winds up as it closes in with its hit
       // nearly ready (the strike itself plays on the damage below).
-      if (distanceToPlayer < contactDistance * 2 && enemyState.hasLineOfSightCached && enemyState.hitCooldown < 0.3 && !targetPlayer.grabbedBy) {
+      if (distanceToPlayer < contactDistance * 2 && withinReachVertically && enemyState.hasLineOfSightCached && enemyState.hitCooldown < 0.3 && !targetPlayer.grabbedBy) {
         zombieSystem.setWindup(enemyState.zombie, true);
       }
 
-      if (distanceToPlayer < contactDistance && enemyState.hasLineOfSightCached && enemyState.hitCooldown <= 0 && !targetPlayer.grabbedBy) {
+      const inContact = distanceToPlayer < contactDistance && withinReachVertically && enemyState.hasLineOfSightCached && !targetPlayer.grabbedBy;
+      enemyState.contactTime = inContact ? enemyState.contactTime + deltaSeconds : 0;
+
+      if (inContact && enemyState.contactTime >= ENEMY_CONTACT_ATTACK_DELAY && enemyState.hitCooldown <= 0) {
         if (enemyState.isGreen) {
           // One contact detonates a green enemy in the player's face for
           // a single big hit instead of the usual repeated-tick melee --
@@ -21535,7 +22789,8 @@
           continue;
         }
 
-        takeDamage(targetPlayer, ENEMY_DAMAGE_PER_HIT);
+        // Players and deployed turrets take the difficulty's contact damage (Normal: 8).
+        takeDamage(targetPlayer, currentDifficulty.enemyContactDamage ?? ENEMY_DAMAGE_PER_HIT);
         zombieSystem.triggerAttack(enemyState.zombie);
 
         // Knockback: shove the player's velocity directly away from the
@@ -21575,7 +22830,7 @@
   let waveSpawnStaggerDelay = 0; // seconds between spawns this wave, computed below so zombies span (count x WAVE_SPAWN_DURATION_MULTIPLIER) seconds start-to-finish
 
   // Fast ("green") enemy schedule for the current wave -- see
-  // computeGreenEnemySpawnTimes above. waveGreenSpawnTimes is sorted
+  // computeGreenEnemySchedule above. waveGreenSpawnTimes is sorted
   // ascending; waveGreenSpawnedCount is how many of them have fired so
   // far, and waveSpawningElapsed is seconds since this wave's spawning
   // period began, kept advancing independent of waveState (see below)
@@ -21584,6 +22839,13 @@
   let waveGreenSpawnTimes = [];
   let waveGreenSpawnedCount = 0;
   let waveSpawningElapsed = 0;
+  // Greens held back until after the spawning period (see
+  // GREEN_DEFERRED_FRACTION): waveGreenDeferredCount is how many are still
+  // waiting, and waveGreenDeferredThresholds (descending, filled in the
+  // moment the wave goes "active") is the enemies-alive count each one
+  // spawns at.
+  let waveGreenDeferredCount = 0;
+  let waveGreenDeferredThresholds = [];
   // Brute enemy schedule for the current wave -- see
   // computeBruteEnemySpawnTimes. Same pattern as the green one above.
   let waveBruteSpawnTimes = [];
@@ -21591,6 +22853,10 @@
   // Boss schedule (see BOSS_ENEMY/computeBossSpawnTimes) -- same pattern.
   let waveBossSpawnTimes = [];
   let waveBossSpawnedCount = 0;
+  // Boss-tied deferred greens (see GREEN_BOSS_TIED_FRACTION): descending
+  // fractions of the boss's max health, one green spawning as each is
+  // crossed. Counted separately from waveGreenDeferredCount.
+  let waveGreenBossHealthThresholds = [];
 
   const waveHudTextEl = document.getElementById("wave-hud-text");
   // Called every unpaused frame from updateWaveManager below, but the
@@ -21651,6 +22917,29 @@
       }
     }
 
+    // Boss-tied deferred greens: one per health threshold the boss has
+    // dropped past, from a random spawn point (not at the boss). Once the
+    // boss is scheduled-and-placed but no longer alive, the rest come at
+    // once so the wave's full green count always spawns.
+    if (waveGreenBossHealthThresholds.length > 0 && waveBossSpawnedCount >= waveBossSpawnTimes.length) {
+      const boss = enemies.find((enemyState) => enemyState.boss && enemyState.health > 0);
+      if (boss) {
+        while (
+          waveGreenBossHealthThresholds.length > 0 &&
+          boss.health <= boss.maxHealth * waveGreenBossHealthThresholds[0]
+        ) {
+          waveGreenBossHealthThresholds.shift();
+          spawnEnemyFromRandomSpawner("green");
+        }
+      } else if (!(isCampusMap && campusSpawner.pendingCount() > 0)) {
+        // (On campus the boss may still be queued in the spawner, not dead.)
+        while (waveGreenBossHealthThresholds.length > 0) {
+          waveGreenBossHealthThresholds.shift();
+          spawnEnemyFromRandomSpawner("green");
+        }
+      }
+    }
+
     if (waveState === "grace") {
       const timerBefore = waveTimer;
       waveTimer -= deltaSeconds;
@@ -21670,24 +22959,28 @@
         // is the wave's full zombie total, so this is the delay for every
         // gap between the wave's N spawns (N - 1 gaps total).
         waveSpawnStaggerDelay = enemiesRemainingToSpawn > 1
-          ? (enemiesRemainingToSpawn * WAVE_SPAWN_DURATION_MULTIPLIER) / (enemiesRemainingToSpawn - 1)
+          ? (enemiesRemainingToSpawn * waveSpawnSecondsPerEnemy()) / (enemiesRemainingToSpawn - 1)
           : 0;
 
-        const spawnPeriodDuration = enemiesRemainingToSpawn * WAVE_SPAWN_DURATION_MULTIPLIER;
-        // A per-difficulty exact count for this wave (the boss wave, so
-        // far) wins over the usual formula -- still spread randomly across
-        // the spawning period like the formula's own waves 5+.
-        const greenCountOverride = currentDifficulty.greenEnemyCountByWave[waveNumber];
-        waveGreenSpawnTimes = greenCountOverride !== undefined
-          ? Array.from({ length: greenCountOverride }, () => Math.random() * spawnPeriodDuration).sort((a, b) => a - b)
-          : computeGreenEnemySpawnTimes(waveNumber + currentDifficulty.greenEnemyWaveShift, spawnPeriodDuration);
-        waveGreenSpawnedCount = 0;
+        const spawnPeriodDuration = enemiesRemainingToSpawn * waveSpawnSecondsPerEnemy();
+        const greenCount = computeGreenEnemyCount(waveNumber + currentDifficulty.greenEnemyWaveShift);
+        const greenSchedule = computeGreenEnemySchedule(greenCount, spawnPeriodDuration);
         // Brutes use the real wave number (no difficulty shift) -- the
         // per-difficulty difference is bruteEnemyStartCount instead.
         waveBruteSpawnTimes = computeBruteEnemySpawnTimes(waveNumber, spawnPeriodDuration);
         waveBruteSpawnedCount = 0;
         waveBossSpawnTimes = computeBossSpawnTimes(waveNumber, spawnPeriodDuration);
         waveBossSpawnedCount = 0;
+        // Boss wave: part of the deferred greens follow the boss's health
+        // instead (see GREEN_BOSS_TIED_FRACTION).
+        const bossTiedGreenCount = waveBossSpawnTimes.length > 0
+          ? Math.round(greenSchedule.deferredCount * GREEN_BOSS_TIED_FRACTION)
+          : 0;
+        waveGreenSpawnTimes = greenSchedule.times;
+        waveGreenSpawnedCount = 0;
+        waveGreenDeferredCount = greenSchedule.deferredCount - bossTiedGreenCount;
+        waveGreenDeferredThresholds = [];
+        waveGreenBossHealthThresholds = computeGreenBossHealthThresholds(bossTiedGreenCount);
         waveSpawningElapsed = 0;
 
         waveTimer = 0; // spawn the wave's first enemy immediately below
@@ -21705,6 +22998,7 @@
         enemiesRemainingToSpawn -= 1;
         if (enemiesRemainingToSpawn <= 0) {
           waveState = "active";
+          waveGreenDeferredThresholds = computeGreenDeferredThresholds(waveGreenDeferredCount, enemies.length);
         } else {
           waveTimer = waveSpawnStaggerDelay;
         }
@@ -21721,10 +23015,23 @@
     // isn't reached again until the following wave finishes spawning),
     // so it's also exactly where the per-difficulty round-clear score
     // bonus belongs -- see the SCORE comment above.
-    // Also wait on any brutes/boss still scheduled, so the wave can't be
-    // declared clear in the gap before one spawns.
+    // Deferred greens: each spawns once the enemies still alive drop to
+    // its threshold (thresholds descend, so check them in order).
+    while (
+      waveGreenDeferredThresholds.length > 0 &&
+      enemies.length <= waveGreenDeferredThresholds[0]
+    ) {
+      waveGreenDeferredThresholds.shift();
+      waveGreenDeferredCount -= 1;
+      spawnEnemyFromRandomSpawner("green");
+    }
+
+    // Also wait on any brutes/boss/deferred greens still scheduled, so the
+    // wave can't be declared clear in the gap before one spawns.
     if (
       enemies.length === 0 &&
+      waveGreenDeferredCount === 0 &&
+      waveGreenBossHealthThresholds.length === 0 &&
       !(isCampusMap && campusSpawner.pendingCount() > 0) &&
       waveBruteSpawnedCount >= waveBruteSpawnTimes.length &&
       waveBossSpawnedCount >= waveBossSpawnTimes.length
@@ -21764,12 +23071,12 @@
       survivorCamera.aspect = width / height;
       survivorCamera.updateProjectionMatrix();
     } else if (isCoopMatchActive) {
-      const topHeight = Math.ceil(height / 2);
-      const bottomHeight = height - topHeight;
-      players[0].camera.aspect = width / topHeight;
-      players[0].camera.updateProjectionMatrix();
-      players[1].camera.aspect = width / bottomHeight;
-      players[1].camera.updateProjectionMatrix();
+      // Each player's own half (2 players) or quadrant (4 players).
+      players.forEach((player, index) => {
+        const rect = getPlayerViewportRect(index);
+        player.camera.aspect = rect.width / rect.height;
+        player.camera.updateProjectionMatrix();
+      });
     } else {
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
@@ -21800,20 +23107,41 @@
 
     const width = window.innerWidth;
     const height = window.innerHeight;
-    const topHeight = Math.ceil(height / 2);
-    const bottomHeight = height - topHeight;
 
     renderer.setScissorTest(true);
 
-    // WebGL viewport/scissor y is measured from the BOTTOM of the canvas,
-    // opposite of CSS/DOM -- so P1's TOP half is the upper y-range here.
-    renderer.setViewport(0, bottomHeight, width, topHeight);
-    renderer.setScissor(0, bottomHeight, width, topHeight);
-    renderer.render(scene, players[0].camera);
-
-    renderer.setViewport(0, 0, width, bottomHeight);
-    renderer.setScissor(0, 0, width, bottomHeight);
-    renderer.render(scene, players[1].camera);
+    // Each player's half (2 players) or quadrant (4 players) -- see
+    // getPlayerViewportRect. A dead 4-player teammate's quadrant shows
+    // whoever they're spectating (see getSpectateViewIndex).
+    players.forEach((player, index) => {
+      const rect = getPlayerViewportRect(index);
+      // WebGL viewport/scissor y is measured from the BOTTOM of the
+      // canvas, opposite of CSS/DOM -- so a top-row view is the upper
+      // y-range here.
+      const glY = height - rect.y - rect.height;
+      renderer.setViewport(rect.x, glY, rect.width, rect.height);
+      renderer.setScissor(rect.x, glY, rect.width, rect.height);
+      // The sun's shadow map doesn't depend on the viewing camera, so
+      // every view after the first reuses the one it drew instead of
+      // rendering every shadow caster again.
+      renderer.shadowMap.autoUpdate = index === 0;
+      // A spectated teammate's camera is shaped for THEIR view -- in a
+      // 3-player match P1's is the wide top half, P2/P3's a quadrant -- so
+      // it's reshaped to this view for the draw and put back after.
+      const viewCamera = players[getSpectateViewIndex(index)].camera;
+      const ownAspect = viewCamera.aspect;
+      const viewAspect = rect.width / rect.height;
+      if (Math.abs(ownAspect - viewAspect) > 0.001) {
+        viewCamera.aspect = viewAspect;
+        viewCamera.updateProjectionMatrix();
+        renderer.render(scene, viewCamera);
+        viewCamera.aspect = ownAspect;
+        viewCamera.updateProjectionMatrix();
+      } else {
+        renderer.render(scene, viewCamera);
+      }
+    });
+    renderer.shadowMap.autoUpdate = true;
 
     renderer.setScissorTest(false);
     // Restore the full-canvas viewport -- otherwise the NEXT
@@ -22009,7 +23337,7 @@
     // check in the per-player loop below handles it instead now, without
     // reaching across into the other player's half of this shared flag.
     const p1NeedsClick =
-      coopSetup.p1Scheme === "keyboard" && document.pointerLockElement !== canvas && !players[0].isInventoryOpen;
+      matchP1Scheme === "keyboard" && document.pointerLockElement !== canvas && !players[0].isInventoryOpen;
     const isFrozen = isMatchPaused || p1NeedsClick;
 
     for (const player of players) {
@@ -22123,8 +23451,8 @@
       if (coopFullscreenSurvivorIndex === null) {
         for (let i = 0; i < players.length; i++) {
           if (players[i].isDead && players[i].input.wasActionJustPressed("switchWeapon")) {
-            enterCoopSpectatorFullscreen(1 - i);
-            break;
+            confirmCoopSpectatorPrompt(i);
+            if (!isThreePlusMatch()) break; // 2 players: going fullscreen ends the prompt for both
           }
         }
       }
@@ -22189,8 +23517,15 @@
       getEls: () => [
         document.getElementById("title-play-button"),
         document.getElementById("title-settings-button"),
-        document.getElementById("title-campus-button"),
         document.getElementById("title-exit-button"),
+      ],
+    },
+    {
+      key: "title-custom",
+      isActive: () => !titleScreenEl.classList.contains("hidden") && titlePanels.custom.classList.contains("active"),
+      getEls: () => [
+        document.getElementById("title-campus-button"),
+        document.getElementById("custom-back-button"),
       ],
     },
     {
@@ -22199,6 +23534,14 @@
       getEls: () => [
         ...document.querySelectorAll("#mode-options .mode-option:not(.mode-option-disabled)"),
         document.getElementById("mode-back-button"),
+      ],
+    },
+    {
+      key: "title-player-count",
+      isActive: () => !titleScreenEl.classList.contains("hidden") && titlePanels["player-count"].classList.contains("active"),
+      getEls: () => [
+        ...document.querySelectorAll("#player-count-options .mode-option:not(.mode-option-disabled)"),
+        document.getElementById("player-count-back-button"),
       ],
     },
     {
@@ -22397,7 +23740,10 @@
   function getControllerBackTarget() {
     if (titlePanels.mode.classList.contains("active")) return document.getElementById("mode-back-button");
     if (titlePanels.setup.classList.contains("active")) return document.getElementById("setup-back-button");
+    if (titlePanels["player-count"].classList.contains("active")) return document.getElementById("player-count-back-button");
+    if (titlePanels.custom.classList.contains("active")) return document.getElementById("custom-back-button");
     if (titlePanels["coop-setup"].classList.contains("active")) return document.getElementById("coop-setup-back-button");
+    if (titlePanels["quad-setup"].classList.contains("active")) return document.getElementById("quad-setup-back-button");
     if (overlayIsVisible("controls")) return controlsBackButtonEl;
     if (overlayIsVisible("settings")) return settingsBackButtonEl;
     if (overlayIsVisible("audio")) return audioBackButtonEl;
@@ -22455,8 +23801,94 @@
   updateWaveHudUI();
   updateScoreUI();
 
+  // ------------------------------------------------------------------
+  // GPU PRE-WARM (performance pass): three.js compiles a shader program
+  // the first time a material/lighting combination is drawn, and uploads
+  // a texture the first time it's used -- each a stall of 10-150 ms that
+  // used to land mid-fight (first zombie, first shot, first time a new
+  // face photo showed up). Instead:
+  //  - every face photo is decoded off the main thread at startup, then
+  //    uploaded a couple per frame while the title screen idles;
+  //  - at the start of each run, one extra frame is drawn with a zombie
+  //    and one of each pooled effect in front of the camera (compiling
+  //    their programs, shadow ones included) after compiling and
+  //    uploading everything else in the scene, hidden weapons included.
+  //    The run's real first frame is drawn over it in the same tick, so
+  //    it's never seen.
+  // ------------------------------------------------------------------
+  const pendingFaceUploads = Object.keys(FACE_TEXTURE_DEFS).map((key) => ({ texture: getFaceMaterial(key).map, decoding: false, decoded: false }));
+
+  function uploadPendingFaceTextures(maxUploads) {
+    let uploads = 0;
+    for (let i = pendingFaceUploads.length - 1; i >= 0 && uploads < maxUploads; i--) {
+      const entry = pendingFaceUploads[i];
+      const image = entry.texture.image;
+      if (!image) continue; // still loading
+      if (!entry.decoding) {
+        entry.decoding = true;
+        const decoded = image.decode ? image.decode() : Promise.resolve();
+        decoded.catch(() => {}).then(() => { entry.decoded = true; });
+        continue;
+      }
+      if (!entry.decoded) continue;
+      renderer.initTexture(entry.texture);
+      pendingFaceUploads.splice(i, 1);
+      uploads++;
+    }
+  }
+
+  const MATERIAL_TEXTURE_SLOTS = ["map", "emissiveMap", "alphaMap", "normalMap", "roughnessMap", "metalnessMap", "aoMap", "bumpMap", "lightMap", "specularMap"];
+  function uploadTextureIfReady(texture) {
+    if (texture && texture.isTexture && !texture.isCubeTexture && texture.image) renderer.initTexture(texture);
+  }
+  function uploadObjectTextures(object) {
+    if (!object.material) return;
+    for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+      for (const slot of MATERIAL_TEXTURE_SLOTS) uploadTextureIfReady(material[slot]);
+      if (material.uniforms) {
+        for (const name in material.uniforms) uploadTextureIfReady(material.uniforms[name] && material.uniforms[name].value);
+      }
+    }
+  }
+
+  const prewarmForward = new THREE.Vector3();
+  function prewarmRendererForRun() {
+    rendererPrewarmPending = false;
+    const cam = players[0].camera;
+    cam.updateMatrixWorld();
+    cam.getWorldDirection(prewarmForward);
+    const ahead = new THREE.Vector3().setFromMatrixPosition(cam.matrixWorld).addScaledVector(prewarmForward, 4);
+    ahead.y = Math.max(0.5, ahead.y - 1);
+
+    const zombie = zombieSystem.acquire();
+    dressZombie(zombie, "normal", "evanface", 1);
+    const zombieHolder = new THREE.Group();
+    zombieHolder.add(zombie.rig);
+    const emitter = acquireParticleBurstEmitter();
+    emitter.geometry.setDrawRange(0, 1);
+    const decal = acquireBloodDecal();
+    const pickup = new THREE.Mesh(ammoPickupGeometry, ammoPickupMaterial);
+    pickup.castShadow = true;
+    const extras = [zombieHolder, emitter.points, decal.mesh, pickup];
+    for (const object of extras) {
+      object.position.copy(ahead);
+      scene.add(object);
+    }
+
+    renderer.compile(scene, cam);
+    scene.traverse(uploadObjectTextures);
+    renderer.render(scene, cam);
+
+    for (const object of extras) scene.remove(object);
+    emitter.points.position.set(0, 0, 0); // pooled emitters draw in world space
+    zombieSystem.release(zombie);
+    releaseParticleBurstEmitter(emitter);
+    releaseBloodDecal(decal);
+  }
+
   function animate() {
     requestAnimationFrame(animate);
+    if (window.__gameTestHooks && window.__gameTestHooks.haltLoop) return; // benchmark drives frames itself
 
     const deltaSeconds = Math.min(clock.getDelta(), 0.1); // clamp large gaps (e.g. tab switch)
 
@@ -22469,6 +23901,12 @@
       pollCoopSetupGamepads(deltaSeconds);
       updateCoopCountdown(deltaSeconds);
       updateCoopSetupModelPreviews(deltaSeconds);
+    }
+
+    if (titlePanels["quad-setup"].classList.contains("active")) {
+      pollQuadSetupGamepads(deltaSeconds);
+      updateQuadCountdown(deltaSeconds);
+      updateQuadSetupModelPreviews(deltaSeconds);
     }
 
     if (titlePanels["setup"].classList.contains("active")) {
@@ -22654,20 +24092,25 @@
     updateScopeOverlays(deltaSeconds);
     updateWeatherAudio(deltaSeconds);
     updateInteractPrompts();
+    if (pendingFaceUploads.length) uploadPendingFaceTextures(isSingleplayerMatchActive || isCoopMatchActive ? 1 : 2);
+    if (rendererPrewarmPending) prewarmRendererForRun();
     renderFrame();
 
     // Clears this frame's wasActionJustPressed edges -- must run after
     // everything above (processToggleInventoryAction,
     // processEdgeTriggeredActions) has had its chance to read them.
     players[0].input.endFrame();
-    if (isCoopMatchActive) players[1].input.endFrame();
+    if (isCoopMatchActive) {
+      for (let i = 1; i < players.length; i++) players[i].input.endFrame();
+    }
   }
 
   animate();
 
   // Automated campus-spawning check (tests/campus-spawn-test.js), only
-  // when opened as index.html#spawntest -- never in normal play.
-  if (/spawntest/.test(window.location.hash)) {
+  // when opened as index.html#spawntest -- never in normal play. The same
+  // hooks drive the frame-cost benchmark (tests/perf-test.js, #perftest).
+  if (/spawntest|perftest/.test(window.location.hash)) {
     window.__gameTestHooks = {
       players, enemies, EYE_HEIGHT,
       get campusWorld() { return campusWorld; },
@@ -22694,9 +24137,24 @@
       resolveWallCollisions,
       spawnEnemyFromRandomSpawner,
       damageEnemy,
+      // Benchmark-only (tests/perf-test.js): the renderer and each
+      // per-frame system, so it can time them one by one.
+      renderer, scene, renderFrame,
+      updateMovement, updateParticleBursts, updateBloodDecals, updateDayNightCycle,
+      updatePlayerBodyMeshes, updateInteractPrompts, updateScopeOverlays, updateWeatherAudio,
+      updateEnemiesOnly: updateEnemies, updateWaveManager, updateCampusFrame,
+      spawnParticleBurst, spawnBloodPoolDecal,
+      forceHeavyRainAtNight() {
+        dayNightTime = DAY_DURATION + NIGHT_DURATION / 2;
+        weather.baseIntensity = weather.driftTarget = weather.rainTarget = weather.rainAmount = 1;
+        weather.cloudAmount = weather.storminess = 1;
+        enterWeatherState(WEATHER_STATES.RAINING, 600);
+      },
+      prewarmRendererForRun, raycastEnemies,
+      haltLoop: false, // true stops animate() so only the benchmark renders
     };
     const script = document.createElement("script");
-    script.src = "tests/campus-spawn-test.js";
+    script.src = /perftest/.test(window.location.hash) ? "tests/perf-test.js" : "tests/campus-spawn-test.js";
     document.body.appendChild(script);
   }
 })();

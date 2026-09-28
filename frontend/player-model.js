@@ -1,6 +1,7 @@
 // Player model: the co-op players' third-person bodies -- a realistic,
-// low-poly human (clothing, a paper bag over the head with the PNG face
-// pasted on its front) on the same 19-bone rig
+// low-poly human (clothing, a helmet over the head -- paper bag, bucket,
+// cardboard box or traffic cone -- with the PNG face pasted on its front)
+// on the same 19-bone rig
 // layout as the zombies (zombie-model.js), with human locomotion (walk ->
 // run -> sprint on one continuous gait), crouch/slide/jump, hit and death
 // reactions, and a third-person weapon both hands actually hold (two-bone
@@ -11,7 +12,8 @@
 // Usage: const humans = createHumanSystem(THREE, { getFace });
 //   const character = humans.createCharacter(humans.randomAppearance(i), faceKey, layer);
 //   scene.add(character.root);   // root origin = the feet, +Z forward
-//   humans.setFace(character, key); humans.setWeapon(character, weaponId);
+//   humans.setFace(character, key); humans.setHelmet(character, helmetKey);
+//   humans.setWeapon(character, weaponId);
 //   humans.update(character, dt, state);   // see update() for `state`
 //
 // PERFORMANCE: at most two players (plus two tiny setup-screen previews)
@@ -301,8 +303,7 @@
         rings: [[0, 0.064, 0.064], [0.5, 0.058, 0.06, 0, 0.004], [1, 0.054, 0.056, 0, 0.012]], blend: [0.3, 0.3],
         color: () => shade(ap.skin, 0.012),
       });
-      // ---- Paper bag over the head ----
-      addBag(g, lod, J[B.head], ap);
+      // (The head itself is always covered by a helmet -- see HELMETS.)
 
       // ---- Hood (bunched on the upper back) / jacket collar ----
       if (lod.detail && ap.shirtKind === "hoodie") {
@@ -512,20 +513,36 @@
     // don't clip in direct light.
     // ------------------------------------------------------------------
     const FACE_MARGIN = 0.012; // paper showing around the picture, m
+    // Sized and placed for the helmet it's on (see HELMETS' `face`): bent
+    // around a round helmet's front and leaned back with its slope.
     const faceGeometryCache = {};
-    function getFaceGeometry(key) {
-      if (faceGeometryCache[key]) return faceGeometryCache[key];
+    function getFaceGeometry(key, helmetKey) {
+      const cacheKey = key + "|" + helmetKey;
+      if (faceGeometryCache[cacheKey]) return faceGeometryCache[cacheKey];
       const face = getFace(key);
-      const width = BAG.w - 2 * FACE_MARGIN;
-      const height = BAG.top - BAG.bottom - 0.03 - 2 * FACE_MARGIN; // clear of the bunched bottom edge
-      const geometry = new THREE.PlaneGeometry(width, height);
-      const panelAspect = width / height;
+      const spot = HELMETS[helmetKey].face;
+      const geometry = new THREE.PlaneGeometry(spot.w, spot.h, spot.curve ? 10 : 1, spot.curve ? 4 : 1);
+      const panelAspect = spot.w / spot.h;
       const cropU = face.aspect > panelAspect ? panelAspect / face.aspect : 1;
       const cropV = face.aspect > panelAspect ? 1 : face.aspect / panelAspect;
       const uv = geometry.attributes.uv;
       for (let i = 0; i < uv.count; i++) uv.setXY(i, 0.5 + (uv.getX(i) - 0.5) * cropU, 0.5 + (uv.getY(i) - 0.5) * cropV);
-      geometry.translate(0, BAG.bottom + 0.03 + FACE_MARGIN + height / 2, BAG.cz + BAG.d / 2 + 0.003);
-      faceGeometryCache[key] = geometry;
+      if (spot.curve) {
+        // Wrap around the helmet: radius spot.curve at the picture's middle,
+        // narrowing up a tapered helmet at the rate its side leans in.
+        const pos = geometry.attributes.position;
+        const taper = Math.tan(spot.tilt || 0);
+        for (let i = 0; i < pos.count; i++) {
+          const x = pos.getX(i), y = pos.getY(i);
+          const r = spot.curve - taper * y;
+          const a = x / r;
+          pos.setXYZ(i, r * Math.sin(a), y, r * Math.cos(a) - r);
+        }
+        geometry.computeVertexNormals();
+      }
+      if (spot.tilt) geometry.rotateX(-spot.tilt);
+      geometry.translate(0, spot.cy, spot.z + 0.003);
+      faceGeometryCache[cacheKey] = geometry;
       return geometry;
     }
     const faceMaterialCache = {};
@@ -539,6 +556,159 @@
       faceMaterialCache[key] = material;
       return material;
     }
+
+    // ------------------------------------------------------------------
+    // HELMETS (explicit request: picked on the co-op setup screen) -- what's
+    // pulled over the head. Each is a rigid group on the head bone, in its
+    // local frame (origin at the skull base, +Z forward), covering the whole
+    // head down past the top of the neck. `face`: where the face picture
+    // goes on its front -- size (w, h), center height (cy), the front
+    // surface's z there, how far the surface leans back (tilt, radians), and
+    // the radius to bend it around (curve; 0 = flat).
+    // ------------------------------------------------------------------
+    const helmetMaterialCache = {};
+    function helmetMaterial(color, roughness = 0.8, metalness = 0) {
+      const key = color + ":" + roughness + ":" + metalness;
+      if (!helmetMaterialCache[key]) {
+        // Double-sided: the open bottoms can be seen into from below.
+        helmetMaterialCache[key] = new THREE.MeshStandardMaterial({ color, roughness, metalness, side: THREE.DoubleSide });
+      }
+      return helmetMaterialCache[key];
+    }
+    const hiddenMaterial = new THREE.MeshBasicMaterial({ visible: false });
+    const bagMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, side: THREE.DoubleSide });
+    function helmetPart(group, geometry, material, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) {
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, y, z);
+      mesh.rotation.set(rx, ry, rz);
+      group.add(mesh);
+      return mesh;
+    }
+    // Radius of a tapered helmet (bottom radius r0 at y0, top r1 at y1) at height y.
+    const taperedRadius = (r0, r1, y0, y1, y) => r0 + (r1 - r0) * (y - y0) / (y1 - y0);
+
+    const BUCKET = { r0: 0.166, r1: 0.136, y0: -0.1, y1: 0.26, cz: 0.012 };
+    const BOX = { w: 0.3, h: 0.32, d: 0.3, y0: -0.095, cz: 0.012 };
+    const CONE = { r0: 0.166, r1: 0.024, y0: -0.1, y1: 0.47, cz: 0.012 };
+
+    const HELMETS = {
+      // Brown kraft grocery bag, crumpled a little (the original look).
+      bag: {
+        name: "Paper Bag",
+        face: {
+          w: BAG.w - 2 * FACE_MARGIN, h: BAG.top - BAG.bottom - 0.03 - 2 * FACE_MARGIN, // clear of the bunched bottom edge
+          cy: (BAG.top + BAG.bottom + 0.03) / 2, z: BAG.cz + BAG.d / 2, tilt: 0, curve: 0,
+        },
+        build(ap) {
+          const g = builder();
+          addBag(g, LOD_SPECS[0], new THREE.Vector3(), ap);
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute("position", new THREE.Float32BufferAttribute(g.pos, 3));
+          geometry.setAttribute("color", new THREE.Float32BufferAttribute(g.col, 3));
+          geometry.setIndex(g.index);
+          geometry.computeVertexNormals();
+          const group = new THREE.Group();
+          helmetPart(group, geometry, bagMaterial);
+          return group;
+        },
+      },
+      // A galvanized pail turned upside down: rolled rim at the bottom,
+      // two pressed ridges, the bail handle hanging down the back.
+      bucket: {
+        name: "Bucket",
+        face: (() => {
+          const cy = 0.07;
+          return {
+            w: 0.17, h: 0.19, cy, z: BUCKET.cz + taperedRadius(BUCKET.r0, BUCKET.r1, BUCKET.y0, BUCKET.y1, cy),
+            tilt: Math.atan((BUCKET.r0 - BUCKET.r1) / (BUCKET.y1 - BUCKET.y0)),
+            curve: taperedRadius(BUCKET.r0, BUCKET.r1, BUCKET.y0, BUCKET.y1, cy),
+          };
+        })(),
+        build() {
+          const group = new THREE.Group();
+          const metal = helmetMaterial(0xa3a9ae, 0.42, 0.6);
+          const dark = helmetMaterial(0x7d8388, 0.5, 0.6);
+          const { r0, r1, y0, y1, cz } = BUCKET;
+          helmetPart(group, new THREE.CylinderGeometry(r1, r0, y1 - y0, 28, 1, true), metal, 0, (y0 + y1) / 2, cz);
+          helmetPart(group, new THREE.CircleGeometry(r1, 28), metal, 0, y1, cz, -Math.PI / 2);
+          helmetPart(group, new THREE.TorusGeometry(r0 + 0.002, 0.008, 6, 28), dark, 0, y0, cz, Math.PI / 2);
+          for (const y of [0.005, 0.175]) {
+            helmetPart(group, new THREE.TorusGeometry(taperedRadius(r0, r1, y0, y1, y), 0.004, 4, 28), dark, 0, y, cz, Math.PI / 2);
+          }
+          // Handle: two ear lugs on the sides, the wire bail swung down against the back.
+          const earY = 0.2, earR = taperedRadius(r0, r1, y0, y1, earY);
+          for (const side of [1, -1]) helmetPart(group, new THREE.CylinderGeometry(0.014, 0.014, 0.012, 8), dark, side * (earR + 0.004), earY, cz, 0, 0, Math.PI / 2);
+          helmetPart(group, new THREE.TorusGeometry(earR + 0.01, 0.0035, 4, 20, Math.PI), dark, 0, earY, cz - 0.01, 1.25, 0, Math.PI);
+          return group;
+        },
+      },
+      // A plain corrugated shipping box, open at the bottom, top flaps
+      // sticking up and a strip of packing tape across them.
+      box: {
+        name: "Cardboard Box",
+        face: { w: 0.25, h: 0.25, cy: BOX.y0 + BOX.h / 2, z: BOX.cz + BOX.d / 2, tilt: 0, curve: 0 },
+        build() {
+          const group = new THREE.Group();
+          const kraft = helmetMaterial(0xae8250, 0.9);
+          const kraftDark = helmetMaterial(0x93693d, 0.9);
+          const tape = helmetMaterial(0xc9a36a, 0.5);
+          const { w, h, d, y0, cz } = BOX;
+          const top = y0 + h;
+          // BoxGeometry face order: +x -x +y -y +z -z; the bottom (-y) is left open.
+          helmetPart(group, new THREE.BoxGeometry(w, h, d), [kraft, kraft, kraftDark, hiddenMaterial, kraft, kraft], 0, y0 + h / 2, cz);
+          // Flaps hinged along the top edges, bent up and out at uneven angles.
+          const flap = (len, width, x, z, ry, lean) => {
+            const hinge = new THREE.Group();
+            hinge.position.set(x, top, z);
+            hinge.rotation.order = "YXZ"; // turn to face out (y), then swing up about the hinge (x)
+            hinge.rotation.set(lean, ry, 0);
+            group.add(hinge);
+            helmetPart(hinge, new THREE.BoxGeometry(width, 0.004, len), kraft, 0, 0, len / 2);
+          };
+          flap(d * 0.5, w, 0, cz + d / 2, 0, -1.05);            // front, leaning forward
+          flap(d * 0.5, w, 0, cz - d / 2, Math.PI, -0.8);       // back
+          flap(w * 0.5, d, w / 2, cz, Math.PI / 2, -1.25);      // left
+          flap(w * 0.5, d, -w / 2, cz, -Math.PI / 2, -0.95);    // right
+          helmetPart(group, new THREE.BoxGeometry(0.05, 0.002, d + 0.002), tape, 0, top + 0.001, cz);
+          return group;
+        },
+      },
+      // An orange traffic cone worn tip-up, two white reflective bands
+      // above the picture and the black base frame around the neck.
+      cone: {
+        name: "Traffic Cone",
+        face: (() => {
+          const cy = 0.055;
+          return {
+            w: 0.15, h: 0.18, cy, z: CONE.cz + taperedRadius(CONE.r0, CONE.r1, CONE.y0, CONE.y1, cy),
+            tilt: Math.atan((CONE.r0 - CONE.r1) / (CONE.y1 - CONE.y0)),
+            curve: taperedRadius(CONE.r0, CONE.r1, CONE.y0, CONE.y1, cy),
+          };
+        })(),
+        build() {
+          const group = new THREE.Group();
+          const orange = helmetMaterial(0xf2661d, 0.55);
+          const white = helmetMaterial(0xf4f4f0, 0.35);
+          const black = helmetMaterial(0x1c1c1e, 0.8);
+          const { r0, r1, y0, y1, cz } = CONE;
+          helmetPart(group, new THREE.CylinderGeometry(r1, r0, y1 - y0, 28, 1, true), orange, 0, (y0 + y1) / 2, cz);
+          helmetPart(group, new THREE.SphereGeometry(r1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), orange, 0, y1, cz); // rounded tip
+          for (const [a, b] of [[0.2, 0.26], [0.31, 0.35]]) {
+            const ra = taperedRadius(r0, r1, y0, y1, a) + 0.0015, rb = taperedRadius(r0, r1, y0, y1, b) + 0.0015;
+            helmetPart(group, new THREE.CylinderGeometry(rb, ra, b - a, 28, 1, true), white, 0, (a + b) / 2, cz);
+          }
+          // Square base frame (a ring, so it never cuts through the neck).
+          const outer = 0.36, rim = 0.035, thick = 0.02;
+          for (const [x, z, wx, wz] of [
+            [0, (outer - rim) / 2, outer, rim], [0, -(outer - rim) / 2, outer, rim],
+            [(outer - rim) / 2, 0, rim, outer - 2 * rim], [-(outer - rim) / 2, 0, rim, outer - 2 * rim],
+          ]) helmetPart(group, new THREE.BoxGeometry(wx, thick, wz), black, x, y0 + thick / 2, cz + z);
+          return group;
+        },
+      },
+    };
+    const HELMET_KEYS = Object.keys(HELMETS);
+    const DEFAULT_HELMET = "bag";
 
     // Clothing/skin: moderately rough (fabric and skin aren't mirror-like).
     const bodyMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, skinning: true });
@@ -624,7 +794,7 @@
       BONES.forEach((def, i) => { if (def.parent >= 0) bones[def.parent].add(bones[i]); });
       rig.add(bones[0]);
       const skeleton = new THREE.Skeleton(bones, BONES.map(() => new THREE.Matrix4()));
-      const face = new THREE.Mesh(getFaceGeometry(faceKey), getFaceMaterial(faceKey));
+      const face = new THREE.Mesh(getFaceGeometry(faceKey, DEFAULT_HELMET), getFaceMaterial(faceKey));
       face.name = "PlayerFace";
       bones[B.head].add(face);
       // Weapon socket: positioned every frame in the character's space (see
@@ -635,12 +805,14 @@
       const character = {
         root, rig, bones, skeleton, face, socket, layer,
         meshes: [], appearance: null, faceKey,
+        helmetKey: null, helmets: {},
         lod: 0, weaponId: null, weapons: {},
         anim: createAnimState(),
         restLocal: [], restAbs: [],
       };
       if (layer !== undefined) face.layers.set(layer);
       applyAppearance(character, ap);
+      setHelmet(character, DEFAULT_HELMET);
       return character;
     }
 
@@ -674,8 +846,31 @@
 
     function setFace(character, key) {
       character.faceKey = key;
-      character.face.geometry = getFaceGeometry(key);
+      character.face.geometry = getFaceGeometry(key, character.helmetKey || DEFAULT_HELMET);
       character.face.material = getFaceMaterial(key);
+    }
+
+    // Swaps what's over the character's head (one of HELMET_KEYS; anything
+    // else falls back to the paper bag), moving the face picture onto it.
+    // Each helmet is built the first time it's worn, then just shown/hidden.
+    function setHelmet(character, key) {
+      if (!HELMETS[key]) key = DEFAULT_HELMET;
+      if (character.helmetKey === key) return;
+      if (character.helmetKey) character.helmets[character.helmetKey].visible = false;
+      character.helmetKey = key;
+      if (!character.helmets[key]) {
+        const helmet = HELMETS[key].build(character.appearance);
+        helmet.name = "Helmet:" + key;
+        helmet.traverse((o) => {
+          if (!o.isMesh) return;
+          o.castShadow = true;
+          if (character.layer !== undefined) o.layers.set(character.layer);
+        });
+        character.bones[B.head].add(helmet);
+        character.helmets[key] = helmet;
+      }
+      character.helmets[key].visible = true;
+      character.face.geometry = getFaceGeometry(character.faceKey, key);
     }
 
     function setWeapon(character, weaponId) {
@@ -1142,6 +1337,9 @@
       applyAppearance,
       randomAppearance,
       setFace,
+      setHelmet,
+      helmetKeys: HELMET_KEYS,
+      helmetName: (key) => (HELMETS[key] || HELMETS[DEFAULT_HELMET]).name,
       setWeapon,
       registerWeapon,
       update,
