@@ -544,9 +544,9 @@ All of these live in `campus.html`.
     old trace and its south end about 9 px further south.
   - Library: S107 is solid behind 124 and 139, and its outside door is cosmetic. S106 is a flat
     passage out to V106, with no stair.
-  - Comstock: the Sun Garden's stair up to the Overlook Lounge is left out, because the wing is
-    single storey (6 m) in the aerial. Several parts of the plan conflict with the aerial and
-    follow the aerial:
+  - Comstock: the Sun Garden is two storeys inside, with its stair up to the Overlook Lounge
+    (placed a little east of the plan's spot, where the slanted glass wall leaves room to step on).
+    Several parts of the plan conflict with the aerial and follow the aerial:
     - the second floor reaching a little south over Kise
     - the west elevator and "You are here" bump
     - the angled vestibule south of the Sun Garden

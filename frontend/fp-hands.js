@@ -614,7 +614,7 @@
     const st = {
       time: Math.random() * 20,
       raise: 0,
-      walk: 0, run: 0, effort: 0, swingAmp: 1, air: 0,
+      walk: 0, run: 0, effort: 0, swingAmp: 1, air: 0, lower: 0,
       wasGrounded: true, lastVy: 0,
       land: { right: { x: 0, v: 0 }, left: { x: 0, v: 0 } },
       current: { right: clone(READY_R), left: clone(READY_L) },
@@ -716,6 +716,11 @@
       st.twist += ((punch ? (punch.side === "right" ? 0.05 : -0.05) * env : 0) - st.twist) * ease(20);
       group.rotation.y = st.twist; // a little shoulder turn into the punch
       const C = blendCarriage(Math.min(1.25, st.effort));
+      // Walking (not running -- the carriage keeps its own low swing), the
+      // hands drop out of view below the screen; a punch brings them back
+      // up, and so does stopping.
+      st.lower += ((punch ? 0 : smooth((st.walk - 0.1) / 0.4)) - st.lower) * ease(punch ? 14 : 5);
+      const lower = smooth(st.lower);
 
       for (const key of ["right", "left"]) {
         const base = BASES[key];
@@ -787,10 +792,12 @@
           for (let i = 0; i < 4; i++) target.curl[i] += 0.25 * env;
           target.thumb += 0.2 * env;
         }
-        // Raise into view after a switch to bare hands.
+        // Raise into view after a switch to bare hands; walking, they're
+        // carried down below the bottom of the screen (see st.lower).
         const r = smooth(st.raise);
-        target.w[1] -= 0.15 * (1 - r);
-        target.pitch -= 0.35 * (1 - r);
+        target.w[1] -= 0.15 * (1 - r) + 0.28 * lower;
+        target.w[2] += 0.08 * lower;
+        target.pitch -= 0.35 * (1 - r) + 0.6 * lower;
 
         // Follow the target: fast enough for a punch to read as a strike
         // and for the running swing to keep its full size and timing, soft

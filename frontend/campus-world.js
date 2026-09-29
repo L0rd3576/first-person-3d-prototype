@@ -31,6 +31,14 @@
       hazeColor: { value: new THREE.Color(0xc9d6e0) },
       hazeNear: { value: 18 },           // m -- no shimmer closer than this
       hazeFar: { value: 95 },            // m -- none past this
+      nightLights: { value: 0 },         // 0..1 -- lit windows at night (index.html's ENVIRONMENT STATE)
+    };
+    // The realism pass's shared settings and per-surface response
+    // (environment-fx.js; absent in a page that doesn't load it).
+    const ENV = window.ENVIRONMENT_CONFIG || {};
+    const envSurface = (material, response) => {
+      if (window.environmentFX) window.environmentFX.setSurface(material, response);
+      return material;
     };
 
     // ------------------------------------------------------------------
@@ -818,7 +826,7 @@
       // Walkway from the Sun Garden Lounge east to Kise's west hallway, along
       // the south side of the Rec Lounge's brick wall (green on "gamecmu1st2nd -
       // edits.JPG"); the west short stair leads down from it into the lounge.
-      // Ceiling level with the Sun Garden's.
+      // Ceiling 4.1 m, as tall as its opening from the Sun Garden.
       [706.2, 283.6, 718.5, 291.5, 6, [
         { side: "n", at: 714.8, width: 5.4, height: 9 },       // (Comstock's wall is open here, over the short stair)
         { side: "w", at: 287.55, width: 5.2, height: 4.1 },    // Sun Garden Lounge
@@ -935,6 +943,12 @@
     // door (those floors aren't built), except Comstock's, which reach its
     // second floor.
     // ------------------------------------------------------------------
+    // Comstock's sunken first floor and its stairs: every Comstock stair has
+    // the big stairs' slope (4.5 m in 21 steps over 41 plan px), so the ones
+    // down into the lower level are just 3 of those steps.
+    const CMU_STEP_M = 4.5 / 21;
+    const CMU_TREAD_V = 41 / 21;
+    const CMU_LOWER_M = -3 * CMU_STEP_M;
     const FLOOR_PLANS = [
       // Hagen Hall (gamehagen1st.JPG): north is right on the plan, west is up.
       // One long corridor (C101) from the south door (V101) to the north
@@ -1257,7 +1271,7 @@
         py: { from: "v", knots: [[918, 200], [1350, 283.6]] },
         roof: 12,
         ceiling: 9,
-        level: -0.48,
+        level: CMU_LOWER_M,
         floors: [[325, 918, 945, 1290], [358, 1290, 945, 1350]],
         raisedFloors: [
           [358, 1300, 405, 1350], // west entrance, by the vestibule and the Sun Garden
@@ -1302,21 +1316,25 @@
         ],
         stairs: [
           // north-west stairwell (switchback) to the second floor
-          [395, 930, 411, 951, "-v", -0.48, 2.25], [395, 918, 427, 930, "-v", 2.25, 2.25], [411, 930, 427, 951, "+v", 2.25, 4.5],
+          [395, 930, 411, 951, "-v", CMU_LOWER_M, 2.25], [395, 918, 427, 930, "-v", 2.25, 2.25], [411, 930, 427, 951, "+v", 2.25, 4.5],
           // the big stairs either side of the Main Lounge, from ground level up to the second floor (yellow)
           [580, 1309, 605, 1350, "-v", 0, 4.5],
           [753, 1309, 780, 1350, "-v", 0, 4.5],
           // short stairs beside them, down north into the lounge (red; plan: the small stair icons)
-          [553, 1318, 578, 1350, "+v", -0.48, 0],
-          [781, 1328, 807, 1350, "+v", -0.48, 0],
+          [553, 1350 - 3 * CMU_TREAD_V, 578, 1350, "+v", CMU_LOWER_M, 0],
+          [781, 1350 - 3 * CMU_TREAD_V, 807, 1350, "+v", CMU_LOWER_M, 0],
           // short stair from the west vestibule down into the Welcome Lounge (red)
-          [326, 1272, 345, 1290, "+v", -0.48, 0],
+          [326, 1290 - 3 * CMU_TREAD_V, 345, 1290, "+v", CMU_LOWER_M, 0],
           // outside the north doors: 3 steps up from the landing to the ground
-          [463.5, 904.7, 482.5, 910.2, "-v", -0.48, -0.16],
-          [768.2, 904.7, 791.8, 910.2, "-v", -0.48, -0.16],
+          [463.5, 904.7, 482.5, 904.7 + 3 * CMU_TREAD_V, "-v", CMU_LOWER_M, 0],
+          [768.2, 904.7, 791.8, 904.7 + 3 * CMU_TREAD_V, "-v", CMU_LOWER_M, 0],
+          // the Sun Garden Lounge's stair up to the Overlook Lounge (the
+          // second floor's south-west corner): in the Sun Garden, rising north
+          // to Comstock's south wall, which is open above it on the second floor
+          [428, 1350, 447, 1350 + 41, "-v", 0, 4.5],
         ],
         // the ramp from the west entrance down into the lounges (orange), [uA, vA, uB, vB, width m, height at A, at B]
-        ramps: [[398, 1323, 560, 1222, 2.4, 0, -0.48]],
+        ramps: [[398, 1323, 511.4, 1252.3, 2.4, 0, CMU_LOWER_M]],
         // glass balcony rails at ground level (light blue): [u1, v1, u2, v2]
         rails: [
           [605, 1255, 753, 1255], [605, 1255, 605, 1309], [753, 1255, 753, 1309], // around the Main Lounge
@@ -1326,7 +1344,8 @@
         portals: [
           [[592, 1356, 0], [592, 1348, 0], [592, 1309, 4.5], [592, 1295, 4.5]],   // big stair, west of the Main Lounge
           [[766, 1356, 0], [766, 1348, 0], [766, 1309, 4.5], [766, 1295, 4.5]],   // big stair, east of it
-          [[403, 1000, -0.48], [403, 952, -0.48], [403, 924, 2.25], [419, 924, 2.25], [419, 951, 4.5], [419, 965, 4.5]], // north-west stairwell
+          [[437.5, 1400, 0], [437.5, 1392, 0], [437.5, 1350, 4.5], [437.5, 1336, 4.5]], // Sun Garden -> Overlook Lounge
+          [[403, 1000, CMU_LOWER_M], [403, 952, CMU_LOWER_M], [403, 924, 2.25], [419, 924, 2.25], [419, 951, 4.5], [419, 965, 4.5]], // north-west stairwell
         ],
         upper: {
           level: 4.5,
@@ -1356,8 +1375,10 @@
             [432, 1050, 1, "fake", "-u"],  // storage
             [505, 1258, 1, "fake", "-v"],  // restrooms
             [377, 954, 1.1, "fake", "+v", { color: 0x9ea3a8 }], // elevator
+            [411.5, 1350, 13.55, "open"], // the Overlook Lounge: open over the Sun Garden (u 358 - 465)
           ],
           rails: [
+            [358, 1350, 428, 1350], [447, 1350, 465, 1350], // along the overlook, either side of the Sun Garden stair's top
             [395, 951, 411, 951], // over the stairwell's lower flight
             [545, 1309, 580, 1309], [605, 1309, 610, 1309], [751, 1309, 753, 1309], [780, 1309, 809, 1309],
             [809, 1309, 809, 1350], // (none along the restrooms: pink on the edits)
@@ -1365,14 +1386,16 @@
           ],
         },
       },
-      // Comstock's Sun Garden Lounge: the angled one-storey south-west wing
-      // (footprint from screenshot5B.png, in screenshot px), open along its
-      // north side into the first floor. Its east, south and slanted walls
-      // are all glass (blue on "gamecmu1st2nd - edits.JPG").
+      // Comstock's Sun Garden Lounge: the angled south-west wing (footprint
+      // from screenshot5B.png, in screenshot px), open along its north side
+      // into the first floor. Its east, south and slanted walls are all glass
+      // (blue on "gamecmu1st2nd - edits.JPG"). Two storeys tall inside ("Open
+      // to 1st Floor" on the second-floor plan): the Overlook Lounge looks
+      // down into it, and its stair (in Comstock's plan) climbs up to it.
       {
         name: "Comstock - Sun Garden Lounge",
-        roof: 6,
-        ceiling: 4.1,
+        roof: 10.5,
+        ceiling: 9,
         // (the extra strips under the slanted wall keep the roof closed there)
         floors: [[674.3, 283.6, 706.2, 289.3], [701, 289.3, 706.2, 296], [688, 289.3, 701, 293.6], [680, 289.3, 688, 291.2]],
         floorQuads: [
@@ -1380,7 +1403,7 @@
           [[701, 296], [706.2, 296], [701, 298.4], [701, 298.4]],
         ],
         outlines: [{ points: [[706.2, 283.6], [706.2, 291.5], [706.2, 296], [701, 298.4], [673.8, 289.3], [674.3, 283.6]], open: true, glass: [1, 2, 3] }], // north side: Comstock's wall
-        doors: [[706.2, 287.55, 5.2, "open"]], // into the walkway to Kise (green on the edits)
+        doors: [[706.2, 287.55, 5.2, "door", null, { h: 4.1 }]], // into the walkway to Kise (green on the edits), as tall as its ceiling
       },
     ];
     const FP_PARTITION_M = 0.2;        // interior walls (exterior ones are HOLLOW_WALL_M)
@@ -1481,7 +1504,7 @@
       return (plan.ramps || []).map(([ua, va, ub, vb, width, ha, hb]) => {
         const a = mapToWorld(...toPx(ua, va)), b = mapToWorld(...toPx(ub, vb));
         const len = Math.hypot(b.x - a.x, b.z - a.z);
-        return { a, b, len, ux: (b.x - a.x) / len, uz: (b.z - a.z) / len, half: width / 2, ha, hb };
+        return { a, b, len, ux: (b.x - a.x) / len, uz: (b.z - a.z) / len, half: width / 2, ha, hb, floor: plan.level || 0 };
       });
     });
     // Height of a ramp's surface at (x, z), or null off every ramp.
@@ -1490,6 +1513,48 @@
         const dx = x - r.a.x, dz = z - r.a.z;
         const along = dx * r.ux + dz * r.uz, across = Math.abs(dx * -r.uz + dz * r.ux);
         if (along >= 0 && along <= r.len && across <= r.half) return r.ha + ((r.hb - r.ha) * along) / r.len;
+      }
+      return null;
+    }
+    // Stair ramps: an invisible slope over every stair (FLOOR_PLANS'
+    // `stairs`), like the curbs' (CURB_RAMP_M) -- the sloped player clip
+    // games lay over steps -- so walking up or down one glides instead of
+    // popping a step at a time. It runs through the middle of each step's
+    // rise (never more than half a step off the real treads), starting half
+    // a tread out in front of the bottom step and levelling off over the
+    // last half tread. Only supportHeightAt uses it (in place of that
+    // stair's step tops); the steps stay the solid colliders everything
+    // else (the nav grid, sight, collision) sees. World units.
+    const FLOOR_PLAN_STAIR_RAMPS = new Map(); // stair entry (its array) -> ramp
+    // Walk-in buildings' exterior brick walls, for the night windows (see
+    // WINDOWS): filled in by floorPlanColliders.
+    const FLOOR_PLAN_FACADES = [];
+    for (const plan of FLOOR_PLANS) {
+      const toPx = floorPlanToPx(plan);
+      const W = (u, v) => mapToWorld(...toPx(u, v));
+      for (const stair of plan.stairs || []) {
+        const [u1, v1, u2, v2, dir, h0, h1] = stair;
+        if (!(h1 > h0)) continue; // a landing
+        const um = (u1 + u2) / 2, vm = (v1 + v2) / 2;
+        const [bottom, top] = { "+u": [[u1, vm], [u2, vm]], "-u": [[u2, vm], [u1, vm]], "+v": [[um, v1], [um, v2]], "-v": [[um, v2], [um, v1]] }[dir];
+        const a = W(...bottom), b = W(...top);
+        const len = Math.hypot(b.x - a.x, b.z - a.z);
+        const dx = (b.x - a.x) / len, dz = (b.z - a.z) / len;
+        const r = rectToWorld(floorPlanRectPx(toPx, [u1, v1, u2, v2]));
+        const half = Math.abs(dx) > Math.abs(dz) ? (r.maxZ - r.minZ) / 2 : (r.maxX - r.minX) / 2;
+        const n = Math.ceil((h1 - h0) / FP_MAX_RISE_M - 1e-6);
+        FLOOR_PLAN_STAIR_RAMPS.set(stair, { ax: a.x, az: a.z, dx, dz, len, half, h0, h1, tread: len / n, rise: (h1 - h0) / n });
+      }
+    }
+    // The stair ramp under (x, z) for a body whose feet can reach fromY:
+    // { ramp, h } or null.
+    function stairRampAt(x, z, fromY) {
+      for (const r of FLOOR_PLAN_STAIR_RAMPS.values()) {
+        const px = x - r.ax, pz = z - r.az;
+        const s = px * r.dx + pz * r.dz;
+        if (s < -r.tread / 2 || s > r.len || Math.abs(pz * r.dx - px * r.dz) > r.half) continue;
+        const h = Math.max(r.h0, Math.min(r.h1, r.h0 + r.rise * (s / r.tread + 0.5)));
+        if (h <= fromY + 0.01) return { ramp: r, h };
       }
       return null;
     }
@@ -1607,6 +1672,7 @@
         Object.assign(c, props);
         c.px = cpx;
         c.py = cpy;
+        c.floorPlan = true;
         out.push(c);
         return c;
       };
@@ -1762,14 +1828,27 @@
           const m = (s0 + s1) / 2;
           addBox(w.a.x + w.off.x + ux * m, w.a.z + w.off.z + uz * m, (s1 - s0) / 2, w.thick / 2, y0, y1, yaw, { ...w.props });
         };
-        let cursor = 0;
-        for (const g of w.gaps.sort((a, b) => a.s0 - b.s0)) {
-          piece(cursor, g.s0, w.base, w.top);
-          piece(g.s0, g.s1, w.base, Math.min(w.top, g.y0));      // below the gap (a door up a floor)
-          piece(g.s0, g.s1, Math.max(w.base, g.y1), w.top);      // lintel
-          cursor = Math.max(cursor, g.s1);
+        // Between every pair of neighbouring gap ends, the wall minus each gap
+        // over that stretch (gaps can stack: a door on each floor, one above
+        // the other), so below a gap (a door up a floor), between stacked
+        // gaps and the lintel all stay.
+        const cuts = [...new Set([0, len, ...w.gaps.flatMap((g) => [g.s0, g.s1])])].filter((s) => s >= 0 && s <= len).sort((a, b) => a - b);
+        for (let i = 0; i + 1 < cuts.length; i++) {
+          const s0 = cuts[i], s1 = cuts[i + 1], m = (s0 + s1) / 2;
+          let y = w.base;
+          for (const g of w.gaps.filter((g) => g.s0 < m && g.s1 > m).sort((a, b) => a.y0 - b.y0)) {
+            if (g.y0 > y) piece(s0, s1, y, Math.min(w.top, g.y0));
+            y = Math.max(y, g.y1);
+          }
+          if (y < w.top) piece(s0, s1, y, w.top);
         }
-        piece(cursor, len, w.base, w.top);
+      }
+      // Exterior brick walls standing on the ground, with the openings cut
+      // into them, for the night windows (WINDOWS).
+      for (const w of walls) {
+        if (!w.exterior || w.base > 0.01) continue;
+        const offLen = Math.hypot(w.off.x, w.off.z) || 1;
+        FLOOR_PLAN_FACADES.push({ a: w.a, b: w.b, outX: -w.off.x / offLen, outZ: -w.off.z / offLen, top: w.top, gaps: w.gaps, key: plan.name });
       }
 
       // Rooms that aren't walk-in, and pillars.
@@ -1779,7 +1858,9 @@
 
       // Stairs: solid steps (walkable, like the bleachers), each at most
       // FP_MAX_RISE_M above the last.
-      for (const [u1, v1, u2, v2, dir, h0, h1] of plan.stairs || []) {
+      for (const stair of plan.stairs || []) {
+        const [u1, v1, u2, v2, dir, h0, h1] = stair;
+        const stairRamp = FLOOR_PLAN_STAIR_RAMPS.get(stair);
         const n = h1 > h0 ? Math.ceil((h1 - h0) / FP_MAX_RISE_M - 1e-6) : 1;
         for (let i = 0; i < n; i++) {
           const f0 = i / n, f1 = (i + 1) / n;
@@ -1799,29 +1880,30 @@
           const g = alongX
             ? { minX: w.minX - 0.005, maxX: w.maxX + 0.005, minZ: w.minZ + FP_INSET_M, maxZ: w.maxZ - FP_INSET_M }
             : { minX: w.minX + FP_INSET_M, maxX: w.maxX - FP_INSET_M, minZ: w.minZ - 0.005, maxZ: w.maxZ + 0.005 };
-          addRect(g, h0 >= 0 ? 0 : L, h0 + (h1 - h0) * (h1 > h0 ? f1 : 1), { color: FP_COLORS.stair, climbable: true });
+          addRect(g, h0 >= 0 ? 0 : L, h0 + (h1 - h0) * (h1 > h0 ? f1 : 1), { color: FP_COLORS.stair, climbable: true, stairRamp });
         }
       }
 
       // Glass rails: a pane with a steel cap along each segment.
-      const addRail = (a, b, base, top) => {
+      const addRail = (a, b, base, top, props = {}) => {
         const len = Math.hypot(b.x - a.x, b.z - a.z);
         const yaw = Math.atan2(-(b.z - a.z), b.x - a.x);
         const cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2;
-        addBox(cx, cz, len / 2, 0.03, base, top, yaw, { glass: true, seeThrough: true });
-        addBox(cx, cz, len / 2, 0.05, top, top + 0.06, yaw, { color: FP_COLORS.railCap, collide: false });
+        addBox(cx, cz, len / 2, 0.03, base, top, yaw, { glass: true, seeThrough: true, ...props });
+        if (props.render !== false) addBox(cx, cz, len / 2, 0.05, top, top + 0.06, yaw, { color: FP_COLORS.railCap, collide: false });
       };
       for (const [u1, v1, u2, v2] of plan.rails || []) addRail(W(u1, v1), W(u2, v2), 0, FP_RAIL_HEIGHT_M);
 
       // Ramps: the slope itself is ground (FLOOR_PLAN_RAMPS, drawn with the
-      // sunken floors); here just a glass rail down each side, in a few
-      // lengths that step with it.
+      // sunken floors); here just the colliders of the glass rail down each
+      // side, in short lengths that step with it. They aren't drawn: the
+      // rails you see are smooth, sloped with the ramp (see "Ramp rails").
       for (const [ua, va, ub, vb, width, ha, hb] of plan.ramps || []) {
         const a = W(ua, va), b = W(ub, vb);
         const len = Math.hypot(b.x - a.x, b.z - a.z);
         const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
         const nx = -uz, nz = ux;
-        const n = 8;
+        const n = 16;
         for (let i = 0; i < n; i++) {
           const top = ha + ((hb - ha) * i) / n;
           const s0 = (len * i) / n, s1 = (len * (i + 1)) / n, m = (s0 + s1) / 2;
@@ -1829,7 +1911,7 @@
           for (const side of [-1, 1]) {
             const ex = cx + nx * side * width / 2, ez = cz + nz * side * width / 2;
             addRail({ x: ex - ux * (s1 - s0) / 2, z: ez - uz * (s1 - s0) / 2 }, { x: ex + ux * (s1 - s0) / 2, z: ez + uz * (s1 - s0) / 2 },
-              L, Math.max(top, L) + FP_RAIL_HEIGHT_M);
+              L, Math.max(top, L) + FP_RAIL_HEIGHT_M, { render: false });
           }
         }
       }
@@ -2688,6 +2770,13 @@
       ctx.fillStyle = "#d8b83a";
       ctx.fillRect(0, h / 2 - 1, w / 4, 2);
     });
+    // One-way streets (ONE_WAY_STREETS): the same asphalt, but the dashed
+    // line between their two lanes is white, as on a real one-way.
+    const oneWayRoadTexture = canvasTexture(256, 64, (ctx, w, h) => {
+      speckle(ctx, w, h, "#4a4a4c", 3000, 0.15, 4);
+      ctx.fillStyle = "#e6e6e2";
+      ctx.fillRect(0, h / 2 - 1, w / 4, 2);
+    });
     // Sidewalks and walkways: u along the walk (one slab per tile), v across.
     const concreteTexture = canvasTexture(64, 64, (ctx, w, h) => {
       speckle(ctx, w, h, "#d2cfc7", 500, 0.1, 5);
@@ -2705,6 +2794,12 @@
         ctx.fillRect(x, 0, 3, rowDepth);
         ctx.fillRect(x, h - rowDepth, 3, rowDepth);
       }
+      // The line along the heads of the stalls where one tile's last row
+      // meets the next tile's first (the middle of a double row), so two
+      // facing stalls read as two spots, not one very long one. Split
+      // across the wrap so it sits centered on the seam.
+      ctx.fillRect(0, 0, w, 2);
+      ctx.fillRect(0, h - 1, w, 1);
     });
     // Football field, mapped once over its whole rectangle (canvas top =
     // north): 120 yards along the canvas height (end zones included), 53.3
@@ -2761,6 +2856,7 @@
     const dirtMaterial = surfaceMaterial(dirtTexture);
     const trackMaterial = surfaceMaterial(trackTexture);
     const roadMaterial = surfaceMaterial(roadTexture);
+    const oneWayRoadMaterial = surfaceMaterial(oneWayRoadTexture);
     const concreteMaterial = surfaceMaterial(concreteTexture);
     const indoorFloorMaterial = surfaceMaterial(concreteTexture); // FLOOR_PLANS' floors: concrete, like Kise's
     const lotMaterial = surfaceMaterial(lotTexture);
@@ -2832,7 +2928,20 @@
           .replace("#include <fog_fragment>", "gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeColor, hazeK * (0.035 + 0.035 * hazeRipple));\n#include <fog_fragment>");
       };
     }
-    for (const m of [roadMaterial, lotMaterial, concreteMaterial, plainAsphaltMaterial]) addHeatHaze(m);
+    for (const m of [roadMaterial, oneWayRoadMaterial, lotMaterial, concreteMaterial, plainAsphaltMaterial]) addHeatHaze(m);
+    // How each surface answers the weather (environment-fx.js): asphalt
+    // takes a real wet sheen and gathers puddles (along the road edges on
+    // streets), concrete less, grass barely; broad color variation on all
+    // of them so big surfaces never read as one flat tile.
+    envSurface(roadMaterial, { wet: 0.85, puddles: 2, variation: 0.32 });
+    envSurface(oneWayRoadMaterial, { wet: 0.85, puddles: 2, variation: 0.32 });
+    envSurface(plainAsphaltMaterial, { wet: 0.85, puddles: 1, variation: 0.32 });
+    envSurface(lotMaterial, { wet: 0.75, puddles: 1, variation: 0.38 });
+    envSurface(concreteMaterial, { wet: 0.35, puddles: 0.45, variation: 0.26 });
+    envSurface(dirtMaterial, { wet: 0.12, puddles: 0.8, variation: 0.4 });
+    envSurface(trackMaterial, { wet: 0.3, variation: 0.18 });
+    envSurface(grassMaterial, { variation: 0.5 }); // (grass only darkens when wet -- no sheen)
+    envSurface(turfMaterial, { variation: 0.12 });
 
     // ------------------------------------------------------------------
     // GROUND GEOMETRY. Every flat layer is one merged mesh per material
@@ -3213,8 +3322,12 @@
     // instead of z-fighting through it.
     const streetLift = (lift) => lift - STREET_DROP_M;
     const roadHalfWidth = (r) => (r[4] || ROAD_WIDTH_PX) / 2;
-    root.add(mergedMesh(ROADS.map((r) =>
-      stripQuad(r[0], r[1], r[2], r[3], roadHalfWidth(r) * 2, streetLift(LIFT.road), ROAD_DASH_PERIOD_M)), roadMaterial));
+    // One-way streets: 14th Street South (northbound only), white lane line.
+    const ONE_WAY_STREETS = [815];
+    const isOneWay = (r) => !isHorizontal(r) && ONE_WAY_STREETS.includes(r[0]);
+    const roadStrip = (r) => stripQuad(r[0], r[1], r[2], r[3], roadHalfWidth(r) * 2, streetLift(LIFT.road), ROAD_DASH_PERIOD_M);
+    root.add(mergedMesh(ROADS.filter((r) => !isOneWay(r)).map(roadStrip), roadMaterial));
+    root.add(mergedMesh(ROADS.filter(isOneWay).map(roadStrip), oneWayRoadMaterial));
     const intersectionPatches = [];
     for (const h of ROADS.filter(isHorizontal)) {
       for (const v of ROADS.filter((r) => !isHorizontal(r))) {
@@ -3257,7 +3370,7 @@
     // Curbs: a concrete face from the street up to just above the ground
     // along every curb line (real, depth-tested geometry like the pit walls),
     // and a thin concrete strip along its top on the ground side.
-    const curbFaceMaterial = new THREE.MeshLambertMaterial({ map: concreteTexture, color: 0xe2dfd8 });
+    const curbFaceMaterial = envSurface(new THREE.MeshLambertMaterial({ map: concreteTexture, color: 0xe2dfd8 }), { variation: 0.2 });
     if (curbs.length > 0) {
       const faces = mergedMesh(curbs.map((k) =>
         wallQuad(k.ax, k.az, k.bx, k.bz, LIFT.curb, -STREET_DROP_M, -k.nx, -k.nz, SLAB_LENGTH_M)), curbFaceMaterial);
@@ -3527,11 +3640,20 @@
     }
     for (const r of PLAZAS) walkGeometries.push(rectGround(r, LIFT.plaza, { uTileM: SLAB_LENGTH_M, vTileM: SLAB_LENGTH_M }));
     root.add(mergedMesh(walkGeometries, concreteMaterial));
-    // Floors inside the walk-in floor plans (the ground-level ones).
-    root.add(mergedMesh([
+    // Floors inside the walk-in floor plans (the ground-level ones). Unlike
+    // the outdoor ground layers these write depth: next to a sunken floor
+    // (Comstock) things run on down below them -- the ramp's sides and
+    // rails, people on its lower end, stair bases -- and a floor that
+    // didn't write depth let all of that show through it like x-ray. They're
+    // still painted in the ground's order (every layer drawn after them is
+    // higher, so passes the depth test), and they overlap no other layer, so
+    // there's nothing for them to flicker against.
+    const indoorFloors = mergedMesh([
       ...FLOOR_PLAN_GROUND_FLOORS_PX.map((r) => rectGround(r, LIFT.indoor)),
       ...FLOOR_PLAN_QUADS_PX.map((q) => groundQuad(q.map(([x, y]) => mapToWorld(x, y)), q.map(() => [0, 0]), LIFT.indoor)),
-    ], indoorFloorMaterial, SLAB_LENGTH_M));
+    ], indoorFloorMaterial, SLAB_LENGTH_M);
+    indoorFloors.material.depthWrite = true;
+    root.add(indoorFloors);
     // Sunken floors (FLOOR_PLAN_SUNKEN) and their edges: concrete faces from
     // the ground down all round them.
     if (FLOOR_PLAN_SUNKEN.length > 0) {
@@ -3750,7 +3872,7 @@
     const ZONE_COLLISION_PADDING = 2;
 
 
-    const buildingMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const buildingMaterial = envSurface(new THREE.MeshLambertMaterial({ color: 0xffffff }), { variation: 0.14, wetDarken: 0.1 });
     // Storefront glass (Kise): blue-green tinted with a strong specular sheen,
     // and a Fresnel edge so it reads as glass. Head-on it stays see-through;
     // at a glancing angle it turns more opaque and brighter, the way real
@@ -3765,6 +3887,47 @@
         gl_FragColor = vec4(outgoingLight * (1.0 + 0.35 * glassFresnel), mix(diffuseColor.a, 0.9, glassFresnel));`,
       );
     };
+
+    // Ramp rails (FLOOR_PLAN_RAMPS): a glass pane and a steel cap down each
+    // side, sloped with the ramp in one smooth piece (their colliders, built
+    // with the floor plans, step with it and aren't drawn).
+    if (FLOOR_PLAN_RAMPS.length > 0) {
+      const panes = [], caps = [];
+      // A box skewed along a -> b, t either side: bottom and top heights at each end.
+      const slopedBox = (out, a, b, nx, nz, t, yA0, yB0, yA1, yB1) => {
+        const c = (p, side, y) => [p.x + nx * side * t, y, p.z + nz * side * t];
+        const v = [c(a, -1, yA0), c(b, -1, yB0), c(b, 1, yB0), c(a, 1, yA0), c(a, -1, yA1), c(b, -1, yB1), c(b, 1, yB1), c(a, 1, yA1)];
+        for (const [i, j, k, l] of [[0, 1, 2, 3], [7, 6, 5, 4], [0, 4, 5, 1], [1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0]]) {
+          out.push(...v[i], ...v[j], ...v[k], ...v[i], ...v[k], ...v[l]);
+        }
+      };
+      for (const r of FLOOR_PLAN_RAMPS) {
+        const nx = -r.uz, nz = r.ux;
+        for (const side of [-1, 1]) {
+          const ox = nx * side * r.half, oz = nz * side * r.half;
+          const a = { x: r.a.x + ox, z: r.a.z + oz }, b = { x: r.b.x + ox, z: r.b.z + oz };
+          const topA = Math.max(r.ha, r.floor) + FP_RAIL_HEIGHT_M, topB = Math.max(r.hb, r.floor) + FP_RAIL_HEIGHT_M;
+          // (standing on the ramp's edge -- never reaching below it, where
+          // the pane would poke down under the floor the ramp starts on)
+          slopedBox(panes, a, b, nx, nz, 0.03, Math.max(r.ha, r.floor), Math.max(r.hb, r.floor), topA, topB);
+          slopedBox(caps, a, b, nx, nz, 0.05, topA, topB, topA + 0.06, topB + 0.06);
+        }
+      }
+      const railMesh = (positions, material) => {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        g.computeVertexNormals();
+        const mesh = new THREE.Mesh(g, material);
+        root.add(mesh);
+        return mesh;
+      };
+      const paneMaterial = glassMaterial.clone();
+      paneMaterial.color.set(0x9fc6d6); // the tint the instanced glass gets per instance
+      paneMaterial.side = THREE.DoubleSide;
+      paneMaterial.onBeforeCompile = glassMaterial.onBeforeCompile;
+      railMesh(panes, paneMaterial).renderOrder = 1;
+      railMesh(caps, new THREE.MeshLambertMaterial({ color: FP_COLORS.railCap, side: THREE.DoubleSide }));
+    }
 
     // Brick: one small tiling canvas texture, projected in world space in the
     // shader (walls take it by their facing, flat roofs get gravel gray), so
@@ -3787,7 +3950,7 @@
       }
     });
     brickTexture.anisotropy = maxAnisotropy;
-    const brickMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const brickMaterial = envSurface(new THREE.MeshLambertMaterial({ color: 0xffffff }), { variation: 0.22, wetDarken: 0.26 });
     brickMaterial.onBeforeCompile = (shader) => {
       shader.uniforms.brickMap = { value: brickTexture };
       shader.vertexShader = shader.vertexShader
@@ -3811,6 +3974,14 @@
           "if (abs(brickNormal.y) < 0.5) {",
           "  vec2 brickUv = abs(brickNormal.x) > abs(brickNormal.z) ? vBrickPos.zy : vBrickPos.xy;",
           "  diffuseColor.rgb *= texture2D(brickMap, brickUv / " + BRICK_TILE_M.toFixed(2) + ").rgb;",
+          // Ambient occlusion where the wall meets the ground (cheap: a
+          // function of height, no extra pass), and faint weathering --
+          // soft vertical streaks and a dirtier splash zone at the foot.
+          "  float brickAO = mix(" + (1 - (ENV.AO_INTENSITY ?? 0.3)).toFixed(3) + ", 1.0, smoothstep(-0.05, " + (ENV.AO_RADIUS ?? 1.3).toFixed(2) + ", vBrickPos.y));",
+          "  float brickCol = floor(brickUv.x * 1.7);",
+          "  float brickStreak = fract(sin(brickCol * 12.9898 + 4.1) * 43758.5453);",
+          "  float brickGrime = 1.0 - 0.07 * smoothstep(0.55, 1.0, brickStreak) - 0.05 * (1.0 - smoothstep(0.0, 0.45, vBrickPos.y));",
+          "  diffuseColor.rgb *= brickAO * brickGrime;",
           "} else {",
           "  diffuseColor.rgb *= vec3(0.56, 0.55, 0.53);", // flat gravel roof
           "}",
@@ -3836,7 +4007,7 @@
       g.computeVertexNormals();
       return g;
     })();
-    const roofMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const roofMaterial = envSurface(new THREE.MeshLambertMaterial({ color: 0xffffff }), { variation: 0.3, wetDarken: 0.22 });
     const unitBox = new THREE.BoxGeometry(1, 1, 1);
     unitBox.translate(0, 0.5, 0); // origin at the base, so scale.y is the height
     const unitCylinder = new THREE.CylinderGeometry(0.5, 0.5, 1, 40);
@@ -4434,6 +4605,167 @@
     }
 
     // ------------------------------------------------------------------
+    // STOP SIGNS (explicit request). Standard US R1-1 signs: a 30 in
+    // (0.76 m) red octagon with a white border and white STOP, flat-topped,
+    // on a galvanized square steel post with its bottom edge 7 ft (2.1 m)
+    // up, standing on the grass strip at the right of the approaching lane,
+    // just before the crosswalk / stop line, facing the drivers.
+    //   - all-way stops at the three intersections circled in blue on
+    //     newborders.png: 17th St & 6th Ave, 11th St & 9th Ave, 17th St &
+    //     9th Ave (a sign for every approach);
+    //   - where 5th, 6th and 9th Ave S cross 14th St: only the avenues
+    //     stop (14th St is one-way northbound and has no stop there);
+    //   - 14th St's mid-block crosswalk on the central mall: a sign on each
+    //     side of the street for the northbound traffic.
+    // One instanced draw for all of them; each post has a thin collider.
+    // ------------------------------------------------------------------
+    {
+      // [intersection px x, y, approaches ("n" = traffic coming from the north, ...)]
+      const STOP_INTERSECTIONS = [
+        [1297, 175, ["n", "s", "e", "w"]], // 17th St & 6th Ave S
+        [232, 680, ["n", "s", "e", "w"]],  // 11th St & 9th Ave S
+        [1297, 680, ["n", "s", "e", "w"]], // 17th St & 9th Ave S
+        [815, 8, ["e", "w"]],              // 5th Ave S crossing 14th St
+        [815, 175, ["e", "w"]],            // 6th Ave S crossing 14th St
+        [815, 680, ["e", "w"]],            // 9th Ave S crossing 14th St
+      ];
+      const SIGN_APOTHEM_M = 0.381;                         // 30 in across the flats
+      const SIGN_R_M = SIGN_APOTHEM_M / Math.cos(Math.PI / 8); // to the corners
+      const SIGN_CENTER_M = 2.13 + SIGN_APOTHEM_M;          // bottom edge at 7 ft
+      const POST_M = 0.051;                                 // 2 in square post
+      const POST_TOP_M = SIGN_CENTER_M + SIGN_APOTHEM_M + 0.05;
+      const LATERAL_M = 0.55;  // from the curb, out onto the grass strip
+      const STOPLINE_M = 0.9;  // before the far edge of the crosswalk band
+      const roadAt = (x, y, horizontal) => ROADS.find((r) => isHorizontal(r) === horizontal &&
+        (horizontal ? Math.abs(r[1] - y) < 0.5 && Math.min(r[0], r[2]) <= x && Math.max(r[0], r[2]) >= x
+          : Math.abs(r[0] - x) < 0.5 && Math.min(r[1], r[3]) <= y && Math.max(r[1], r[3]) >= y));
+      const DIRS = { n: { x: 0, z: 1 }, s: { x: 0, z: -1 }, e: { x: -1, z: 0 }, w: { x: 1, z: 0 } }; // travel direction per approach
+      const signs = []; // { x, z, yaw }
+      const place = (cx, cz, d, along, lateral) => {
+        const right = { x: -d.z, z: d.x };
+        signs.push({
+          x: cx - d.x * along + right.x * lateral,
+          z: cz - d.z * along + right.z * lateral,
+          yaw: Math.atan2(-d.x, -d.z), // front (+z) toward the oncoming drivers
+        });
+      };
+      for (const [px, py, approaches] of STOP_INTERSECTIONS) {
+        const c = mapToWorld(px, py);
+        const h = roadAt(px, py, true), v = roadAt(px, py, false);
+        if (!h || !v) continue;
+        for (const a of approaches) {
+          const d = DIRS[a];
+          const cross = d.x === 0 ? h : v;     // the street being crossed
+          const own = d.x === 0 ? v : h;       // the approaching street
+          const along = (roadHalfWidth(cross) + SIDEWALK_GAP_PX + SIDEWALK_WIDTH_PX) * MAP_SCALE + STOPLINE_M;
+          place(c.x, c.z, d, along, roadHalfWidth(own) * MAP_SCALE + LATERAL_M);
+        }
+      }
+      // 14th St's mall crosswalk ([815, 405], 9 px wide): northbound traffic
+      // stops south of it, with a sign on each side of the street.
+      {
+        const c = mapToWorld(815, 405);
+        const own = roadAt(815, 405, false);
+        const d = { x: 0, z: -1 }; // northbound
+        const along = 4.5 * MAP_SCALE + STOPLINE_M;
+        const lateral = roadHalfWidth(own) * MAP_SCALE + LATERAL_M;
+        place(c.x, c.z, d, along, lateral);  // right side
+        place(c.x, c.z, d, along, -lateral); // left side
+      }
+
+      // The sign face: a canvas texture of the whole octagon (white border,
+      // red field, condensed white STOP), mapped onto an octagon.
+      const faceTexture = canvasTexture(512, 512, (ctx, w) => {
+        const octagon = (r) => {
+          ctx.beginPath();
+          for (let k = 0; k < 8; k++) {
+            const a = Math.PI / 8 + (k * Math.PI) / 4;
+            const x = w / 2 + r * Math.cos(a), y = w / 2 - r * Math.sin(a);
+            if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.closePath();
+        };
+        ctx.fillStyle = "#f4f4f2";
+        octagon(w / 2);
+        ctx.fill();
+        ctx.fillStyle = "#b8141c";
+        octagon(w / 2 * 0.93);
+        ctx.fill();
+        // a faint sheen gradient so the flat red isn't dead
+        const grad = ctx.createLinearGradient(0, 0, w, w);
+        grad.addColorStop(0, "rgba(255,255,255,0.07)");
+        grad.addColorStop(1, "rgba(0,0,0,0.08)");
+        ctx.fillStyle = grad;
+        octagon(w / 2 * 0.93);
+        ctx.fill();
+        ctx.save();
+        ctx.translate(w / 2, w / 2 + 6);
+        ctx.scale(0.8, 1); // Highway Gothic is narrow
+        ctx.fillStyle = "#f7f7f5";
+        ctx.font = "bold 176px Arial, Helvetica, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("STOP", 0, 0);
+        ctx.restore();
+        // Solid swatches in the corners (outside the octagon) for the rest
+        // of the sign's parts, so the whole sign is one geometry / one draw.
+        ctx.fillStyle = "#a7acb0"; ctx.fillRect(0, 0, 64, 64);            // aluminum (back, rim)
+        ctx.fillStyle = "#8e9499"; ctx.fillRect(w - 64, 0, 64, 64);       // galvanized post
+        ctx.fillStyle = "#c9ccce"; ctx.fillRect(0, w - 64, 64, 64);       // bolts
+      });
+      faceTexture.anisotropy = maxAnisotropy;
+      // One sign in its own space (front toward +z, post at the origin):
+      // face, back, rim, post and two bolts merged into one geometry, the
+      // non-face parts mapped onto the texture's solid corner swatches.
+      const signOffset = POST_M / 2 + 0.006; // the sign is bolted to the post's front
+      const swatch = { aluminum: [32 / 512, 1 - 32 / 512], post: [1 - 32 / 512, 1 - 32 / 512], bolt: [32 / 512, 32 / 512] };
+      const partsGeo = [];
+      const addPart = (g, dx, dy, dz, uv) => {
+        g.translate(dx, dy, dz);
+        const ng = g.index ? g.toNonIndexed() : g;
+        if (uv) { const a = ng.attributes.uv.array; for (let i = 0; i < a.length; i += 2) { a[i] = uv[0]; a[i + 1] = uv[1]; } }
+        partsGeo.push(ng);
+      };
+      addPart(new THREE.CircleGeometry(SIGN_R_M, 8, Math.PI / 8), 0, SIGN_CENTER_M, signOffset + 0.004);
+      addPart(new THREE.CircleGeometry(SIGN_R_M, 8, Math.PI / 8).rotateY(Math.PI), 0, SIGN_CENTER_M, signOffset - 0.004, swatch.aluminum);
+      addPart(new THREE.CylinderGeometry(SIGN_R_M, SIGN_R_M, 0.008, 8, 1, true, Math.PI / 8).rotateX(Math.PI / 2), 0, SIGN_CENTER_M, signOffset, swatch.aluminum);
+      addPart(new THREE.BoxGeometry(POST_M, POST_TOP_M, POST_M), 0, POST_TOP_M / 2, 0, swatch.post);
+      for (const dy of [0.3, -0.3]) addPart(new THREE.CylinderGeometry(0.012, 0.012, 0.012, 6).rotateX(Math.PI / 2), 0, SIGN_CENTER_M + dy, signOffset + 0.01, swatch.bolt);
+      const signGeometry = new THREE.BufferGeometry();
+      for (const name of ["position", "normal", "uv"]) {
+        const size = name === "uv" ? 2 : 3;
+        const arrays = partsGeo.map((g) => g.attributes[name].array);
+        const out = new Float32Array(arrays.reduce((n, a) => n + a.length, 0));
+        let o = 0;
+        for (const a of arrays) { out.set(a, o); o += a.length; }
+        signGeometry.setAttribute(name, new THREE.BufferAttribute(out, size));
+      }
+      const signMaterial = new THREE.MeshLambertMaterial({ map: faceTexture });
+      const signMatrices = [];
+      const m = new THREE.Matrix4();
+      const q = new THREE.Quaternion();
+      const yAxis = new THREE.Vector3(0, 1, 0);
+      const one = new THREE.Vector3(1, 1, 1);
+      for (const sgn of signs) {
+        q.setFromAxisAngle(yAxis, sgn.yaw);
+        signMatrices.push(m.compose(new THREE.Vector3(sgn.x, groundHeightAt(sgn.x, sgn.z), sgn.z), q, one).clone());
+        const collider = makeCollider(sgn.x, sgn.z, POST_M, POST_M, POST_TOP_M, 0);
+        collider.render = false;
+        collider.seeThrough = true;
+        const spx = sgn.x / MAP_SCALE + MAP_CENTER_X, spy = sgn.z / MAP_SCALE + MAP_CENTER_Y;
+        zones[ZONES.indexOf(zoneAt(spx, spy))].colliders.push(collider);
+      }
+      if (signMatrices.length > 0) {
+        const mesh = new THREE.InstancedMesh(signGeometry, signMaterial, signMatrices.length);
+        signMatrices.forEach((mat, i) => mesh.setMatrixAt(i, mat));
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.frustumCulled = false; // a few dozen small signs across the map: one draw
+        mesh.name = "StopSigns";
+        root.add(mesh);
+      }
+    }
+
+    // ------------------------------------------------------------------
     // WORLD QUERIES -- everything the games need to know about the campus
     // without touching the whole map: all of it goes through a static
     // bucket grid of the colliders (built once here), so every query only
@@ -4548,10 +4880,16 @@
     }
 
     // Highest surface under a footprint that's at or below fromY: the
-    // ground (0, or a construction-pit step) or a roof/step top.
+    // ground (0, or a construction-pit step), a stair's ramp, or a
+    // roof/step top. On a stair's ramp (stairRampAt) the ramp is the
+    // surface: step tops are skipped, so neither that stair nor a flight
+    // beside it pops you up a step.
     function supportHeightAt(x, z, radius, fromY) {
       let support = groundHeightAt(x, z);
+      const stair = stairRampAt(x, z, fromY);
+      if (stair) support = Math.max(support, stair.h);
       forEachColliderIn(x - radius, z - radius, x + radius, z + radius, (c) => {
+        if (stair && c.stairRamp) return;
         if (c.height > fromY + 0.01 || c.height <= support) return;
         if (c.shape === "cylinder") {
           const r = c.radius + radius;
@@ -4733,6 +5071,419 @@
         if (d < best) best = d;
       });
       return Math.max(0, best);
+    }
+
+    // ------------------------------------------------------------------
+    // DECALS (realism pass): surface wear scattered deterministically over
+    // the streets (cracks, sealed cracks, patches, oil, tire marks, worn
+    // asphalt), the parking lots (oil stains, cracks, tire marks, old paint)
+    // and the sidewalks/walks (cracks, stains, gum, bleached spots). All
+    // from one small canvas atlas, baked into a handful of merged meshes --
+    // two layers (street level; sidewalks and lots) per ~400 m block, hidden
+    // past DECAL_DRAW_DISTANCE -- drawn in the ground's own paint order with
+    // alpha blending (still in the opaque pass, like the ground layers).
+    // Purely visual: nothing walks, collides or navigates differently.
+    // ------------------------------------------------------------------
+    const decalGroups = [];
+    if ((ENV.DECAL_DENSITY ?? 1) > 0) {
+      const density = ENV.DECAL_DENSITY ?? 1;
+      const CELLS = 4; // atlas: 4 x 4 cells
+      const atlas = canvasTexture(512, 512, (ctx, w) => {
+        const cw = w / CELLS;
+        const r = seededRandom(4242);
+        const cell = (i, draw) => {
+          ctx.save();
+          ctx.translate((i % CELLS) * cw, Math.floor(i / CELLS) * cw);
+          ctx.beginPath();
+          ctx.rect(4, 4, cw - 8, cw - 8); // keep a clear margin (mip bleed)
+          ctx.clip();
+          draw(cw);
+          ctx.restore();
+        };
+        const crack = (x, y, len, ang, width, alpha, depth) => {
+          ctx.strokeStyle = `rgba(18,18,18,${alpha})`;
+          ctx.lineWidth = width;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          for (let k = 0; k < 9; k++) {
+            ang += (r() - 0.5) * 0.9;
+            x += Math.cos(ang) * len / 9;
+            y += Math.sin(ang) * len / 9;
+            ctx.lineTo(x, y);
+            if (depth < 2 && r() < 0.22) crack(x, y, len * 0.45, ang + (r() < 0.5 ? 1 : -1) * (0.6 + r() * 0.6), width * 0.7, alpha * 0.85, depth + 1);
+          }
+          ctx.stroke();
+        };
+        const blob = (x, y, rad, color0, color1) => {
+          const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
+          g.addColorStop(0, color0);
+          g.addColorStop(1, color1);
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(x, y, rad, 0, Math.PI * 2);
+          ctx.fill();
+        };
+        cell(0, (s) => crack(8, s * 0.55, s * 0.95, -0.15, 2.2, 0.6, 0));                 // crack
+        cell(1, (s) => { for (let k = 0; k < 5; k++) crack(10 + r() * s * 0.6, 10 + r() * s * 0.8, s * 0.5, r() * 6.3, 1.6, 0.45, 1); }); // alligator cracking
+        cell(2, (s) => { for (let k = 0; k < 6; k++) blob(s * (0.35 + r() * 0.3), s * (0.35 + r() * 0.3), s * (0.12 + r() * 0.2), "rgba(8,8,10,0.42)", "rgba(8,8,10,0)"); }); // oil stain
+        cell(3, (s) => { // asphalt patch: a slightly darker, uneven rectangle with a soft sealed seam
+          ctx.filter = "blur(1.5px)";
+          ctx.fillStyle = "rgba(24,24,26,0.16)";
+          ctx.fillRect(s * 0.14, s * 0.2, s * 0.72, s * 0.6);
+          for (let k = 0; k < 6; k++) {
+            ctx.fillStyle = `rgba(24,24,26,${0.03 + r() * 0.05})`;
+            ctx.fillRect(s * (0.14 + r() * 0.4), s * (0.2 + r() * 0.3), s * 0.3, s * 0.25);
+          }
+          ctx.strokeStyle = "rgba(12,12,12,0.28)";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(s * 0.14, s * 0.2, s * 0.72, s * 0.6);
+          ctx.filter = "none";
+        });
+        cell(4, (s) => { // tire marks: two soft dark stripes along u
+          for (const y of [0.3, 0.7]) {
+            const g = ctx.createLinearGradient(0, s * (y - 0.08), 0, s * (y + 0.08));
+            g.addColorStop(0, "rgba(10,10,10,0)"); g.addColorStop(0.5, "rgba(10,10,10,0.35)"); g.addColorStop(1, "rgba(10,10,10,0)");
+            ctx.fillStyle = g;
+            ctx.fillRect(0, s * (y - 0.08), s, s * 0.16);
+          }
+        });
+        cell(5, (s) => { for (let k = 0; k < 7; k++) blob(s * (0.3 + r() * 0.4), s * (0.3 + r() * 0.4), s * (0.08 + r() * 0.16), "rgba(92,72,46,0.5)", "rgba(92,72,46,0)"); }); // mud
+        cell(6, (s) => blob(s / 2, s / 2, s * 0.46, "rgba(255,252,245,0.16)", "rgba(255,252,245,0)")); // bleached spot
+        cell(7, (s) => { // water stain: faint fill, darker tide line
+          blob(s / 2, s / 2, s * 0.44, "rgba(30,30,30,0.1)", "rgba(30,30,30,0.16)");
+          ctx.strokeStyle = "rgba(30,30,30,0.18)"; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(s / 2, s / 2, s * 0.42, 0, Math.PI * 2); ctx.stroke();
+        });
+        cell(8, (s) => { for (let k = 0; k < 14; k++) blob(s * (0.1 + r() * 0.8), s * (0.1 + r() * 0.8), 2 + r() * 3, "rgba(35,35,35,0.55)", "rgba(35,35,35,0.3)"); }); // gum spots
+        cell(9, (s) => { for (let k = 0; k < 10; k++) { ctx.fillStyle = `rgba(210,210,205,${0.05 + r() * 0.07})`; ctx.fillRect(0, s * r(), s, 2 + r() * 6); } }); // worn asphalt
+        cell(10, (s) => { for (let k = 0; k < 8; k++) { ctx.fillStyle = `rgba(236,236,230,${0.2 + r() * 0.25})`; ctx.fillRect(s * (k / 8), s * 0.46, s / 8 * (0.3 + r() * 0.6), s * 0.08); } }); // old paint
+        cell(11, (s) => { // sealed crack ("tar snake")
+          ctx.strokeStyle = "rgba(8,8,8,0.55)"; ctx.lineWidth = 5; ctx.lineCap = "round";
+          ctx.beginPath(); ctx.moveTo(4, s / 2);
+          for (let x = 4; x < s; x += s / 10) ctx.lineTo(x, s / 2 + (r() - 0.5) * s * 0.25);
+          ctx.stroke();
+        });
+      });
+      atlas.wrapS = atlas.wrapT = THREE.ClampToEdgeWrapping;
+      const decalMaterial = new THREE.MeshLambertMaterial({ map: atlas });
+      decalMaterial.blending = THREE.CustomBlending; // blended, but kept in the ground's paint order
+      decalMaterial.blendSrc = THREE.SrcAlphaFactor;
+      decalMaterial.blendDst = THREE.OneMinusSrcAlphaFactor;
+
+      const rand = seededRandom(90210);
+      const GROUP_M = 400;
+      const groups = new Map(); // "layer gx,gz" -> { lift, geometries, cx, cz }
+      // One decal: world center, size along/across, angle (radians, 0 = +x), atlas cell.
+      const add = (layer, lift, x, z, len, wid, angle, cellIndex) => {
+        const ux = Math.cos(angle), uz = Math.sin(angle);
+        const vx = -uz, vz = ux;
+        const hl = len / 2, hw = wid / 2;
+        const u0 = (cellIndex % CELLS) / CELLS, u1 = u0 + 1 / CELLS;
+        const v1 = 1 - Math.floor(cellIndex / CELLS) / CELLS, v0 = v1 - 1 / CELLS;
+        const g = groundQuad(
+          [{ x: x - ux * hl - vx * hw, z: z - uz * hl - vz * hw }, { x: x + ux * hl - vx * hw, z: z + uz * hl - vz * hw },
+            { x: x + ux * hl + vx * hw, z: z + uz * hl + vz * hw }, { x: x - ux * hl + vx * hw, z: z - uz * hl + vz * hw }],
+          [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], lift);
+        const gx = Math.floor(x / GROUP_M), gz = Math.floor(z / GROUP_M);
+        const key = layer + " " + gx + "," + gz;
+        if (!groups.has(key)) groups.set(key, { geometries: [], cx: (gx + 0.5) * GROUP_M, cz: (gz + 0.5) * GROUP_M });
+        groups.get(key).geometries.push(g);
+      };
+      const pickOf = (table) => { let t = rand(); for (const [w, v] of table) if ((t -= w) < 0) return v; return table[table.length - 1][1]; };
+      // Streets: street level, under the intersection patches and crosswalks.
+      const streetLiftM = streetLift(LIFT.road) + 0.003;
+      for (const rd of ROADS) {
+        const a = mapToWorld(rd[0], rd[1]), b = mapToWorld(rd[2], rd[3]);
+        const len = Math.hypot(b.x - a.x, b.z - a.z);
+        const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len, ang = Math.atan2(uz, ux);
+        const half = roadHalfWidth(rd) * MAP_SCALE;
+        if (half < 3) continue; // alleys
+        for (let s = rand() * 6; s < len; s += (6 + rand() * 10) / density) {
+          const kind = pickOf([[0.26, "crack"], [0.12, "seal"], [0.12, "patch"], [0.18, "oil"], [0.1, "tire"], [0.22, "wear"]]);
+          const across = (rand() * 2 - 1) * (half - 1.2);
+          const x = a.x + ux * s - uz * across, z = a.z + uz * s + ux * across;
+          if (kind === "crack") add("street", streetLiftM, x, z, 1.4 + rand() * 2, 1 + rand() * 0.8, rand() * 6.28, rand() < 0.6 ? 0 : 1);
+          else if (kind === "seal") add("street", streetLiftM, x, z, 3 + rand() * 4, 0.5, ang + (rand() - 0.5) * 0.5, 11);
+          else if (kind === "patch") add("street", streetLiftM, x, z, 1.2 + rand() * 1.6, 0.9 + rand() * 0.8, ang, 3);
+          else if (kind === "oil") add("street", streetLiftM, a.x + ux * s - uz * (rand() - 0.5) * 2 * (half * 0.5), a.z + uz * s + ux * (rand() - 0.5) * 2 * (half * 0.5), 0.9 + rand() * 0.8, 0.9 + rand() * 0.8, rand() * 6.28, 2);
+          else if (kind === "tire") add("street", streetLiftM, x, z, 3 + rand() * 3, 1.3, ang + (rand() - 0.5) * 0.12, 4);
+          else add("street", streetLiftM, x, z, 3 + rand() * 4, 2 + rand(), ang, 9);
+        }
+      }
+      // Parking lots.
+      for (const lot of LOTS) {
+        const w = rectToWorld(lot);
+        const area = (w.maxX - w.minX) * (w.maxZ - w.minZ);
+        const count = Math.round(area / 85 * density);
+        const rowsAlongZ = lot[4] === "z";
+        for (let i = 0; i < count; i++) {
+          const x = w.minX + 1.5 + rand() * (w.maxX - w.minX - 3), z = w.minZ + 1.5 + rand() * (w.maxZ - w.minZ - 3);
+          const kind = pickOf([[0.5, "oil"], [0.18, "crack"], [0.1, "tire"], [0.1, "paint"], [0.12, "patch"]]);
+          const along = rowsAlongZ ? Math.PI / 2 : 0;
+          if (kind === "oil") add("ground", LIFT.lot + 0.004, x, z, 0.8 + rand() * 0.9, 0.8 + rand() * 0.9, rand() * 6.28, 2);
+          else if (kind === "crack") add("ground", LIFT.lot + 0.004, x, z, 1.5 + rand() * 2.5, 1.2, rand() * 6.28, rand() < 0.5 ? 0 : 1);
+          else if (kind === "tire") add("ground", LIFT.lot + 0.004, x, z, 2.5 + rand() * 2, 1.2, along + Math.PI / 2 + (rand() - 0.5) * 0.4, 4);
+          else if (kind === "paint") add("ground", LIFT.lot + 0.004, x, z, 2 + rand() * 2, 0.5, along + (rand() < 0.5 ? 0 : Math.PI / 2), 10);
+          else add("ground", LIFT.lot + 0.004, x, z, 1.5 + rand() * 1.5, 1 + rand(), along, 3);
+        }
+      }
+      // Sidewalks and campus walks: along each strip, kept inside it.
+      const walkStrips = [
+        ...PATHS.map((p) => [p[0], p[1], p[2], p[3], p[4] || PATH_WIDTH_PX]),
+        ...ROADS.flatMap((rd) => {
+          const offset = roadHalfWidth(rd) + SIDEWALK_GAP_PX + SIDEWALK_WIDTH_PX / 2;
+          return [-1, 1].map((side) => isHorizontal(rd)
+            ? [rd[0], rd[1] + side * offset, rd[2], rd[3] + side * offset, SIDEWALK_WIDTH_PX]
+            : [rd[0] + side * offset, rd[1], rd[2] + side * offset, rd[3], SIDEWALK_WIDTH_PX]);
+        }),
+      ];
+      for (const st of walkStrips) {
+        const a = mapToWorld(st[0], st[1]), b = mapToWorld(st[2], st[3]);
+        const len = Math.hypot(b.x - a.x, b.z - a.z);
+        if (len < 4) continue;
+        const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len, ang = Math.atan2(uz, ux);
+        const halfW = st[4] * MAP_SCALE / 2;
+        for (let s = rand() * 8; s < len; s += (9 + rand() * 14) / density) {
+          const kind = pickOf([[0.35, "crack"], [0.2, "gum"], [0.25, "bleach"], [0.2, "stain"]]);
+          const size = Math.min(halfW * 2 - 0.3, 0.8 + rand() * 1.2);
+          const across = (rand() * 2 - 1) * Math.max(0, halfW - size / 2 - 0.1);
+          const x = a.x + ux * s - uz * across, z = a.z + uz * s + ux * across;
+          const cellIndex = kind === "crack" ? 0 : kind === "gum" ? 8 : kind === "bleach" ? 6 : 7;
+          add("ground", LIFT.lot + 0.004, x, z, size * (kind === "crack" ? 1.4 : 1), size, kind === "crack" ? ang + Math.PI / 2 + (rand() - 0.5) * 0.6 : rand() * 6.28, cellIndex);
+        }
+      }
+      for (const group of groups.values()) {
+        const mesh = mergedMesh(group.geometries, decalMaterial);
+        mesh.name = "Decals";
+        root.add(mesh);
+        decalGroups.push({ mesh, cx: group.cx, cz: group.cz });
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // WINDOWS (realism pass): rows of windows on the campus's brick
+    // buildings -- the plain brick blocks and the walk-in buildings'
+    // exterior walls (FLOOR_PLAN_FACADES, skipping their doors) -- so at
+    // night a few of them can glow. Each window is one instance of a single
+    // quad in its block's instanced mesh (~400 m blocks, hidden once past
+    // the fog), dark glass in a light frame by day; a lit one is emissive,
+    // never a real light.
+    // Every building draws how occupied it is (dark, a few lights, several)
+    // and each window its own moment to switch on through dusk (and off
+    // again at sunrise) from a seeded hash, so it's the same every visit.
+    // Windows only go where the outside of the wall is open air (not
+    // against a neighbouring block or a joined building).
+    // ------------------------------------------------------------------
+    // ------------------------------------------------------------------
+    // PARKED VEHICLES (vehicle-models.js): parking spaces worked out from
+    // the same stall grid the lot texture paints (STALL_WIDTH_M x
+    // STALL_DEPTH_M stalls, rows back to back across STALL_MODULE_M: a row,
+    // the aisle, a row -- anchored at each lot's corner, stalls along the
+    // lot's u axis), so every car sits between the painted lines. A space
+    // is dropped where anything else is on the lot: planted islands, walks
+    // across it, driveways, plazas, paths, a street, or any collider (trees,
+    // buildings, fences, barricades, signs). Each lot has a busyness profile
+    // (LOT_PARKING_PROFILES; unlisted ones go by size). The cars are
+    // scenery only: no colliders, so movement and navigation are untouched.
+    // ------------------------------------------------------------------
+    // [lot's x1, y1] -> profile (PARKED_VEHICLE_CONFIG.PARKING_OCCUPANCY)
+    const LOT_PARKING_PROFILES = {
+      "556,500": "busy",     // G-1, the big lot south of the mall
+      "604,200": "busy",     // M-5 metered parking by Comstock
+      "838,562": "busy",     // G-11
+      "30,195": "normal",    // Lot F (north)
+      "30,430": "normal",    // Lot F (south-west)
+      "248,30": "residential", // 11th-12th St lot among the houses
+      "1385,20": "normal",   // F-1 free parking
+      "290,628": "quiet",    // W-G
+      "256,512": "quiet",    // small lot between Bridges and Owens
+      "993,490": "quiet",    // small lot east of Murray
+      "1062,440": "quiet",   // G-10 (remote east lots)
+      "1140,500": "quiet",
+      "1164,420": "quiet",
+      "1252,420": "quiet",   // by the Maintenance Building
+    };
+    const parkingSpaces = [];
+    {
+      const STALL_ROW_OFFSETS = [[0, -1], [STALL_MODULE_M - STALL_DEPTH_M, 1]]; // row start within the module, and which way its head is (-1 toward the module start)
+      const pxRectHits = (r, list, pad = 0) => list.some((o) => r[0] < o[2] + pad && r[2] > o[0] - pad && r[1] < o[3] + pad && r[3] > o[1] - pad);
+      const stripRects = (list, defaultWidth) => list.map((p) => {
+        const w = (p[4] || defaultWidth) / 2;
+        return [Math.min(p[0], p[2]) - w, Math.min(p[1], p[3]) - w, Math.max(p[0], p[2]) + w, Math.max(p[1], p[3]) + w];
+      });
+      // (diagonal paths get their bounding box -- conservative, fine for this)
+      const blockersPx = [...GRASS_AREAS, ...DRIVEWAYS, ...PLAZAS, ...streetRectsPx, ...stripRects(LOT_WALKS, PATH_WIDTH_PX), ...stripRects(PATHS, PATH_WIDTH_PX)];
+      const colliderHits = (w) => forEachColliderIn(w.minX, w.minZ, w.maxX, w.maxZ, (c) => {
+        if (c.shape === "cylinder") {
+          const dx = c.cx - Math.max(w.minX, Math.min(c.cx, w.maxX)), dz = c.cz - Math.max(w.minZ, Math.min(c.cz, w.maxZ));
+          return dx * dx + dz * dz < c.radius * c.radius;
+        }
+        // box collider (possibly rotated): any footprint sample inside it, or its center inside the footprint
+        if (c.cx > w.minX && c.cx < w.maxX && c.cz > w.minZ && c.cz < w.maxZ) return true;
+        for (const fx of [0, 0.5, 1]) for (const fz of [0, 0.5, 1]) {
+          const l = toLocal(c, w.minX + (w.maxX - w.minX) * fx, w.minZ + (w.maxZ - w.minZ) * fz);
+          if (Math.abs(l.x) < c.halfX && Math.abs(l.z) < c.halfZ) return true;
+        }
+        return false;
+      });
+      LOTS.forEach((lot) => {
+        const w = rectToWorld(lot);
+        const uAxis = lot[4] || (w.maxX - w.minX >= w.maxZ - w.minZ ? "x" : "z");
+        const key = lot[0] + "," + lot[1];
+        const area = (w.maxX - w.minX) * (w.maxZ - w.minZ);
+        const profile = LOT_PARKING_PROFILES[key] || (area > 9000 ? "busy" : area < 2500 ? "quiet" : "normal");
+        const [u0, u1] = uAxis === "x" ? [w.minX, w.maxX] : [w.minZ, w.maxZ];
+        const [v0, v1] = uAxis === "x" ? [w.minZ, w.maxZ] : [w.minX, w.maxX];
+        for (let module = 0; v0 + module * STALL_MODULE_M < v1; module++) {
+          for (const [rowStart, headDir] of STALL_ROW_OFFSETS) {
+            const r0 = v0 + module * STALL_MODULE_M + rowStart, r1 = r0 + STALL_DEPTH_M;
+            if (r1 > v1 + 0.01) continue; // a row cut off by the lot's far edge
+            for (let k = 0; u0 + (k + 1) * STALL_WIDTH_M <= u1 + 0.01; k++) {
+              const s0 = u0 + k * STALL_WIDTH_M, s1 = s0 + STALL_WIDTH_M;
+              const cu = (s0 + s1) / 2, cv = (r0 + r1) / 2;
+              const x = uAxis === "x" ? cu : cv, z = uAxis === "x" ? cv : cu;
+              // footprint a little inside the stall's painted lines
+              const hu = STALL_WIDTH_M / 2 - 0.2, hv = STALL_DEPTH_M / 2 - 0.1;
+              const foot = uAxis === "x"
+                ? { minX: x - hu, maxX: x + hu, minZ: z - hv, maxZ: z + hv }
+                : { minX: x - hv, maxX: x + hv, minZ: z - hu, maxZ: z + hu };
+              const footPx = [foot.minX / MAP_SCALE + MAP_CENTER_X, foot.minZ / MAP_SCALE + MAP_CENTER_Y, foot.maxX / MAP_SCALE + MAP_CENTER_X, foot.maxZ / MAP_SCALE + MAP_CENTER_Y];
+              if (pxRectHits(footPx, blockersPx, 0.3) || colliderHits(foot)) continue;
+              // heading of a car parked nose-in: toward the head of its row
+              const yaw = uAxis === "x" ? (headDir < 0 ? -Math.PI / 2 : Math.PI / 2) : (headDir < 0 ? Math.PI : 0);
+              parkingSpaces.push({ x, z, yaw, width: STALL_WIDTH_M, depth: STALL_DEPTH_M, lot: key, profile });
+            }
+          }
+        }
+      });
+    }
+    const vehicleSystem = window.createParkedVehicleSystem
+      ? window.createParkedVehicleSystem(THREE, root, parkingSpaces, { groundHeightAt })
+      : null;
+
+    const windowGroups = [];
+    if (ENV.WINDOWS_ENABLED !== false) {
+      const WINDOW_W = 1.45, WINDOW_H = 1.55, WINDOW_PITCH = 3.3, STOREY_M = 3.8, SILL_M = 0.95;
+      const lightShare = (ENV.WINDOW_LIGHT_PERCENTAGE ?? 0.22) / 0.22;
+      const windowGeometry = new THREE.PlaneGeometry(1, 1);
+      const windowMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+      windowMaterial.onBeforeCompile = (shader) => {
+        shader.uniforms.nightLights = environment.nightLights;
+        shader.vertexShader = shader.vertexShader
+          .replace("#include <common>", "#include <common>\nattribute vec4 windowData;\nvarying vec4 vWindowData;\nvarying vec2 vWindowUv;")
+          .replace("#include <begin_vertex>", "#include <begin_vertex>\nvWindowData = windowData;\nvWindowUv = uv;");
+        shader.fragmentShader = shader.fragmentShader
+          .replace("#include <common>", "#include <common>\nuniform float nightLights;\nvarying vec4 vWindowData;\nvarying vec2 vWindowUv;\nfloat windowGlass = 0.0;")
+          .replace("#include <color_fragment>", [
+            "#include <color_fragment>",
+            // frame (light aluminum) around, and one mullion down the middle
+            "vec2 wUv = vWindowUv;",
+            "float wFrame = max(step(wUv.x, 0.045), step(1.0 - wUv.x, 0.045));",
+            "wFrame = max(wFrame, max(step(wUv.y, 0.05), step(1.0 - wUv.y, 0.05)));",
+            "wFrame = max(wFrame, step(abs(wUv.x - 0.5), 0.018));",
+            "windowGlass = 1.0 - wFrame;",
+            // glass: dark, cool, lighter toward the top (the sky it reflects)
+            "vec3 wGlass = mix(vec3(0.13, 0.16, 0.2), vec3(0.3, 0.36, 0.43), smoothstep(0.1, 1.0, wUv.y) * 0.8);",
+            "diffuseColor.rgb = mix(vec3(0.7, 0.71, 0.72), wGlass, windowGlass);",
+          ].join("\n"))
+          .replace("#include <emissivemap_fragment>", [
+            "#include <emissivemap_fragment>",
+            "{",
+            "  float lit = smoothstep(vWindowData.x, vWindowData.x + 0.1, nightLights);",
+            // blinds: soft horizontal banding, different per window
+            "  float blinds = 0.82 + 0.18 * sin(vWindowUv.y * (30.0 + 40.0 * vWindowData.w) + vWindowData.w * 10.0);",
+            "  vec3 warm = mix(vec3(1.0, 0.72, 0.42), vec3(0.95, 0.88, 0.75), vWindowData.z);",
+            "  totalEmissiveRadiance += warm * lit * vWindowData.y * windowGlass * blinds * " + (ENV.WINDOW_BRIGHTNESS ?? 1).toFixed(2) + ";",
+            "}",
+          ].join("\n"));
+      };
+      // Is (x, z) out in the open (no tall collider there)?
+      const openAir = (x, z) => !forEachColliderIn(x - 0.05, z - 0.05, x + 0.05, z + 0.05, (c) => {
+        if (c.height < 3 || c.shape === "cylinder") return false;
+        const l = toLocal(c, x, z);
+        return Math.abs(l.x) < c.halfX && Math.abs(l.z) < c.halfZ;
+      });
+      const hash = (a, b) => {
+        let h = Math.imul(Math.round(a * 97) ^ 0x5bd1e995, 0x27d4eb2d) ^ Math.imul(Math.round(b * 131) + 7, 0x165667b1);
+        h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
+        return ((h ^ (h >>> 13)) >>> 0) / 4294967296;
+      };
+      // How occupied a building is: dark, a few lights or several.
+      const occupancy = (seedX, seedZ) => {
+        const r = hash(seedX, seedZ);
+        return (r < 0.25 ? 0 : r < 0.7 ? 0.13 : 0.4) * lightShare;
+      };
+      const matrix = new THREE.Matrix4();
+      const quat = new THREE.Quaternion();
+      const yAxis = new THREE.Vector3(0, 1, 0);
+      // Windows along one wall face: from (ax, az) to (bx, bz), facing
+      // (nx, nz), up to `top`; `skip(s, y0, y1)` rules out spots (doors).
+      function addFace(list, ax, az, bx, bz, nx, nz, top, occ, skip) {
+        const len = Math.hypot(bx - ax, bz - az);
+        const count = Math.floor((len - 1.4) / WINDOW_PITCH);
+        if (count < 1) return;
+        const ux = (bx - ax) / len, uz = (bz - az) / len;
+        const start = (len - (count - 1) * WINDOW_PITCH) / 2;
+        const yaw = Math.atan2(nx, nz);
+        quat.setFromAxisAngle(yAxis, yaw);
+        for (let row = 0; ; row++) {
+          const y0 = SILL_M + row * STOREY_M, y1 = y0 + WINDOW_H;
+          if (y1 > top - 0.9) break;
+          for (let i = 0; i < count; i++) {
+            const s = start + i * WINDOW_PITCH;
+            if (skip && skip(s, y0, y1)) continue;
+            const x = ax + ux * s, z = az + uz * s;
+            if (!openAir(x + nx * 0.6, z + nz * 0.6)) continue;
+            const r = hash(x * 3.1 + row, z * 2.7 - row);
+            const lit = r < occ ? 0.05 + 0.85 * hash(z, x) : 3; // when it switches on (3 = never)
+            matrix.compose(new THREE.Vector3(x + nx * 0.012, (y0 + y1) / 2, z + nz * 0.012), quat, new THREE.Vector3(WINDOW_W, WINDOW_H, 1));
+            list.push({ m: matrix.clone(), d: [lit, 0.55 + 0.6 * hash(x + 1.7, z), hash(z + 3, x), hash(x, z + 9)] });
+          }
+        }
+      }
+      // Instances go into ~400 m blocks (a draw or two near the player).
+      const BLOCK_M = 400;
+      const blocks = new Map();
+      const blockList = (x, z) => {
+        const key = Math.floor(x / BLOCK_M) + "," + Math.floor(z / BLOCK_M);
+        if (!blocks.has(key)) blocks.set(key, { list: [], cx: (Math.floor(x / BLOCK_M) + 0.5) * BLOCK_M, cz: (Math.floor(z / BLOCK_M) + 0.5) * BLOCK_M });
+        return blocks.get(key).list;
+      };
+      for (const zone of zones) {
+        for (const c of zone.colliders) {
+          if (c.floorPlan || c.render === false || c.glass || c.shape === "cylinder" || c.color !== undefined) continue;
+          if (c.style !== "brick" || c.base || c.height < 5.5 || Math.min(c.halfX, c.halfZ) < 2) continue;
+          const occ = occupancy(c.cx, c.cz);
+          const X = { x: c.cos, z: -c.sin }, Z = { x: c.sin, z: c.cos }; // local axes in the world
+          const corner = (sx, sz) => ({ x: c.cx + X.x * sx * c.halfX + Z.x * sz * c.halfZ, z: c.cz + X.z * sx * c.halfX + Z.z * sz * c.halfZ });
+          const faces = [
+            [corner(1, -1), corner(1, 1), X.x, X.z], [corner(-1, 1), corner(-1, -1), -X.x, -X.z],
+            [corner(1, 1), corner(-1, 1), Z.x, Z.z], [corner(-1, -1), corner(1, -1), -Z.x, -Z.z],
+          ];
+          for (const [a, b, nx, nz] of faces) addFace(blockList(c.cx, c.cz), a.x, a.z, b.x, b.z, nx, nz, c.height, occ);
+        }
+      }
+      for (const f of FLOOR_PLAN_FACADES) {
+        const occ = occupancy(f.key.length * 13.7, f.a.x + f.a.z);
+        const skip = (s, y0, y1) => f.gaps.some((g) => g.s0 - 0.5 < s + WINDOW_W / 2 && g.s1 + 0.5 > s - WINDOW_W / 2 && g.y0 < y1 && g.y1 > y0);
+        addFace(blockList((f.a.x + f.b.x) / 2, (f.a.z + f.b.z) / 2), f.a.x, f.a.z, f.b.x, f.b.z, f.outX, f.outZ, f.top, occ, skip);
+      }
+      for (const block of blocks.values()) {
+        const list = block.list;
+        if (list.length === 0) continue;
+        const g = windowGeometry.clone();
+        const data = new Float32Array(list.length * 4);
+        list.forEach((w, i) => data.set(w.d, i * 4));
+        g.setAttribute("windowData", new THREE.InstancedBufferAttribute(data, 4));
+        g.boundingSphere = new THREE.Sphere(new THREE.Vector3(block.cx, 10, block.cz), BLOCK_M * 0.75 + 30);
+        const mesh = new THREE.InstancedMesh(g, windowMaterial, list.length);
+        list.forEach((w, i) => mesh.setMatrixAt(i, w.m));
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.name = "Windows";
+        root.add(mesh);
+        windowGroups.push({ mesh, cx: block.cx, cz: block.cz });
+      }
     }
 
     // ---- Fenced areas (FENCED_AREAS): which side of each fence a point is
@@ -5277,21 +6028,41 @@
 
     // Hide zones whose footprint is farther than the draw distances from
     // every viewer (co-op has two), so far blocks cost nothing to render.
-    function updateVisibility(viewers) {
+    // views (optional): which way each viewer faces -- see vehicle-models.js.
+    function updateVisibility(viewers, views) {
       for (const zone of zones) {
         let distance = Infinity;
         for (const v of viewers) distance = Math.min(distance, distanceToZone(zone, v.x, v.z));
         for (const mesh of zone.meshes) mesh.visible = distance <= RENDER_DISTANCE;
         for (const mesh of zone.treeMeshes) mesh.visible = distance <= TREE_DRAW_DISTANCE;
       }
+      // Decal blocks (~160 m): drawn only near a viewer.
+      const decalReach = (ENV.DECAL_DRAW_DISTANCE ?? 140) + 283; // + the block's half-diagonal
+      for (const d of decalGroups) {
+        let near = false;
+        for (const v of viewers) if ((v.x - d.cx) ** 2 + (v.z - d.cz) ** 2 < decalReach * decalReach) { near = true; break; }
+        d.mesh.visible = near;
+      }
+      // Window blocks: nothing past the fog is worth drawing.
+      const windowReach = 130 + 283;
+      for (const w of windowGroups) {
+        let near = false;
+        for (const v of viewers) if ((v.x - w.cx) ** 2 + (v.z - w.cz) ** 2 < windowReach * windowReach) { near = true; break; }
+        w.mesh.visible = near;
+      }
       if (treeSystem) treeSystem.updateVisibility(viewers);
       if (grassSystem) grassSystem.updateVisibility(viewers);
+      if (vehicleSystem) vehicleSystem.update(viewers, views);
     }
 
     // 3D grass on the lawns (grass-system.js), chunked around the viewers
     // like the trees; where it grows comes from grassTesterForArea.
     const grassSystem = window.createGrassSystem
-      ? window.createGrassSystem(THREE, root, environment, { testerForArea: grassTesterForArea })
+      ? window.createGrassSystem(THREE, root, environment, {
+        testerForArea: grassTesterForArea,
+        // detail plants: shrubs go along walls (see grass-system.js)
+        nearBuilding: (x, z) => distanceToNearestBuilding(x, z, 3) < 2.2,
+      })
       : null;
 
     const spawnWorld = mapToWorld(SPAWN_PX.x, SPAWN_PX.y);
@@ -5332,9 +6103,11 @@
       treeDensityNear: (x, z, r) => (treeSystem ? treeSystem.treeDensityNear(x, z, r) : 0),
       treeStats: () => (treeSystem ? treeSystem.stats() : null),
       grassStats: () => (grassSystem ? grassSystem.stats() : null),
+      vehicleStats: () => (vehicleSystem ? vehicleSystem.stats() : null),
       // Ground layers the weather darkens when wet (asphalt most, grass least).
       wetSurfaces: [
         { material: roadMaterial, darken: 0.38 },
+        { material: oneWayRoadMaterial, darken: 0.38 },
         { material: plainAsphaltMaterial, darken: 0.38 },
         { material: lotMaterial, darken: 0.34 },
         { material: concreteMaterial, darken: 0.3 },

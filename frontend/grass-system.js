@@ -17,7 +17,7 @@
 //     out to ~30 m; MID: 32 m chunks, sparse and wider, ~20 -> ~70 m).
 //     Past that the ground's own grass texture is the far representation
 //     (the fog is heavy there anyway). Chunks are built lazily when a
-//     viewer comes near (a few per frame, nearest first), hidden past
+//     viewer comes near (nearest first, within a small time budget per frame), hidden past
 //     their layer's range and freed further out.
 //   - Every chunk is ONE draw: an instanced mesh whose per-clump data
 //     (position, yaw, size, tint, phase) sits in two instance attributes.
@@ -64,10 +64,21 @@
     fadeJitter: 3.5,         // +/- per-clump spread of every fade threshold
     hysteresis: 4,           // chunks stay a few meters past their range before hiding
     freeBeyond: 30,          // ...and are freed this much further out
-    buildsPerFrame: 2,       // lazily built chunks per frame (beyond the immediate ring)
+    buildBudgetMs: 2,        // chunk building per frame beyond the immediate ring (sliced, a chunk may span frames)
     immediateRange: 18,      // chunks this close to a viewer are built at once, never waited on
     breeze: 0.22,            // wind strength that's always present, on top of the weather's
     bend: 0.5,               // tip displacement per unit of sway, as a fraction of blade height
+    // Detail plants (realism pass): weeds, foundation shrubs and small
+    // flowers, sparse and placed on purpose -- shrubs along building walls,
+    // weeds along the edges of sidewalks and curbs, a few flower patches
+    // and stray weeds out in the lawns. One instanced draw per chunk (all
+    // kinds share one geometry, each instance shows only its own part).
+    // Density and range come from ENVIRONMENT_CONFIG when it's loaded.
+    detail: {
+      chunk: 48, spacing: 1.6,
+      fadeIn: [-100, -99],
+      fadeOut: [30, 42],     // overwritten from VEGETATION_RANGE
+    },
   };
 
   function mulberry32(seed) {
@@ -149,6 +160,90 @@
       near: buildClump(8, 3, [0.026, 0.042], 11),
       mid: buildClump(4, 2, [0.05, 0.075], 23),
     };
+
+    // ---------------------------------------------------------------- detail plants
+    // One geometry holding every kind of detail plant, each vertex tagged
+    // with its part (detailPart): 0 weed, 1 yellow flowers (dandelions),
+    // 2 white flowers (clover / daisies), 3 shrub. An instance shows only
+    // the part matching its own type; the rest collapse to nothing in the
+    // vertex shader, so one instanced draw covers every kind.
+    const DETAIL_KINDS = { weed: 0, yellow: 1, white: 2, shrub: 3 };
+    function buildDetailClump() {
+      const pos = [], nrm = [], col = [], bend = [], part = [], idx = [];
+      const rand = mulberry32(777);
+      const vert = (x, y, z, c, b, p, n = [0, 1, 0]) => {
+        pos.push(x, y, z); nrm.push(...n); col.push(...c); bend.push(b); part.push(p);
+        return pos.length / 3 - 1;
+      };
+      // Weed: ragged, broad, dark blades fanning out low (a dock / plantain look).
+      for (let b = 0; b < 7; b++) {
+        const around = (b / 7) * Math.PI * 2 + rand() * 0.6;
+        const ox = Math.cos(around), oz = Math.sin(around);
+        const h = 0.2 + rand() * 0.22, w = 0.035 + rand() * 0.03, lean = 0.5 + rand() * 0.5;
+        const c0 = [0.2, 0.3, 0.13], c1 = [0.4 + rand() * 0.1, 0.5, 0.2];
+        const sx = -oz * w, sz = ox * w;
+        const a = vert(-sx, 0, -sz, c0, 0, 0), bb = vert(sx, 0, sz, c0, 0, 0);
+        const midOut = Math.sin(lean) * h * 0.5, midUp = Math.cos(lean) * h * 0.5 + 0.02;
+        const c = vert(ox * midOut - sx * 1.4, midUp, oz * midOut - sz * 1.4, c1, 0.3, 0);
+        const d = vert(ox * midOut + sx * 1.4, midUp, oz * midOut + sz * 1.4, c1, 0.3, 0);
+        const tip = vert(ox * Math.sin(lean) * h * 1.1, Math.cos(lean) * h * 0.9 + 0.03, oz * Math.sin(lean) * h * 1.1, c1, 1, 0);
+        idx.push(a, bb, c, bb, d, c, c, d, tip);
+      }
+      // A little flower patch: thin stems with small heads, a leaf rosette.
+      const flowers = (p, headColor, count, headR) => {
+        for (let k = 0; k < count; k++) {
+          const around = rand() * Math.PI * 2, r = 0.03 + rand() * 0.12;
+          const x = Math.cos(around) * r, z = Math.sin(around) * r;
+          const h = 0.14 + rand() * 0.16, w = 0.006;
+          const stem = [0.3, 0.48, 0.2];
+          const s0 = vert(x - w, 0, z, stem, 0, p), s1 = vert(x + w, 0, z, stem, 0, p), s2 = vert(x, h, z, stem, 1, p);
+          idx.push(s0, s1, s2);
+          // head: a small hexagonal disc, tipped a little toward the light
+          const center = vert(x, h + 0.01, z, headColor.map((c) => c * 0.8), 1, p);
+          const ring = [];
+          for (let j = 0; j < 6; j++) {
+            const a = (j / 6) * Math.PI * 2;
+            ring.push(vert(x + Math.cos(a) * headR, h + Math.sin(a) * headR * 0.35, z + Math.sin(a) * headR, headColor, 1, p));
+          }
+          for (let j = 0; j < 6; j++) idx.push(center, ring[j], ring[(j + 1) % 6]);
+        }
+        for (let k = 0; k < 5; k++) { // rosette leaves flat on the ground
+          const a = (k / 5) * Math.PI * 2 + rand();
+          const ox = Math.cos(a), oz = Math.sin(a), l = 0.09 + rand() * 0.06, w = 0.025;
+          const leaf = [0.24, 0.4, 0.16];
+          const l0 = vert(-oz * w, 0.01, ox * w, leaf, 0, p), l1 = vert(oz * w, 0.01, -ox * w, leaf, 0, p);
+          const l2 = vert(ox * l, 0.03, oz * l, leaf, 0.2, p);
+          idx.push(l0, l1, l2);
+        }
+      };
+      flowers(1, [0.98, 0.82, 0.16], 4, 0.022);
+      flowers(2, [0.95, 0.95, 0.9], 6, 0.016);
+      // Shrub: three overlapping, flattened low-poly blobs (a boxwood /
+      // yew foundation planting), darker inside, lighter on top.
+      const ico = [
+        [0, 1, 0], [0.894, 0.447, 0], [0.276, 0.447, 0.851], [-0.724, 0.447, 0.526], [-0.724, 0.447, -0.526], [0.276, 0.447, -0.851],
+        [0.724, -0.447, 0.526], [-0.276, -0.447, 0.851], [-0.894, -0.447, 0], [-0.276, -0.447, -0.851], [0.724, -0.447, -0.526], [0, -1, 0],
+      ];
+      const faces = [[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 5], [0, 5, 1], [1, 6, 2], [2, 7, 3], [3, 8, 4], [4, 9, 5], [5, 10, 1],
+        [6, 7, 2], [7, 8, 3], [8, 9, 4], [9, 10, 5], [10, 6, 1], [11, 7, 6], [11, 8, 7], [11, 9, 8], [11, 10, 9], [11, 6, 10]];
+      for (const [cx, cz, rs] of [[0, 0, 0.42], [0.3, 0.12, 0.3], [-0.26, -0.1, 0.32]]) {
+        const cy = rs * 0.72;
+        const base = pos.length / 3;
+        for (const v of ico) {
+          const jitter = 0.8 + rand() * 0.4;
+          const y = cy + v[1] * rs * 0.9 * jitter;
+          // darker low down, lighter on top, mottled leaf by leaf
+          const shade = (0.45 + 0.55 * (v[1] * 0.5 + 0.5)) * (0.8 + rand() * 0.35);
+          const nl = Math.hypot(v[0], v[1] * 0.7 + 0.3, v[2]);
+          vert(cx + v[0] * rs * jitter, Math.max(0, y), cz + v[2] * rs * jitter,
+            [0.19 * shade, 0.33 * shade, 0.14 * shade], Math.max(0, y) / 0.7 * 0.35, 3, [v[0] / nl, (v[1] * 0.7 + 0.3) / nl, v[2] / nl]);
+        }
+        for (const f of faces) idx.push(base + f[0], base + f[1], base + f[2]);
+      }
+      return { pos: new Float32Array(pos), nrm: new Float32Array(nrm), col: new Float32Array(col), bend: new Float32Array(bend),
+        part: new Float32Array(part), idx: new Uint16Array(idx) };
+    }
+    const DETAIL_CLUMP = buildDetailClump();
 
     // ---------------------------------------------------------------- material
     // grassFade (vec4, per layer -- see makeMaterial): fade in start/end, fade out start/end (m).
@@ -248,12 +343,77 @@
       return material;
     }
 
+    // Detail plants: the grass material's wind and fade, plus the part
+    // selection, and bending by each plant's own height (not a blade's).
+    function makeDetailMaterial(fade) {
+      const material = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, side: THREE.DoubleSide });
+      const fadeConst = "const vec4 grassFade = vec4(" + fade.map((f) => f.toFixed(3)).join(", ") + ");";
+      material.customProgramCacheKey = () => "grass-detail";
+      material.onBeforeCompile = (shader) => {
+        shader.uniforms.envTime = env.envTime;
+        shader.uniforms.windDir = env.windDir;
+        shader.uniforms.windStrength = env.windStrength;
+        shader.uniforms.windGust = env.windGust;
+        shader.vertexShader = shader.vertexShader
+          .replace("#include <common>", "#include <common>\n" + fadeConst + "\n" + DECL + "\nattribute float detailPart;\nattribute float detailType;")
+          .replace("#include <color_vertex>", "#include <color_vertex>\n" + COLOR.replace("vec3 lush = vec3(0.88, 1.03, 0.86), dry = vec3(1.13, 1.05, 0.7);", "vec3 lush = vec3(0.94, 1.02, 0.94), dry = vec3(1.06, 1.02, 0.86);"))
+          .replace("#include <beginnormal_vertex>", "#include <beginnormal_vertex>\n" + NORMAL)
+          .replace("#include <begin_vertex>", [
+            "vec3 transformed;",
+            "{",
+            "  float fade = grassFadeAmount();",
+            "  float show = step(abs(detailPart - detailType), 0.5);", // only this instance's own kind
+            "  float size = grassB.x * show;",
+            "  float spread = smoothstep(0.0, 0.35, fade);",
+            "  vec3 p = position * vec3(size * spread, size * grassB.y * fade, size * spread);",
+            "  vec3 r = vec3(p.x * grassC + p.z * grassS, p.y, -p.x * grassS + p.z * grassC);",
+            "  float plantH = 0.45 * size * grassB.y * fade;",
+            "  vec2 push = grassWind(grassA.xz, grassB.w) * GRASS_BEND * plantH * grassBend;",
+            "  r.xz += push;",
+            "  transformed = grassA.xyz + r;",
+            "}",
+          ].join("\n"));
+        shader.fragmentShader = shader.fragmentShader
+          .replace("( gl_FrontFacing ) ? vLightFront : vLightBack", "vLightFront")
+          .replace("( gl_FrontFacing ) ? vIndirectFront : vIndirectBack", "vIndirectFront");
+      };
+      return material;
+    }
+
+    // Where detail plants go, per candidate spot: an edge of the lawn (a
+    // sidewalk, curb or wall within ~1 m) and whether that edge is a
+    // building (options.nearBuilding) pick the kind; open lawn gets only a
+    // few stray weeds and small flower patches (in the lawn's own patches).
+    // The roll comes first: most spots can't hold anything whatever the
+    // edge tests would say, so those (the costly part of a chunk build)
+    // only run when the roll could still place a plant.
+    function pickDetail(test, x, z, rand) {
+      const roll = rand() / detailDensity;
+      if (roll >= 0.7) return -1;
+      const e = 1.0;
+      const edge = test(x + e, z) < 0 || test(x - e, z) < 0 || test(x, z + e) < 0 || test(x, z - e) < 0;
+      if (edge) {
+        const byBuilding = options.nearBuilding ? options.nearBuilding(x, z) : false;
+        if (byBuilding) return roll < 0.55 ? DETAIL_KINDS.shrub : DETAIL_KINDS.weed; // at the foot of a wall
+        return roll < 0.21 ? DETAIL_KINDS.weed : roll < 0.25 ? DETAIL_KINDS.yellow : -1; // along a sidewalk / curb
+      }
+      if (roll >= 0.032) return -1;
+      const patch = patchNoise(x * 1.7 + 40, z * 1.7 - 25);
+      if (roll < 0.019 * (0.3 + patch * 1.4)) return patch > 0.55 ? DETAIL_KINDS.yellow : DETAIL_KINDS.white;
+      return DETAIL_KINDS.weed;
+    }
+
     // ---------------------------------------------------------------- layers + chunks
-    const layers = ["near", "mid"].map((name, i) => {
+    const ENV = window.ENVIRONMENT_CONFIG || {};
+    const detailDensity = ENV.VEGETATION_DENSITY ?? 1;
+    if (ENV.VEGETATION_RANGE) S.detail.fadeOut = [ENV.VEGETATION_RANGE - 12, ENV.VEGETATION_RANGE];
+    const layerNames = detailDensity > 0 ? ["near", "mid", "detail"] : ["near", "mid"];
+    const layers = layerNames.map((name, i) => {
       const cfg = S[name];
+      const fade = [cfg.fadeIn[0], cfg.fadeIn[1], cfg.fadeOut[0], cfg.fadeOut[1]];
       return {
-        name, index: i, cfg, clump: CLUMPS[name],
-        material: makeMaterial(name, [cfg.fadeIn[0], cfg.fadeIn[1], cfg.fadeOut[0], cfg.fadeOut[1]]),
+        name, index: i, cfg, clump: name === "detail" ? DETAIL_CLUMP : CLUMPS[name],
+        material: name === "detail" ? makeDetailMaterial(fade) : makeMaterial(name, fade),
         // A chunk is wanted while any part of it is within the layer's range.
         drawM: cfg.fadeOut[1] + S.fadeJitter,
         chunks: new Map(), // "cx,cz" -> { cx, cz, mesh (null until built, or if no grass), count, built, shown }
@@ -265,19 +425,50 @@
 
     // Deterministic clumps for one chunk: a jittered grid over the chunk,
     // kept where the world says grass grows.
-    function buildChunk(layer, chunk) {
-      const cfg = layer.cfg;
-      const size = cfg.chunk;
-      const x0 = chunk.cx * size, z0 = chunk.cz * size;
-      const cells = Math.max(1, Math.round(size / cfg.spacing));
-      const step = size / cells;
-      const rand = mulberry32(hashSeed(layer.index, chunk.cx, chunk.cz));
-      const test = testerForArea(x0, z0, x0 + size, z0 + size);
-      const a = new Float32Array(cells * cells * 4), b = new Float32Array(cells * cells * 4);
-      let n = 0;
-      const midScale = layer.name === "mid" ? 1.18 : 1;
-      for (let j = 0; j < cells; j++) {
+    // Builds a chunk -- all at once, or (with a `deadline`, performance.now()
+    // ms) row by row until the deadline, resuming on the next call: returns
+    // true once the chunk is finished. Detail chunks are built this way, a
+    // slice per frame, so a big one never lands as a single long frame.
+    function buildChunk(layer, chunk, deadline = Infinity) {
+      if (!chunk.job) {
+        const cfg = layer.cfg;
+        const size = cfg.chunk;
+        const x0 = chunk.cx * size, z0 = chunk.cz * size;
+        const cells = Math.max(1, Math.round(size / cfg.spacing));
+        const detail = layer.name === "detail";
+        chunk.job = {
+          size, x0, z0, cells, step: size / cells, detail, j: 0, n: 0,
+          rand: mulberry32(hashSeed(layer.index, chunk.cx, chunk.cz)),
+          // (detail plants look one step past the chunk for lawn edges)
+          test: testerForArea(x0 - (detail ? 1.5 : 0), z0 - (detail ? 1.5 : 0), x0 + size + (detail ? 1.5 : 0), z0 + size + (detail ? 1.5 : 0)),
+          a: new Float32Array(cells * cells * 4), b: new Float32Array(cells * cells * 4),
+          types: detail ? new Float32Array(cells * cells) : null,
+          midScale: layer.name === "mid" ? 1.18 : 1,
+        };
+      }
+      const job = chunk.job;
+      const { size, x0, z0, cells, step, rand, test, a, b, types, detail, midScale } = job;
+      let n = job.n;
+      for (; job.j < cells; job.j++) {
+        if (deadline !== Infinity && performance.now() > deadline) { job.n = n; return false; }
+        const j = job.j;
         for (let i = 0; i < cells; i++) {
+          if (detail) {
+            const jx = rand(), jz = rand(), yaw = rand() * Math.PI * 2, s = rand(), tint = rand(), ph = rand();
+            const x = x0 + (i + jx) * step, z = z0 + (j + jz) * step;
+            const y = test(x, z);
+            if (y < 0) { rand(); continue; }
+            const kind = pickDetail(test, x, z, rand);
+            if (kind < 0) continue;
+            a[n * 4] = x; a[n * 4 + 1] = y; a[n * 4 + 2] = z; a[n * 4 + 3] = yaw;
+            b[n * 4] = kind === DETAIL_KINDS.shrub ? 0.75 + 0.6 * s : 0.75 + 0.5 * s;
+            b[n * 4 + 1] = kind === DETAIL_KINDS.shrub ? 0.8 + 0.4 * tint : 0.85 + 0.35 * tint;
+            b[n * 4 + 2] = tint;
+            b[n * 4 + 3] = ph * Math.PI * 2;
+            types[n] = kind;
+            n++;
+            continue;
+          }
           // Consume the same random numbers for every cell, kept or not,
           // so one cell's exclusion never reshuffles its neighbours.
           const jx = rand(), jz = rand(), yaw = rand() * Math.PI * 2, s = rand(), hs = rand(), tint = rand(), ph = rand(), keep = rand();
@@ -294,8 +485,9 @@
           n++;
         }
       }
+      chunk.job = null;
       chunk.count = n;
-      if (n === 0) return;
+      if (n === 0) return true;
       const c = layer.clump;
       const geometry = new THREE.InstancedBufferGeometry();
       // Own copies of the (tiny) clump buffers, so disposing a chunk never
@@ -307,6 +499,10 @@
       geometry.setAttribute("grassBend", new THREE.BufferAttribute(c.bend.slice(), 1));
       geometry.setAttribute("grassA", new THREE.InstancedBufferAttribute(a.slice(0, n * 4), 4));
       geometry.setAttribute("grassB", new THREE.InstancedBufferAttribute(b.slice(0, n * 4), 4));
+      if (detail) {
+        geometry.setAttribute("detailPart", new THREE.BufferAttribute(c.part.slice(), 1));
+        geometry.setAttribute("detailType", new THREE.InstancedBufferAttribute(types.slice(0, n), 1));
+      }
       geometry.instanceCount = n;
       // Culled as a whole chunk against the view frustum.
       geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(x0 + size / 2, 0.3, z0 + size / 2), size * 0.7072 + 0.8);
@@ -319,16 +515,20 @@
       mesh.name = "Grass " + layer.name + " " + chunk.cx + "," + chunk.cz;
       group.add(mesh);
       chunk.mesh = mesh;
+      return true;
     }
     const buildTimes = { count: 0, totalMs: 0, maxMs: 0 };
-    function timedBuild(layer, chunk) {
+    function timedBuild(layer, chunk, deadline) {
       const t0 = performance.now();
-      buildChunk(layer, chunk);
-      chunk.built = true;
+      if (buildChunk(layer, chunk, deadline)) chunk.built = true;
       const ms = performance.now() - t0;
       buildTimes.count++;
       buildTimes.totalMs += ms;
       buildTimes.maxMs = Math.max(buildTimes.maxMs, ms);
+      const per = buildTimes[layer.name] || (buildTimes[layer.name] = { count: 0, totalMs: 0, maxMs: 0 });
+      per.count++;
+      per.totalMs += ms;
+      per.maxMs = Math.max(per.maxMs, ms);
     }
     function freeChunk(layer, key, chunk) {
       if (chunk.mesh) {
@@ -346,8 +546,8 @@
     }
 
     // Per frame: which chunks each layer wants from the nearest viewer;
-    // build missing ones (the closest immediately, the rest a few per
-    // frame), show/hide, and free far ones.
+    // build missing ones (the closest immediately, the rest sliced within a
+    // per-frame time budget), show/hide, and free far ones.
     const pending = [];
     function updateVisibility(viewers) {
       pending.length = 0;
@@ -372,7 +572,7 @@
           if (d > layer.drawM + S.freeBeyond) { freeChunk(layer, key, chunk); continue; }
           const wanted = d <= layer.drawM + (chunk.shown ? S.hysteresis : 0);
           if (wanted && !chunk.built) {
-            if (d <= S.immediateRange) timedBuild(layer, chunk);
+            if (d <= S.immediateRange && layer.name !== "detail") timedBuild(layer, chunk);
             else pending.push({ layer, chunk, d });
           }
           chunk.shown = wanted;
@@ -381,9 +581,13 @@
       }
       if (pending.length) {
         pending.sort((p, q) => p.d - q.d);
-        for (let i = 0; i < Math.min(S.buildsPerFrame, pending.length); i++) {
-          const { layer, chunk } = pending[i];
-          timedBuild(layer, chunk);
+        // Everything not in the immediate ring: built in slices, nearest
+        // first, within buildBudgetMs per frame (a chunk may take a few
+        // frames), so building never shows up as a hitch.
+        const deadline = performance.now() + S.buildBudgetMs;
+        for (const { layer, chunk } of pending) {
+          if (performance.now() >= deadline) break;
+          timedBuild(layer, chunk, deadline);
           if (chunk.mesh) chunk.mesh.visible = chunk.shown;
         }
       }
@@ -403,6 +607,10 @@
         out[layer.name] = { chunks: layer.chunks.size, built, shown, clumps, shownClumps, trianglesPerClump: layer.clump.idx.length / 3 };
       }
       out.builds = { count: buildTimes.count, avgMs: +(buildTimes.totalMs / Math.max(1, buildTimes.count)).toFixed(2), maxMs: +buildTimes.maxMs.toFixed(2) };
+      for (const layer of layers) {
+        const per = buildTimes[layer.name];
+        if (per) out[layer.name].builds = { count: per.count, avgMs: +(per.totalMs / per.count).toFixed(2), maxMs: +per.maxMs.toFixed(2) };
+      }
       return out;
     }
 

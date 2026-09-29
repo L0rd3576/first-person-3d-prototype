@@ -3156,10 +3156,14 @@
 
 <!-- Three.js r128, vendored locally (no build step / no bundler, no network dependency) -->
 <script src="vendor/three.min.js"></script>
+<!-- Shared environment look (cloud shadows, wetness, atmosphere...) -- loaded
+     first so its shader patch is in place before any material exists. -->
+<script src="environment-fx.js"></script>
 <!-- The Campus map (campus-world.js) and its procedural enemy spawning
      (procedural-spawn.js) -- see the CAMPUS MAP section in the game script. -->
 <script src="tree-models.js"></script>
 <script src="grass-system.js"></script>
+<script src="vehicle-models.js"></script>
 <script src="campus-world.js"></script>
 <script src="procedural-spawn.js"></script>
 <script src="zombie-model.js"></script>
@@ -4068,6 +4072,11 @@
   // and the difference isn't visible on this scene's low-poly primitive
   // geometry.
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  // Linear tone mapping at exposure 1 is the identity; it's only here so
+  // eye adaptation (see ENVIRONMENT STATE) can move the exposure without
+  // recompiling a single shader.
+  renderer.toneMapping = THREE.LinearToneMapping;
+  renderer.toneMappingExposure = 1;
   document.body.appendChild(renderer.domElement);
 
   // ------------------------------------------------------------------
@@ -8183,22 +8192,48 @@
   // and how strong it is. The in-between stops are what make the sunset:
   // golden hour, then a burning orange horizon under pink and violet,
   // then a deep dusk with the last red at the horizon.
-  const DAY_NIGHT_LOOK_STOPS = [
-    { at: 0, horizon: 0xc4e4f6, mid: 0x9ad1ee, top: 0x4f9fdb, glow: 0xfff6dc, glowStrength: 0.18,
-      light: 0xfff4e0, lightIntensity: 1.0, ambient: 0xffffff, ambientIntensity: 0.4 },
-    { at: 0.25, horizon: 0xffd29a, mid: 0xb5cfe0, top: 0x6a9fd2, glow: 0xffc06a, glowStrength: 0.55,  // golden hour
-      light: 0xffd8a0, lightIntensity: 0.9, ambient: 0xfff0dc, ambientIntensity: 0.4 },
-    { at: 0.5, horizon: 0xff7a3d, mid: 0xef7d97, top: 0x5a4a90, glow: 0xffb04a, glowStrength: 1.0,    // sunset
-      light: 0xff9550, lightIntensity: 0.7, ambient: 0xffc2a6, ambientIntensity: 0.4 },
-    { at: 0.75, horizon: 0xd8506a, mid: 0x7a4a92, top: 0x262a55, glow: 0xff6a45, glowStrength: 0.65,  // dusk
-      light: 0xc796c0, lightIntensity: 0.52, ambient: 0xa898cc, ambientIntensity: 0.44 },
-    { at: 1, horizon: 0x1c2a4c, mid: 0x131f3e, top: 0x080e22, glow: 0x5a70b4, glowStrength: 0.1,      // night
-      light: 0xa6b8ff, lightIntensity: 0.42, ambient: 0x8190c0, ambientIntensity: 0.48 },
-  ].map((stop) => {
+  // (Realism pass: the sunset now reads golden evening -> orange sunset ->
+  // blue twilight -> night, a little less saturated than before, and the
+  // night light is a cooler gray-blue rather than a blue filter.)
+  const toLookStops = (stops) => stops.map((stop) => {
     const out = { ...stop };
     for (const key of ["horizon", "mid", "top", "glow", "light", "ambient"]) out[key] = new THREE.Color(stop[key]);
     return out;
   });
+  const DAY_NIGHT_LOOK_STOPS = toLookStops([
+    { at: 0, horizon: 0xc4e4f6, mid: 0x9ad1ee, top: 0x4f9fdb, glow: 0xfff6dc, glowStrength: 0.18,
+      light: 0xfff4e0, lightIntensity: 1.0, ambient: 0xffffff, ambientIntensity: 0.4 },
+    { at: 0.25, horizon: 0xffd29a, mid: 0xb5cfe0, top: 0x6a9fd2, glow: 0xffc06a, glowStrength: 0.55,  // golden evening
+      light: 0xffd8a0, lightIntensity: 0.9, ambient: 0xfff0dc, ambientIntensity: 0.4 },
+    { at: 0.5, horizon: 0xf5874a, mid: 0xdf8a98, top: 0x5a4d8e, glow: 0xffae55, glowStrength: 0.95,   // sunset
+      light: 0xff9c5c, lightIntensity: 0.7, ambient: 0xf5c3aa, ambientIntensity: 0.4 },
+    { at: 0.75, horizon: 0xb65f70, mid: 0x55558e, top: 0x1f2853, glow: 0xf27450, glowStrength: 0.55,  // blue twilight, the last red low down
+      light: 0xa3a6d2, lightIntensity: 0.5, ambient: 0x9296c4, ambientIntensity: 0.45 },
+    { at: 1, horizon: 0x1c2a4c, mid: 0x131f3e, top: 0x080e22, glow: 0x5a70b4, glowStrength: 0.1,      // night
+      light: 0xb0bee6, lightIntensity: 0.42, ambient: 0x8892b8, ambientIntensity: 0.48 },
+  ]);
+  // Sunrise (nightness 1 -> 0 through the night's last SUNRISE_DURATION):
+  // its own progression instead of the sunset played backwards -- early
+  // morning blue, then a softer, pinker warm sunrise, then morning gold
+  // into neutral daylight. The end stops are the same as the sunset's, so
+  // the look is continuous where the two meet.
+  const SUNRISE_LOOK_STOPS = toLookStops([
+    { at: 0, horizon: 0xc4e4f6, mid: 0x9ad1ee, top: 0x4f9fdb, glow: 0xfff6dc, glowStrength: 0.18,
+      light: 0xfff4e0, lightIntensity: 1.0, ambient: 0xffffff, ambientIntensity: 0.4 },
+    { at: 0.28, horizon: 0xffdcb4, mid: 0xb8d2e6, top: 0x6a9ecf, glow: 0xffd294, glowStrength: 0.45,  // morning gold
+      light: 0xffe0b6, lightIntensity: 0.86, ambient: 0xf6eee6, ambientIntensity: 0.4 },
+    { at: 0.52, horizon: 0xf4a67a, mid: 0xc6a3b8, top: 0x566c9d, glow: 0xffb57c, glowStrength: 0.8,   // warm sunrise
+      light: 0xffb98c, lightIntensity: 0.66, ambient: 0xdcc6c9, ambientIntensity: 0.41 },
+    { at: 0.76, horizon: 0x7a8db6, mid: 0x4b5d8d, top: 0x213157, glow: 0xc6a0a8, glowStrength: 0.3,   // early morning blue
+      light: 0xa9b6de, lightIntensity: 0.48, ambient: 0x8e9bc3, ambientIntensity: 0.46 },
+    { at: 1, horizon: 0x1c2a4c, mid: 0x131f3e, top: 0x080e22, glow: 0x5a70b4, glowStrength: 0.1,      // night
+      light: 0xb0bee6, lightIntensity: 0.42, ambient: 0x8892b8, ambientIntensity: 0.48 },
+  ]);
+  // Within the day itself (no change to its length): a soft warm morning
+  // light that settles to neutral by mid-morning, and a warming afternoon
+  // leading into the golden evening. Colors the sun is nudged toward.
+  const MORNING_LIGHT_TINT = new THREE.Color(0xffe8cc);
+  const AFTERNOON_LIGHT_TINT = new THREE.Color(0xffdfb6);
 
   // Gradient sky dome, replacing the flat background color: horizon ->
   // mid -> zenith, a wide glow and a sun disc toward the sun (a small
@@ -8291,8 +8326,7 @@
 
   const dayNightColorScratch = new THREE.Color();
   // Piecewise-linear blend of one look property at this nightness.
-  function blendDayNight(key, nightness, out) {
-    const stops = DAY_NIGHT_LOOK_STOPS;
+  function blendDayNight(key, nightness, out, stops = DAY_NIGHT_LOOK_STOPS) {
     let i = 0;
     while (i < stops.length - 2 && nightness > stops[i + 1].at) i++;
     const a = stops[i];
@@ -8305,17 +8339,39 @@
   const skySunDirScratch = new THREE.Vector3();
   function applyDayNightLook() {
     const nightness = getNightness(dayNightTime);
-    blendDayNight("horizon", nightness, skyUniforms.horizonColor.value);
-    blendDayNight("mid", nightness, skyUniforms.midColor.value);
-    blendDayNight("top", nightness, skyUniforms.topColor.value);
-    blendDayNight("glow", nightness, skyUniforms.glowColor.value);
-    skyUniforms.glowStrength.value = blendDayNight("glowStrength", nightness);
+    const envCfg = ENVIRONMENT_CONFIG;
+    // Through sunrise, the sunrise stops (blended toward the sunset's by
+    // SUNRISE_WARMTH = 0).
+    const rising = dayNightTime >= DAY_DURATION;
+    const look = (key, out) => {
+      if (!rising || envCfg.SUNRISE_WARMTH <= 0) return blendDayNight(key, nightness, out);
+      if (envCfg.SUNRISE_WARMTH >= 1) return blendDayNight(key, nightness, out, SUNRISE_LOOK_STOPS);
+      if (out) return blendDayNight(key, nightness, out).lerp(blendDayNight(key, nightness, dayNightColorScratch, SUNRISE_LOOK_STOPS), envCfg.SUNRISE_WARMTH);
+      return blendDayNight(key, nightness) + (blendDayNight(key, nightness, undefined, SUNRISE_LOOK_STOPS) - blendDayNight(key, nightness)) * envCfg.SUNRISE_WARMTH;
+    };
+    look("horizon", skyUniforms.horizonColor.value);
+    look("mid", skyUniforms.midColor.value);
+    look("top", skyUniforms.topColor.value);
+    look("glow", skyUniforms.glowColor.value);
+    skyUniforms.glowStrength.value = look("glowStrength");
     scene.background.copy(skyUniforms.horizonColor.value);
     scene.fog.color.copy(skyUniforms.horizonColor.value);
-    blendDayNight("light", nightness, sunLight.color);
-    sunLight.intensity = blendDayNight("lightIntensity", nightness);
-    blendDayNight("ambient", nightness, ambientLight.color);
-    ambientLight.intensity = blendDayNight("ambientIntensity", nightness);
+    look("light", sunLight.color);
+    sunLight.intensity = look("lightIntensity");
+    look("ambient", ambientLight.color);
+    ambientLight.intensity = look("ambientIntensity");
+    // Day grading: warm soft morning (continuing on from the sunrise) and
+    // a warming afternoon (on into the sunset), both gone at night.
+    const dayLit = (1 - nightness) * envCfg.DAY_GRADING;
+    if (dayLit > 0.001) {
+      const morning = rising ? 1 : 1 - smoothstep01(dayNightTime / 110);
+      const afternoon = rising ? 0 : smoothstep01((dayNightTime - 250) / 170);
+      sunLight.color.lerp(MORNING_LIGHT_TINT, 0.35 * morning * dayLit).lerp(AFTERNOON_LIGHT_TINT, 0.3 * afternoon * dayLit);
+      sunLight.intensity *= 1 - 0.08 * morning * dayLit;
+    }
+    // Moonlight and the night fill (configurable; 1 = as designed).
+    sunLight.intensity *= 1 + (envCfg.MOON_INTENSITY - 1) * nightness;
+    ambientLight.intensity *= 1 + (envCfg.NIGHT_AMBIENT - 1) * nightness;
 
     const azimuth = SUN_START_AZIMUTH + (2 * Math.PI * dayNightTime) / DAY_NIGHT_CYCLE_DURATION;
     const elevation = dayNightTime < DAY_DURATION
@@ -8347,6 +8403,10 @@
     skyUniforms.sunDiscSize.value = sunFade > 0 ? SUN_DISC_SIZE : MOON_DISC_SIZE;
     skyUniforms.starStrength.value = smoothstep01((nightness - 0.6) / 0.4);
     applyWeatherLook(nightness); // overcast/rain layer on top -- see WEATHER
+    // Softer shadow edges with a low sun and under cloud (a uniform --
+    // PCF's filter radius -- so it never recompiles anything).
+    const lowSun = 1 - smoothstep01((elevation - SUN_LOW_ELEVATION) / THREE.MathUtils.degToRad(25));
+    sunLight.shadow.radius = 1 + 1.4 * lowSun + 2.2 * weather.cloudAmount + 1.5 * weather.fogAmount;
   }
 
   // ------------------------------------------------------------------
@@ -8570,6 +8630,7 @@
     overcastCover: 0.8,
     storminess: 0,            // 0 dry clouds .. 1 storm clouds (eased)
     heatHaze: 0,              // 0..1, eased
+    puddles: 0,               // 0..1 -- standing water, slower than wetness both ways (see ENVIRONMENT_CONFIG)
   };
 
   // Cosmetic wind (see WEATHER_CONFIG.WIND_*).
@@ -8639,6 +8700,7 @@
     weather.overcastCheckIn = WEATHER_CONFIG.OVERCAST_CHECK_INTERVAL;
     weather.storminess = 0;
     weather.heatHaze = 0;
+    weather.puddles = 0;
     wind.levelIndex = Math.random() < 0.5 ? 0 : 1;
     wind.strength = WEATHER_CONFIG.WIND_LEVELS[wind.levelIndex];
     wind.holdTimer = randomRange(WEATHER_CONFIG.WIND_HOLD_MIN, WEATHER_CONFIG.WIND_HOLD_MAX);
@@ -8898,14 +8960,21 @@
 
     // Wetness soaks in while it rains and dries slowly afterwards.
     const wetTarget = Math.min(1, weather.rainAmount * 1.5);
-    const wetTime = wetTarget > weather.wetness ? WEATHER_CONFIG.WET_RISE_TIME : WEATHER_CONFIG.WET_DRY_TIME;
+    const wetTime = wetTarget > weather.wetness ? WEATHER_CONFIG.WET_RISE_TIME : WEATHER_CONFIG.WET_DRY_TIME / ENVIRONMENT_CONFIG.WETNESS_DRYING_SPEED;
     weather.wetness += (wetTarget - weather.wetness) * Math.min(1, deltaSeconds * 3 / wetTime);
     applyWetness(weather.wetness);
+    // Puddles: only once the ground is soaked and it's still raining; they
+    // fill over PUDDLE_FILL_TIME and take PUDDLE_FADE_TIME to dry up.
+    const puddleTarget = weather.rainAmount > 0.05 ? smoothstep01((weather.wetness - 0.45) / 0.5) : 0;
+    const puddleTime = puddleTarget > weather.puddles ? ENVIRONMENT_CONFIG.PUDDLE_FILL_TIME : ENVIRONMENT_CONFIG.PUDDLE_FADE_TIME / ENVIRONMENT_CONFIG.WETNESS_DRYING_SPEED;
+    weather.puddles += Math.sign(puddleTarget - weather.puddles) * Math.min(Math.abs(puddleTarget - weather.puddles), deltaSeconds / puddleTime);
 
     weather.flash = Math.max(0, weather.flash - deltaSeconds * 3.5);
-    // Clouds drift with the wind (the storm's, plus the cosmetic breeze).
-    skyUniforms.cloudOffset.value.x += (0.004 + weather.windX * 0.004 + Math.cos(wind.angle) * wind.strength * 0.006) * deltaSeconds;
-    skyUniforms.cloudOffset.value.y += (0.002 + weather.windZ * 0.004 + Math.sin(wind.angle) * wind.strength * 0.006) * deltaSeconds;
+    // Clouds drift with the wind (the storm's, plus the cosmetic breeze):
+    // the offset runs against it, so the pattern moves downwind -- the same
+    // way the cloud shadows on the ground drift (ENVIRONMENT STATE).
+    skyUniforms.cloudOffset.value.x -= (0.004 + weather.windX * 0.004 + Math.cos(wind.angle) * wind.strength * 0.006) * deltaSeconds;
+    skyUniforms.cloudOffset.value.y -= (0.002 + weather.windZ * 0.004 + Math.sin(wind.angle) * wind.strength * 0.006) * deltaSeconds;
 
     if (weather.rainAmount > 0) weather.rainTime += deltaSeconds;
     else weather.rainTime = 0;
@@ -9590,6 +9659,186 @@
     dayNightTime = (dayNightTime + deltaSeconds) % DAY_NIGHT_CYCLE_DURATION;
     updateWeather(deltaSeconds); // runs on its own clock -- never touches dayNightTime
     applyDayNightLook();
+    updateEnvironmentState(deltaSeconds);
+  }
+
+  // ------------------------------------------------------------------
+  // ENVIRONMENT STATE (realism pass): the one place the environment's
+  // shared values are worked out -- from the day/night clock and WEATHER
+  // above, never a second weather or lighting system -- and handed to
+  // everything that shows them: every material's shader patch
+  // (environment-fx.js: cloud shadows, wet sheen, puddles, atmosphere),
+  // the campus's night windows and wind (campusWorld.environment), the
+  // ambient particles, contact shadows and eye adaptation. Once per frame,
+  // only while the world runs; the few spatial samples (indoors or not)
+  // are batched a few times a second. Cosmetic only.
+  //
+  // Rain starts -> clouds build (cloudAmount) -> the sun dims and cloud
+  // shadows grow, then fade into a flat overcast -> wetness soaks in ->
+  // puddles fill -> rain ends -> particles and sound fade -> clouds clear
+  // -> the ground dries, puddles last longest. All eased, none instant.
+  //
+  // getEnvironmentState() (also on window) is the read-only snapshot for
+  // audio and anything else that wants to follow the environment.
+  // ------------------------------------------------------------------
+  const envFX = window.environmentFX;
+  const envU = envFX.uniforms;
+  const environmentState = {
+    timeOfDay: 0,           // 0..1 through the whole day/night cycle (0 = start of full day)
+    nightness: 0,           // 0 day .. 1 night
+    isNight: false,
+    sunIntensity: 0, sunColor: new THREE.Color(), moonIntensity: 0,
+    sunDirection: new THREE.Vector3(0, 1, 0),
+    ambientIntensity: 0, ambientColor: new THREE.Color(),
+    cloudCoverage: 0, cloudShadowStrength: 0,
+    windStrength: 0, windGust: 0, windAngle: 0,
+    rainIntensity: 0, thunderFlash: 0, weatherIntensity: 0,
+    wetness: 0, puddles: 0,
+    fogDensity: 0, atmosphereStrength: 0, heatHaze: 0,
+    nightLights: 0,         // 0..1 -- windows / exterior lights coming on
+    indoor: [0, 0, 0, 0],   // per player, eased 0 outdoors .. 1 under a roof
+    exposure: [1, 1, 1, 1], // per player (eye adaptation)
+    weatherState: "CLEAR",
+  };
+  function getEnvironmentState() { return environmentState; }
+  window.getEnvironmentState = getEnvironmentState;
+
+  const envSkyScratch = new THREE.Color();
+  const envLightScratch = new THREE.Color();
+  const envIndoorTargets = [0, 0, 0, 0];
+  let envSlowTimer = 0;
+  let envRippleTime = 0;
+  let envParticleTime = 0;
+  // Ambient particles fade out per view indoors.
+  const ambientParticles = createAmbientParticles(THREE, scene, (cam) => {
+    const i = players.findIndex((p) => p.camera === cam);
+    return i >= 0 ? 1 - environmentState.indoor[i] : 1;
+  });
+  const contactShadows = createContactShadows(THREE, scene);
+
+  function updateEnvironmentState(deltaSeconds) {
+    const cfg = ENVIRONMENT_CONFIG;
+    const s = environmentState;
+    const n = getNightness(dayNightTime);
+    const cloud = weather.cloudAmount;
+    s.timeOfDay = dayNightTime / DAY_NIGHT_CYCLE_DURATION;
+    s.nightness = n;
+    s.isNight = n > 0.5;
+    s.sunDirection.copy(sunOffset).normalize();
+    s.sunColor.copy(sunLight.color);
+    s.sunIntensity = sunLight.intensity * (1 - n);
+    s.moonIntensity = sunLight.intensity * n;
+    s.ambientColor.copy(ambientLight.color);
+    s.ambientIntensity = ambientLight.intensity;
+    s.cloudCoverage = cloud;
+    s.windStrength = wind.strength;
+    s.windGust = wind.gust;
+    s.windAngle = wind.angle;
+    s.rainIntensity = weather.rainAmount;
+    s.thunderFlash = weather.flash;
+    s.weatherIntensity = Math.max(weather.rainAmount, cloud * 0.5, weather.fogAmount * 0.5);
+    s.wetness = weather.wetness;
+    s.puddles = weather.puddles;
+    s.fogDensity = weather.fogAmount;
+    s.heatHaze = weather.heatHaze;
+    s.weatherState = weather.state;
+
+    // Cloud shadows: none under a clear sky, most noticeable partly
+    // cloudy, flattening into overcast (where WEATHER already dims the
+    // sun); faint by moonlight, gone in fog.
+    const coverBump = smoothstep01(cloud / 0.18) * (1 - 0.6 * smoothstep01((cloud - 0.5) / 0.45));
+    s.cloudShadowStrength = cfg.CLOUD_SHADOW_STRENGTH * cfg.CLOUD_SHADOW_OPACITY * coverBump *
+      (1 - 0.85 * n) * (1 - 0.8 * weather.fogAmount);
+    // (threshold: the share of ground under cloud roughly follows the cover)
+    envU.envCloud.value.set(1 / cfg.CLOUD_SHADOW_SCALE, s.cloudShadowStrength, 0.76 - 0.55 * cloud, 0.05 + 0.05 * cloud);
+    // Drift downwind (a storm's wind while raining), a bit faster in wind.
+    const drift = cfg.CLOUD_SHADOW_SPEED * (0.7 + 1.1 * wind.strength) / cfg.CLOUD_SHADOW_SCALE * deltaSeconds;
+    const stormWind = Math.hypot(weather.windX, weather.windZ);
+    const driftAngle = weather.rainAmount > 0.05 && stormWind > 0 ? Math.atan2(weather.windZ, weather.windX) : wind.angle;
+    envU.envCloudOffset.value.x = (envU.envCloudOffset.value.x - Math.cos(driftAngle) * drift) % 64;
+    envU.envCloudOffset.value.y = (envU.envCloudOffset.value.y - Math.sin(driftAngle) * drift) % 64;
+
+    // Wet ground and puddles; ripple clock only runs while it rains.
+    if (weather.rainAmount > 0) envRippleTime += deltaSeconds;
+    envU.envWet.value.set(weather.wetness * cfg.WETNESS_STRENGTH, Math.min(1.5, weather.puddles * cfg.PUDDLE_DENSITY),
+      weather.rainAmount, envRippleTime);
+    // What wet ground reflects: the lower sky (already overcast/fogged/night).
+    envU.envSkyColor.value.copy(skyUniforms.horizonColor.value).lerp(skyUniforms.midColor.value, 0.35);
+    // The sky's glow around the sun, carried into the haze and fog.
+    envU.envSunGlow.value.copy(skyUniforms.glowColor.value).multiplyScalar(skyUniforms.glowStrength.value);
+    envU.envSunSpec.value.copy(sunLight.color).multiplyScalar(sunLight.intensity * (0.8 - 0.55 * n));
+    envU.envSunDir.value.copy(s.sunDirection);
+    // Atmospheric haze in front of the fog (the fog's distances are untouched).
+    s.atmosphereStrength = (cfg.ATMOSPHERE_HAZE_STRENGTH + (cfg.ATMOSPHERE_NIGHT_STRENGTH - cfg.ATMOSPHERE_HAZE_STRENGTH) * n) *
+      (1 + 0.35 * cloud + 0.3 * weather.rainAmount) * (1 - 0.6 * weather.fogAmount);
+    envU.envAtmos.value.set(s.atmosphereStrength, cfg.ATMOSPHERE_DISTANCE * (1 - 0.3 * weather.rainAmount),
+      cfg.ATMOSPHERE_DESATURATION, cfg.SUN_SCATTER * (1 - 0.75 * cloud));
+
+    // Night lights: windows come on through dusk (each at its own moment,
+    // see campus-world.js) and go off again through the sunrise.
+    s.nightLights = smoothstep01((n - 0.3) / 0.5);
+    if (weatherEnvironment) weatherEnvironment.nightLights.value = s.nightLights;
+
+    // Batched spatial samples: who's indoors (eye adaptation, particles).
+    envSlowTimer -= deltaSeconds;
+    if (envSlowTimer <= 0) {
+      envSlowTimer = cfg.SLOW_UPDATE_INTERVAL;
+      players.forEach((p, i) => {
+        if (i < 4) envIndoorTargets[i] = isWeatherSheltered(p.camera.position.x, p.camera.position.z) ? 1 : 0;
+      });
+    }
+    for (let i = 0; i < Math.min(4, players.length); i++) {
+      s.indoor[i] += (envIndoorTargets[i] - s.indoor[i]) * Math.min(1, deltaSeconds * 3);
+      // Eye adaptation: a little brighter a moment after going indoors,
+      // back quicker on the way out -- never dramatic.
+      const target = 1 + cfg.EXPOSURE_INDOOR_BOOST * s.indoor[i] * (1 - 0.5 * n);
+      const tc = target > s.exposure[i] ? cfg.EXPOSURE_ADAPT_TO_DARK : cfg.EXPOSURE_ADAPT_TO_BRIGHT;
+      s.exposure[i] += (target - s.exposure[i]) * Math.min(1, deltaSeconds / Math.max(0.05, tc));
+    }
+
+    // Ambient particles: leaves/debris in strong wind; dust motes on calm,
+    // clear, bright days (they show mostly looking toward the sun).
+    envParticleTime += deltaSeconds;
+    const gustyWind = wind.strength + wind.gust;
+    const leafAmount = cfg.WIND_DEBRIS_DENSITY * smoothstep01((gustyWind - cfg.WIND_DEBRIS_THRESHOLD) / 0.3) *
+      (1 - 0.5 * weather.rainAmount) * (1 - weather.fogAmount);
+    const dustAmount = cfg.ENVIRONMENT_PARTICLE_DENSITY * Math.pow(1 - n, 2) * (1 - cloud) * (1 - Math.min(1, weather.wetness * 2)) *
+      (1 - weather.fogAmount) * (1 - smoothstep01((gustyWind - 0.3) / 0.3));
+    const windSpeed = 1.2 + 5.5 * gustyWind;
+    envLightScratch.copy(ambientLight.color).multiplyScalar(ambientLight.intensity)
+      .add(envSkyScratch.copy(sunLight.color).multiplyScalar(sunLight.intensity * 0.7));
+    envLightScratch.r = Math.min(1.2, envLightScratch.r); envLightScratch.g = Math.min(1.2, envLightScratch.g); envLightScratch.b = Math.min(1.2, envLightScratch.b);
+    const fovScale = renderer.domElement.height * 0.5 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    ambientParticles.update(envParticleTime, isCampusMap ? leafAmount : 0, isCampusMap ? dustAmount : 0,
+      Math.cos(wind.angle) * windSpeed + weather.windX, Math.sin(wind.angle) * windSpeed + weather.windZ,
+      envLightScratch, s.sunDirection, fovScale, players[0].campusGroundY || 0);
+  }
+
+  // Contact shadows: a soft disc under every body near a camera (players,
+  // zombies), drawn in one instanced call; rebuilt each frame from the
+  // positions the game already has. Lighter at night, stronger when
+  // overcast (no sun shadow to ground things then).
+  function updateContactShadows() {
+    const cfg = ENVIRONMENT_CONFIG;
+    contactShadows.begin();
+    if (isCampusMap) {
+      const viewers = getWeatherViewerCameras();
+      const maxD2 = cfg.CONTACT_SHADOW_DISTANCE * cfg.CONTACT_SHADOW_DISTANCE;
+      const near = (x, z) => viewers.some((c) => (c.position.x - x) ** 2 + (c.position.z - z) ** 2 < maxD2);
+      for (const p of isCoopMatchActive ? players : [players[0]]) {
+        if (p.isDead) continue;
+        const air = p.jumpOffset || 0;
+        contactShadows.add(p.camera.position.x, p.campusGroundY || 0, p.camera.position.z, 0.42 * Math.max(0.4, 1 - air * 0.5));
+      }
+      for (const enemyState of enemies) {
+        if (enemyState.dormant || enemyState.isRemoved || !enemyState.mesh.visible) continue;
+        const pos = enemyState.mesh.position;
+        if (!near(pos.x, pos.z)) continue;
+        contactShadows.add(pos.x, enemyState.campusGroundY || 0, pos.z, enemyState.boss ? 0.95 : enemyState.isBrute ? 0.7 : 0.45);
+      }
+    }
+    const n = environmentState.nightness;
+    contactShadows.end(cfg.CONTACT_SHADOW_STRENGTH * (1 - 0.45 * n) * (1 + 0.35 * weather.cloudAmount));
   }
 
   function resetDayNightCycle() {
@@ -12463,11 +12712,25 @@
   // Per-frame campus upkeep, run right after updateWaveManager while the
   // world isn't paused. The spawn manager itself only does real work every
   // CAMPUS_SPAWN_CONFIG.updateInterval seconds, and only with something queued.
+  // Which way a player's camera faces on the ground plane, and the cosine
+  // of its horizontal half field of view plus a margin (for the campus's
+  // per-view culling of small scenery, e.g. parked cars).
+  function campusViewCone(player) {
+    const cam = player.camera;
+    const halfH = Math.atan(Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2) * cam.aspect);
+    return {
+      x: cam.position.x, z: cam.position.z,
+      fx: -Math.sin(player.yaw), fz: -Math.cos(player.yaw),
+      cos: Math.cos(Math.min(Math.PI, halfH + THREE.MathUtils.degToRad(22))),
+    };
+  }
+
   function updateCampusFrame(deltaSeconds) {
     if (!isCampusMap) return;
     campusRecycler.update(deltaSeconds);
     campusSpawner.update(deltaSeconds);
-    campusWorld.updateVisibility(livingPlayersForCampus().map((p) => p.camera.position));
+    const viewing = livingPlayersForCampus();
+    campusWorld.updateVisibility(viewing.map((p) => p.camera.position), viewing.map(campusViewCone));
     if (CAMPUS_SPAWN_CONFIG.debug || campusSpawnDebug) updateCampusSpawnDebug();
   }
 
@@ -22142,7 +22405,8 @@
   function updateGaitCamera(player, deltaSeconds, isLow, striding) {
     const dt = Math.min(deltaSeconds, 0.05);
     player.gaitBob += ((striding ? Math.min(1, player.gaitSpeed / 1.6) : 0) - player.gaitBob) * Math.min(1, 6 * dt);
-    const scale = player.gaitBob * (isLow ? 0.6 : 1) * (1 - easeInOutCubic(player.aimProgress) * 0.8);
+    const scale = player.gaitBob * (isLow ? 0.6 : 1) * (1 - easeInOutCubic(player.aimProgress) * 0.8) *
+      ENVIRONMENT_CONFIG.CAMERA_MOVEMENT_STRENGTH;
     const run = player.gaitRun;
     const W = GAIT_CAMERA.walk, R = GAIT_CAMERA.run;
     const mix = (a, b) => a + (b - a) * run;
@@ -23872,6 +24136,7 @@
   // The running camera motion (see CAMERA RUNNING MOTION) rides along for
   // the draw only.
   function renderFrame() {
+    updateContactShadows();
     shiftCamerasByBob(1);
     try {
       renderViews();
@@ -23881,12 +24146,16 @@
   }
 
   function renderViews() {
+    // Eye adaptation: each view draws at its own player's exposure.
+    const exposureOf = (index) => (isCampusMap ? environmentState.exposure[index] || 1 : 1);
     if (!isCoopMatchActive) {
+      renderer.toneMappingExposure = exposureOf(0);
       renderer.render(scene, camera);
       return;
     }
 
     if (coopFullscreenSurvivorIndex !== null) {
+      renderer.toneMappingExposure = exposureOf(coopFullscreenSurvivorIndex);
       // Scissor test/viewport were already restored to full-canvas at
       // the end of the last dual-viewport frame that ran before this
       // mode was entered (see the bottom of this function) -- nothing
@@ -23920,6 +24189,7 @@
       // 3-player match P1's is the wide top half, P2/P3's a quadrant -- so
       // it's reshaped to this view for the draw and put back after.
       const viewCamera = players[getSpectateViewIndex(index)].camera;
+      renderer.toneMappingExposure = exposureOf(getSpectateViewIndex(index));
       const ownAspect = viewCamera.aspect;
       const viewAspect = rect.width / rect.height;
       if (Math.abs(ownAspect - viewAspect) > 0.001) {
@@ -24918,8 +25188,10 @@
 
   // Automated campus-spawning check (tests/campus-spawn-test.js), only
   // when opened as index.html#spawntest -- never in normal play. The same
-  // hooks drive the frame-cost benchmark (tests/perf-test.js, #perftest).
-  if (/spawntest|perftest/.test(window.location.hash)) {
+  // hooks drive the frame-cost benchmark (tests/perf-test.js, #perftest),
+  // and #envtest exposes them with no test script, for driving the
+  // environment by hand (time of day, weather) from devtools.
+  if (/spawntest|perftest|envtest/.test(window.location.hash)) {
     window.__gameTestHooks = {
       players, enemies, EYE_HEIGHT,
       get campusWorld() { return campusWorld; },
@@ -24961,11 +25233,17 @@
       },
       prewarmRendererForRun, raycastEnemies,
       updateGunBob, applyCameraRotation, setActiveViewModel,
+      // Environment (#envtest): the clock and the weather's smoothed values.
+      get dayNightTime() { return dayNightTime; },
+      set dayNightTime(t) { dayNightTime = t; },
+      weather, wind, WEATHER_STATES, enterWeatherState,
       haltLoop: false, // true stops animate() so only the benchmark renders
     };
-    const script = document.createElement("script");
-    script.src = /perftest/.test(window.location.hash) ? "tests/perf-test.js" : "tests/campus-spawn-test.js";
-    document.body.appendChild(script);
+    if (!/envtest/.test(window.location.hash)) {
+      const script = document.createElement("script");
+      script.src = /perftest/.test(window.location.hash) ? "tests/perf-test.js" : "tests/campus-spawn-test.js";
+      document.body.appendChild(script);
+    }
   }
 })();
 </script>
