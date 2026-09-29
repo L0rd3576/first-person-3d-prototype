@@ -220,6 +220,21 @@
 
       runFrames("warmup", 60);
       results.census0 = census();
+      // #perftest-split: split-screen only -- ~60 zombies, then the same
+      // frame as 1, 2 and 4 views, the extra players close by (10 m) and
+      // spread out (70 m, past one shared shadow area).
+      if (/split/.test(window.location.hash)) {
+        spawnRing(60, 8, 40);
+        runFrames("warmup", 30);
+        for (const [n, spread] of [[1, 0], [2, 10], [4, 10], [4, 70]]) {
+          H.setSplitScreen(n, spread);
+          runFrames("warmup", 20);
+          results.runs.push(runFrames(n + " view" + (n > 1 ? "s" : "") + (n > 1 ? ", " + spread + " m apart" : "") + ", ~60 enemies", 120));
+        }
+        H.setSplitScreen(1);
+        window.__perfResults = JSON.stringify(results);
+        return;
+      }
       results.runs.push(runFrames("campus, no enemies", 180));
       spawnRing(20, 8, 30);
       runFrames("warmup", 1);

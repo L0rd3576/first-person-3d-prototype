@@ -18,6 +18,17 @@ points earned per wave, and survives as long as possible, on one of three diffic
 from a pre-game setup screen. Solo or local split-screen co-op. There is currently no win
 condition.
 
+**Performance is a top priority.** The game has to run smoothly on modest hardware, including a
+laptop with integrated graphics (Intel Iris Xe) and 4-player split screen. Every feature is
+weighed against its frame-time cost:
+- Measure before and after with the benchmarks (`index.html#perftest`, `#perftest-split`, see
+  below). Don't assume a change is cheap.
+- Prefer ways to get speed that keep the content: LODs, culling, instancing, doing work once per
+  frame instead of per view or per object, and lower resolution only when needed (Auto
+  Resolution). Cut content only as a last resort.
+- A new system that costs noticeable frame time needs a cheaper path (LOD, distance limit,
+  update-rate limit) before it ships.
+
 There are two maps, picked on the mode screen (§6):
 - **Classic** (the default): a small single-building floor plan with fixed enemy spawners.
 - **Campus**: a true-to-scale recreation of the MSU Moorhead campus and the surrounding blocks,
@@ -2410,7 +2421,7 @@ and runs the vertical divider down the bottom half only.
 - **2026-09-28** — Lag fixes, parking lines, parked cars:
   - **Lag:** walking hitches came from the new detail plants: a 48 m detail chunk took up to ~21 ms to build in one frame. Chunk building (grass and detail plants) is now sliced across frames within `buildBudgetMs` (2 ms) -- only the chunks right around a viewer build at once -- and the detail placement rolls first, so most spots skip the edge tests. In a fast walk across the campus, frames over 8 ms went 29 -> 3 (worst after the first frame 101 ms -> 6.7 ms). The environment shader's haze skips pixels closer than 6 m and uses cheaper math.
   - **Parking lines:** the middle of every double row now has the painted line between the two facing stalls, so they read as two spaces, not one very long one.
-  - **Parked cars** (`vehicle-models.js`, new): scenery only -- no colliders, physics, lights or per-car logic; movement, zombies, navigation and spawning are untouched (you can walk through them).
+  - **Parked cars** (`vehicle-models.js`, new): no physics, lights or per-car logic. (Originally no colliders either; since 2026-09-29 each car has box hitboxes -- see that entry.)
     - **Spaces:** worked out from the same stall grid the lot texture paints (`PARKED VEHICLES` in campus-world.js), so cars sit between the lines, facing the head of their row. A space is skipped where anything else is on the lot (planted islands, walks, driveways, plazas, paths, streets, trees, buildings, fences, signs). ~3,000 spaces, ~1,900 cars.
     - **Occupancy:** each lot (or box of one) is filled to an exact share of its spaces (`LOT_OCCUPANCY` in campus-world.js; see the Comstock x-ray / parking entry), the taken spaces bunched smoothly across the lot; deterministic from `SEED`.
     - **Models:** 10 procedural everyday cars at real dimensions -- hatchback, compact / midsize / full-size sedans, older economy sedan, crossover, compact and midsize SUVs, midsize pickup, minivan -- lofted bodies with hood, windshield, roof, rear window, trunk or hatch, wheel arches, wheels and rims, lights, grille, plates, and (near) mirrors, door seams and handles. A model only goes in a space it fits.
@@ -2434,3 +2445,25 @@ and runs the vertical divider down the bottom half only.
   - **Street parking (explicit request):** a few cars parked along the curb of every street except 10th, 11th, 14th and 20th (and the narrow alley), on either side, each facing the way traffic runs on its side (keep right: east side faces north, west side south, north side west, south side east), never backed in. Parallel-parking spaces 6.6 m long, 1.25 m from the curb to the car's middle, skipping intersections (a car length past the crossing sidewalks), crosswalks, driveways, the construction pit and the barricaded stretches at the map edge. 5% of ~1,000 curb spaces taken (`STREET_PARKING_SHARE`): ~50 cars. No painted lines on the streets.
   - **M-5 layout fix:** its stall grid ignored the planted divider down the middle (the middle rows landed on the planting and were dropped, leaving 24 spaces). It's now two lots either side of the divider, each one 18 m stall module wide (an edge row, the aisle, a row facing the divider), 0.2 m clear of the planting, with asphalt (`LOT_LINKS`) past both ends of the divider joining the halves: 50 spaces. 35% full (17 cars).
   - **Tuning:** white cars a little rarer (color weight 22 -> 18); street parking 5% -> 6.5% of the curb spaces (~64 cars); the lot west of the Newman Center 3% full (3 cars).
+- **2026-09-29** — Car hitboxes, performance round:
+  - **Car hitboxes (explicit request):** every parked car has two box colliders -- the body (bumper to bumper, up to the window line) and the cabin (windshield base to the rear window / cab back, full height), added to the collider grid after the parking spaces are picked (`vehicleColliders` in campus-world.js). Players and zombies collide with them, pathfinding routes around them, and you can land on a hood or roof. Shots are checked against them in 3D (`vehicleBlocksShot`, via `worldBlocksShot`), so a car stops bullets but you can still fire over a hood. They're `seeThrough`: zombie sight lines pass over/through them.
+  - **Resolution setting (General):** 100% / 85% / 70% of the window's size for the 3D view, stored in `escapeFromKise.renderScale` (superseded the same day: now the maximum for Auto Resolution, default 100% -- see the next entry).
+  - **Draw distances:** campus blocks 220 -> 160 m, trees 150 -> 125 m (the fog is opaque by 110 m).
+  - **A\*:** the current cell's height is read once per node instead of once per neighbor.
+  - **Measured** (Iris Xe, 1902x984 window, `tests/run-perf.js`): GPU p95 26 -> 23 ms with no enemies, 32 -> 23 ms at 60 enemies, 38 -> 27 ms at night in heavy rain; live-loop frame p95 60 -> 50 ms. With many zombies the frame is now as much CPU (enemy update + three.js draw submission, ~13 ms) as GPU.
+- **2026-09-29** — Performance round 2 (FXAA, auto resolution, shadow casters):
+  - **FXAA instead of MSAA:** the canvas has no MSAA (or depth/stencil); the scene draws into `sceneTarget` (a render target with depth + stencil -- the ground layers use the stencil) and one full-screen FXAA pass draws it to the canvas, smoothing edges and upscaling in one step (RENDER TARGET / FXAA / RESOLUTION in index.html). Co-op views set their viewport/scissor on `sceneTarget` itself, since three re-applies a bound target's own viewport whenever it rebinds it (e.g. after the shadow pass). Point-sprite sizes (rain splashes, ambient particles) use `sceneRenderHeight()`. `renderer.info` resets once per `renderFrame` (scene pass(es) + FXAA), not per render call.
+  - **Auto Resolution (General, default on):** while playing, the scene's scale drops 5% at a time (down to 60%) after 0.6 s below ~57 FPS -- only when the frame isn't mostly the game's own CPU work, which a smaller picture wouldn't help -- and climbs back 5% at a time after 3 s at 60, never above the Resolution setting. A step up that has to be undone right away isn't retried for 15 s. Stored in `escapeFromKise.autoResolution`.
+  - **Zombie sun shadows:** only the 8 zombies nearest a player cast into the sun's shadow map (`SUN_SHADOW_ZOMBIES`, `zombieSystem.setShadowCaster`); everyone keeps the contact shadow disc. With ~60 zombies: 122 -> 37 shadow casters.
+  - **Sun shadow map every other frame:** the light only follows the player, and a skipped frame keeps the old map with its own matching matrix, so nothing shifts.
+  - **Profile first:** with a horde, ~75% of the frame's CPU was three.js submitting draws (uniform uploads per draw), zombie AI + animation only ~7% -- hence cutting draws (shadow casters, shadow passes) rather than touching the AI.
+  - **Measured** (Iris Xe, 1902x984, now at 100% scale vs. the original 100% with MSAA): 60 zombies GPU p95 32 -> 22 ms, render CPU 13 -> 8 ms, frame p95 52 -> 36 ms; live loop average 44 -> 23 ms per frame (~23 -> ~44 FPS), p95 60 -> 36 ms. Faster at full resolution than the first round was at 85%. Shot/hit-box probe unchanged (20/20 head hits).
+- **2026-09-29** — Split-screen performance (2-4 players):
+  - **Benchmark:** `index.html#perftest-split` (or `HASH=#perftest-split node tests/run-perf.js out.json`) -- ~60 zombies, the same frame drawn as 1, 2 and 4 views, the extra players 10 m and 70 m apart (`setSplitScreen` test hook).
+  - **Where it went:** each view redraws the whole scene; with 4 views ~1.9-2.8 M triangles and ~800 draws a frame, most of the triangles dense near grass (every view drew every player's near grass).
+  - **LOD by screen size** (`SPLIT_SCREEN_LOD_SCALE` = 1.6 in index.html's SPLIT-SCREEN RENDERING): split-screen views are half the window's height, so zombies, parked cars, trees and the near->mid grass hand-over switch to their simpler LODs 1.6x sooner (a bit short of the 2x that keeps the same on-screen detail). Draw distances are untouched.
+  - **Per-view zombie LOD:** each view draws zombies at that view's own distance (`zombieSystem.showLodForView` / `restoreLod`); the nearest player's LOD still sets the animation rate.
+  - **Per-view grass:** before each view, grass chunks fully faded out for that camera are hidden (`grassSystem.prepareView` / `endViews`, via `campusWorld.prepareView`), and the grass LOD scale is a uniform.
+  - **One scene-graph update per frame** instead of one per view (`scene.autoUpdate` off during the views).
+  - **Sun shadows in co-op (fix):** the shadow area used to follow P1 only, so a teammate more than ~30 m away had no sun shadows. Now: one shared area covering every view while they're within 40 m of each other (half-width 30 m + half their spread), otherwise each view redraws the shadow map around its own camera.
+  - **Measured** (Iris Xe, 1902x984, ~60 zombies; frame avg / p95 ms): 2 views 40 / 55 -> 39 / 49; 4 views together 61 / 91 -> 55 / 64; 4 views spread 98 / 114 -> 54 / 64 (now with correct shadows in every view). Triangles with 4 views 1.9-2.8 M -> ~1.1 M. Still mostly draw submission on the CPU (~23 ms for 4 views, ~200 draws per view).

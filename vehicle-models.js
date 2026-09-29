@@ -783,7 +783,8 @@
       if (hidden !== hiddenCount) { hiddenCount = hidden; dirty = true; }
     }
 
-    function update(viewers, views) {
+    // lodScale (split screen): distances count this many times longer.
+    function update(viewers, views, lodScale = 1) {
       const now = performance.now();
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
@@ -795,7 +796,7 @@
           let d = Infinity;
           for (const v of viewers) d = Math.min(d, Math.hypot(v.x - c.x, v.z - c.z));
           c.d = d;
-          const lod = targetLod(c, d);
+          const lod = targetLod(c, d * lodScale);
           if (lod !== c.lod) {
             // (culling in or out happens deep in the fog: no fade needed)
             const fade = c.lod >= 0 && lod >= 0 && C.VEHICLE_LOD_FADE_TIME > 0;

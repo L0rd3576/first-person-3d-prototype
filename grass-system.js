@@ -43,6 +43,8 @@
 // Usage: const grass = createGrassSystem(THREE, root, env, { testerForArea });
 //   testerForArea(minX, minZ, maxX, maxZ) -> (x, z) => ground height, or -1 for no grass
 //   grass.updateVisibility(viewers)   // once per frame, viewers = [{x, z}, ...]
+//   grass.prepareView(x, z, lodScale) // split screen: before each view draws (see below)
+//   grass.endViews()                  // ...and once after the last one
 //   grass.materials                   // for wet darkening
 //   grass.stats()
 (function () {
@@ -255,6 +257,10 @@
       "uniform vec2 windDir;",
       "uniform float windStrength;",
       "uniform float windGust;",
+      // Split screen (smaller views): the near->mid hand-over comes this
+      // many times sooner. GRASS_SCALE_IN / _OUT (per layer, baked like
+      // grassFade) say which of the layer's two fades it moves.
+      "uniform float grassLodScale;",
       "const float GRASS_BREEZE = " + S.breeze.toFixed(3) + ";",
       "const float GRASS_BEND = " + S.bend.toFixed(3) + ";",
       "const float GRASS_JITTER = " + S.fadeJitter.toFixed(3) + ";",
@@ -269,8 +275,8 @@
       "}",
       "float grassFadeAmount() {",
       "  float d = distance(grassCameraXZ(), grassA.xz) + (fract(grassB.w * 5.123) - 0.5) * 2.0 * GRASS_JITTER;",
-      "  float fin = smoothstep(grassFade.x, grassFade.y, d);",
-      "  return fin * (1.0 - smoothstep(grassFade.z, grassFade.w, d));",
+      "  float fin = smoothstep(grassFade.x, grassFade.y, d * mix(1.0, grassLodScale, GRASS_SCALE_IN));",
+      "  return fin * (1.0 - smoothstep(grassFade.z, grassFade.w, d * mix(1.0, grassLodScale, GRASS_SCALE_OUT)));",
       "}",
       // Wind: one field-wide wind with layered variation (see the header).
       "vec2 grassWind(vec2 w, float ph) {",
@@ -320,11 +326,15 @@
     // (with its own cache key): materials whose onBeforeCompile code is
     // identical share one program in this three.js, and then only one of
     // them gets its custom uniform values -- both layers would fade alike.
+    const lodScaleUniform = { value: 1 };
+    const lodScaleConsts = (scaleIn, scaleOut) => "const float GRASS_SCALE_IN = " + scaleIn.toFixed(1) + ";\nconst float GRASS_SCALE_OUT = " + scaleOut.toFixed(1) + ";";
     function makeMaterial(name, fade) {
       const material = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, side: THREE.DoubleSide });
-      const fadeConst = "const vec4 grassFade = vec4(" + fade.map((f) => f.toFixed(3)).join(", ") + ");";
+      const fadeConst = "const vec4 grassFade = vec4(" + fade.map((f) => f.toFixed(3)).join(", ") + ");\n" +
+        lodScaleConsts(name === "mid" ? 1 : 0, name === "near" ? 1 : 0);
       material.customProgramCacheKey = () => "grass-" + name;
       material.onBeforeCompile = (shader) => {
+        shader.uniforms.grassLodScale = lodScaleUniform;
         shader.uniforms.envTime = env.envTime;
         shader.uniforms.windDir = env.windDir;
         shader.uniforms.windStrength = env.windStrength;
@@ -347,9 +357,10 @@
     // selection, and bending by each plant's own height (not a blade's).
     function makeDetailMaterial(fade) {
       const material = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, side: THREE.DoubleSide });
-      const fadeConst = "const vec4 grassFade = vec4(" + fade.map((f) => f.toFixed(3)).join(", ") + ");";
+      const fadeConst = "const vec4 grassFade = vec4(" + fade.map((f) => f.toFixed(3)).join(", ") + ");\n" + lodScaleConsts(0, 0);
       material.customProgramCacheKey = () => "grass-detail";
       material.onBeforeCompile = (shader) => {
+        shader.uniforms.grassLodScale = lodScaleUniform;
         shader.uniforms.envTime = env.envTime;
         shader.uniforms.windDir = env.windDir;
         shader.uniforms.windStrength = env.windStrength;
@@ -594,6 +605,29 @@
     }
 
 
+    // Split screen: before each view draws, hide the chunks that are fully
+    // faded out for that view's camera (the fade is per view, in the
+    // shader, but a chunk around another player would still be submitted
+    // and run through the vertex shader for nothing), and set the view's
+    // LOD scale. endViews() puts back what updateVisibility decided.
+    function layerReach(layer, lodScale) {
+      return layer.name === "near" ? layer.drawM / lodScale : layer.drawM;
+    }
+    function prepareView(x, z, lodScale = 1) {
+      lodScaleUniform.value = lodScale;
+      for (const layer of layers) {
+        const reach = layerReach(layer, lodScale);
+        const size = layer.cfg.chunk;
+        for (const chunk of layer.chunks.values()) {
+          if (chunk.mesh) chunk.mesh.visible = chunk.shown && chunkDistance(size, chunk.cx, chunk.cz, x, z) <= reach;
+        }
+      }
+    }
+    function endViews() {
+      lodScaleUniform.value = 1;
+      for (const layer of layers) for (const chunk of layer.chunks.values()) if (chunk.mesh) chunk.mesh.visible = chunk.shown;
+    }
+
     function stats() {
       const out = {};
       for (const layer of layers) {
@@ -614,7 +648,7 @@
       return out;
     }
 
-    return { group, updateVisibility, stats, materials: layers.map((l) => l.material), settings: S };
+    return { group, updateVisibility, prepareView, endViews, stats, materials: layers.map((l) => l.material), settings: S };
   }
 
   window.createGrassSystem = createGrassSystem;

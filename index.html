@@ -2976,6 +2976,21 @@
           </div>
         </li>
         <li>
+          <span class="controls-row-label">Resolution</span>
+          <div class="ammo-mode-options">
+            <div class="ammo-mode-option render-scale-option" data-render-scale="1">100%</div>
+            <div class="ammo-mode-option render-scale-option" data-render-scale="0.85">85%</div>
+            <div class="ammo-mode-option render-scale-option" data-render-scale="0.7">70%</div>
+          </div>
+        </li>
+        <li>
+          <label for="auto-resolution-toggle" class="controls-row-label">Auto Resolution</label>
+          <label class="toggle-switch">
+            <input type="checkbox" id="auto-resolution-toggle">
+            <span class="toggle-slider"></span>
+          </label>
+        </li>
+        <li>
           <label for="gore-toggle" class="controls-row-label">Gore</label>
           <label class="toggle-switch">
             <input type="checkbox" id="gore-toggle">
@@ -4059,14 +4074,166 @@
   // for viewing/raycasting either way.
   scene.add(camera);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  // No MSAA on the canvas (performance pass): the scene draws into
+  // sceneTarget and an FXAA pass smooths its edges on the way to the
+  // screen -- see RENDER TARGET / FXAA / RESOLUTION below. MSAA's clear
+  // and resolve alone were ~2.6 ms a frame on integrated graphics.
+  const renderer = new THREE.WebGLRenderer({ antialias: false, depth: false, stencil: false });
   // Capped (performance pass): on a laptop's 125-150% display scaling the
   // raw devicePixelRatio renders 1.5-2.25x the pixels for barely visible
-  // gain -- the HUD is DOM, so it stays crisp regardless -- and MSAA
-  // already smooths the edges.
+  // gain -- the HUD is DOM, so it stays crisp regardless.
   const MAX_PIXEL_RATIO = 1;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
   renderer.setSize(window.innerWidth, window.innerHeight);
+  // (the info counters are reset once per renderFrame, not per render
+  // call -- a frame is the scene pass(es) plus the FXAA pass)
+  renderer.info.autoReset = false;
+
+  // ------------------------------------------------------------------
+  // RENDER TARGET / FXAA / RESOLUTION (performance pass). The 3D view
+  // draws into sceneTarget at a fraction of the canvas's size (the
+  // resolution scale), then one full-screen FXAA pass draws it to the
+  // canvas: edge smoothing and the upscale in one. The HUD is DOM and
+  // stays sharp at any scale.
+  //  - Resolution (General settings): the most the scale may be.
+  //  - Auto resolution: lowers the scale (down to AUTO_SCALE_MIN) while
+  //    frames run slower than the target and the GPU is what's slow
+  //    (not the game's own CPU work), and raises it back when there's
+  //    room again -- small steps, never back and forth quickly.
+  // ------------------------------------------------------------------
+  const RENDER_SCALE_STORAGE_KEY = "escapeFromKise.renderScale";
+  const AUTO_RESOLUTION_STORAGE_KEY = "escapeFromKise.autoResolution";
+  const RENDER_SCALES = [1, 0.85, 0.7];
+  let renderScale = 1;       // the setting (the maximum)
+  let autoResolution = true;
+  try {
+    const stored = parseFloat(localStorage.getItem(RENDER_SCALE_STORAGE_KEY));
+    if (RENDER_SCALES.includes(stored)) renderScale = stored;
+    if (localStorage.getItem(AUTO_RESOLUTION_STORAGE_KEY) === "false") autoResolution = false;
+  } catch (e) {
+    // defaults above
+  }
+  let currentRenderScale = renderScale; // what's drawn right now
+
+  const sceneTarget = new THREE.WebGLRenderTarget(1, 1, {
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    depthBuffer: true,
+    stencilBuffer: true, // the ground layers paint with the stencil (see campus-world.js)
+  });
+  sceneTarget.texture.generateMipmaps = false;
+  const fxaaMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      tDiffuse: { value: sceneTarget.texture },
+      texel: { value: new THREE.Vector2(1, 1) },
+    },
+    vertexShader: [
+      "varying vec2 vUv;",
+      "void main() {",
+      "  vUv = uv;",
+      "  gl_Position = vec4(position.xy, 0.0, 1.0);",
+      "}",
+    ].join("\n"),
+    // FXAA (the "lite" variant): blur along the local edge direction,
+    // only where the luma contrast says there's an edge.
+    fragmentShader: [
+      "uniform sampler2D tDiffuse;",
+      "uniform vec2 texel;",
+      "varying vec2 vUv;",
+      "void main() {",
+      "  vec3 rgbNW = texture2D(tDiffuse, vUv + vec2(-1.0, -1.0) * texel).rgb;",
+      "  vec3 rgbNE = texture2D(tDiffuse, vUv + vec2(1.0, -1.0) * texel).rgb;",
+      "  vec3 rgbSW = texture2D(tDiffuse, vUv + vec2(-1.0, 1.0) * texel).rgb;",
+      "  vec3 rgbSE = texture2D(tDiffuse, vUv + vec2(1.0, 1.0) * texel).rgb;",
+      "  vec3 rgbM = texture2D(tDiffuse, vUv).rgb;",
+      "  const vec3 luma = vec3(0.299, 0.587, 0.114);",
+      "  float lumaNW = dot(rgbNW, luma);",
+      "  float lumaNE = dot(rgbNE, luma);",
+      "  float lumaSW = dot(rgbSW, luma);",
+      "  float lumaSE = dot(rgbSE, luma);",
+      "  float lumaM = dot(rgbM, luma);",
+      "  float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));",
+      "  float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));",
+      "  vec2 dir = vec2(-((lumaNW + lumaNE) - (lumaSW + lumaSE)), (lumaNW + lumaSW) - (lumaNE + lumaSE));",
+      "  float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * (0.25 / 8.0), 1.0 / 128.0);",
+      "  float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);",
+      "  dir = clamp(dir * rcpDirMin, vec2(-8.0), vec2(8.0)) * texel;",
+      "  vec3 rgbA = 0.5 * (texture2D(tDiffuse, vUv + dir * (1.0 / 3.0 - 0.5)).rgb + texture2D(tDiffuse, vUv + dir * (2.0 / 3.0 - 0.5)).rgb);",
+      "  vec3 rgbB = rgbA * 0.5 + 0.25 * (texture2D(tDiffuse, vUv - dir * 0.5).rgb + texture2D(tDiffuse, vUv + dir * 0.5).rgb);",
+      "  float lumaB = dot(rgbB, luma);",
+      "  gl_FragColor = vec4((lumaB < lumaMin || lumaB > lumaMax) ? rgbA : rgbB, 1.0);",
+      "}",
+    ].join("\n"),
+    depthTest: false,
+    depthWrite: false,
+  });
+  const fxaaScene = new THREE.Scene();
+  const fxaaQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), fxaaMaterial);
+  fxaaQuad.frustumCulled = false;
+  fxaaScene.add(fxaaQuad);
+  const fxaaCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const drawingBufferScratch = new THREE.Vector2();
+
+  // Sizes sceneTarget to the canvas times the current scale.
+  function syncSceneTargetSize() {
+    renderer.getDrawingBufferSize(drawingBufferScratch);
+    const w = Math.max(1, Math.round(drawingBufferScratch.x * currentRenderScale));
+    const h = Math.max(1, Math.round(drawingBufferScratch.y * currentRenderScale));
+    if (sceneTarget.width !== w || sceneTarget.height !== h) sceneTarget.setSize(w, h);
+    fxaaMaterial.uniforms.texel.value.set(1 / w, 1 / h);
+  }
+  syncSceneTargetSize();
+  // Height in pixels the 3D view is drawn at (point-sprite sizes use it).
+  function sceneRenderHeight() {
+    return sceneTarget.height;
+  }
+  // Setting changed: the scale jumps straight to the new maximum.
+  function applyRenderScaleSetting() {
+    currentRenderScale = renderScale;
+    syncSceneTargetSize();
+  }
+
+  // Auto resolution.
+  const AUTO_SCALE_MIN = 0.6;
+  const AUTO_SCALE_STEP = 0.05;
+  const AUTO_TARGET_MS = 1000 / 57;     // slower than ~57 FPS -> step down
+  const AUTO_RELAXED_MS = 1000 / 59;    // at the display's 60 -> try a step up
+  const AUTO_DOWN_AFTER_S = 0.6;        // this long over target before a step down
+  const AUTO_UP_AFTER_S = 3;            // this long at target before a step up
+  const autoRes = { frameMs: 16.7, cpuMs: 0, overFor: 0, underFor: 0, raisedAt: -1e9, clock: 0, holdUpUntil: 0 };
+  // Called once per frame with the real time since the last frame and
+  // the CPU time the game's own frame work took.
+  function updateAutoResolution(frameSeconds, cpuMs) {
+    const a = autoRes;
+    a.clock += frameSeconds;
+    if (!autoResolution) {
+      if (currentRenderScale !== renderScale) applyRenderScaleSetting();
+      return;
+    }
+    const ms = Math.min(100, frameSeconds * 1000);
+    a.frameMs += (ms - a.frameMs) * 0.1;
+    a.cpuMs += (cpuMs - a.cpuMs) * 0.1;
+    // Most of the frame spent in the game's own CPU work (updates and
+    // draw submission): a smaller picture wouldn't help. Waiting on the
+    // GPU happens between frames, outside that time.
+    const gpuBound = a.cpuMs < a.frameMs * 0.75;
+    if (a.frameMs > AUTO_TARGET_MS && gpuBound) { a.overFor += frameSeconds; a.underFor = 0; }
+    else if (a.frameMs < AUTO_RELAXED_MS) { a.underFor += frameSeconds; a.overFor = 0; }
+    else { a.overFor = 0; a.underFor = 0; }
+    if (a.overFor > AUTO_DOWN_AFTER_S && currentRenderScale > AUTO_SCALE_MIN + 1e-6) {
+      // Stepping straight back down after a step up: don't retry that for a while.
+      if (a.clock - a.raisedAt < AUTO_UP_AFTER_S + 1) a.holdUpUntil = a.clock + 15;
+      currentRenderScale = Math.max(AUTO_SCALE_MIN, currentRenderScale - AUTO_SCALE_STEP);
+      syncSceneTargetSize();
+      a.overFor = 0;
+    } else if (a.underFor > AUTO_UP_AFTER_S && currentRenderScale < renderScale - 1e-6 && a.clock > a.holdUpUntil) {
+      currentRenderScale = Math.min(renderScale, currentRenderScale + AUTO_SCALE_STEP);
+      syncSceneTargetSize();
+      a.raisedAt = a.clock;
+      a.underFor = 0;
+    }
+    if (currentRenderScale > renderScale) applyRenderScaleSetting();
+  }
   renderer.shadowMap.enabled = true;
   // PCFShadowMap (not the "Soft" variant) -- cheaper multi-tap filtering,
   // and the difference isn't visible on this scene's low-poly primitive
@@ -9389,7 +9556,7 @@
 
     splashUniforms.time.value = weather.rainTime;
     splashUniforms.opacity.value = 0.35 * Math.min(1, weather.rainAmount * 2);
-    splashUniforms.pixelScale.value = renderer.domElement.height * 0.5 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    splashUniforms.pixelScale.value = sceneRenderHeight() * 0.5 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
     spawnSplashes(deltaSeconds, viewers);
   }
 
@@ -9808,7 +9975,7 @@
     envLightScratch.copy(ambientLight.color).multiplyScalar(ambientLight.intensity)
       .add(envSkyScratch.copy(sunLight.color).multiplyScalar(sunLight.intensity * 0.7));
     envLightScratch.r = Math.min(1.2, envLightScratch.r); envLightScratch.g = Math.min(1.2, envLightScratch.g); envLightScratch.b = Math.min(1.2, envLightScratch.b);
-    const fovScale = renderer.domElement.height * 0.5 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    const fovScale = sceneRenderHeight() * 0.5 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
     ambientParticles.update(envParticleTime, isCampusMap ? leafAmount : 0, isCampusMap ? dustAmount : 0,
       Math.cos(wind.angle) * windSpeed + weather.windX, Math.sin(wind.angle) * windSpeed + weather.windZ,
       envLightScratch, s.sunDirection, fovScale, players[0].campusGroundY || 0);
@@ -9839,6 +10006,31 @@
     }
     const n = environmentState.nightness;
     contactShadows.end(cfg.CONTACT_SHADOW_STRENGTH * (1 - 0.45 * n) * (1 + 0.35 * weather.cloudAmount));
+  }
+
+  // Zombie sun shadows (performance pass): only the SUN_SHADOW_ZOMBIES
+  // nearest a player cast into the shadow map -- each caster is drawn a
+  // second time for it, and a horde of them was ~100 extra skinned draws.
+  // Everyone keeps the contact shadow disc above, so no one floats.
+  const SUN_SHADOW_ZOMBIES = 8;
+  const shadowRankScratch = [];
+  function updateZombieShadowCasters() {
+    const viewers = getWeatherViewerCameras();
+    shadowRankScratch.length = 0;
+    for (const enemyState of enemies) {
+      if (!enemyState.zombie) continue;
+      if (enemyState.dormant || enemyState.isRemoved || !enemyState.mesh.visible) {
+        zombieSystem.setShadowCaster(enemyState.zombie, false);
+        continue;
+      }
+      const pos = enemyState.mesh.position;
+      let d2 = Infinity;
+      for (const c of viewers) d2 = Math.min(d2, (c.position.x - pos.x) ** 2 + (c.position.z - pos.z) ** 2);
+      enemyState.shadowRankD2 = d2;
+      shadowRankScratch.push(enemyState);
+    }
+    if (shadowRankScratch.length > SUN_SHADOW_ZOMBIES) shadowRankScratch.sort((a, b) => a.shadowRankD2 - b.shadowRankD2);
+    for (let i = 0; i < shadowRankScratch.length; i++) zombieSystem.setShadowCaster(shadowRankScratch[i].zombie, i < SUN_SHADOW_ZOMBIES);
   }
 
   function resetDayNightCycle() {
@@ -11155,7 +11347,7 @@
       sizeScale: context.sizeScale,
       speed: enemyState.speed,
       yaw: enemyState.yaw,
-      distance: zombieViewerDistance(enemyState.mesh.position),
+      distance: zombieViewerDistance(enemyState.mesh.position) * splitScreenLodScale(),
       legacyPose,
       legacySmoothing,
     });
@@ -11449,8 +11641,8 @@
   // Enemies closer than this many contact distances count as engaged in a
   // fight (attacking / being hit) and are never flagged as stuck.
   const CAMPUS_ENGAGED_CONTACT_MULTIPLIER = 2.5;
-  const CAMPUS_RENDER_DISTANCE = 220;      // campus blocks drawn within this (fog ends ~110)
-  const CAMPUS_TREE_DRAW_DISTANCE = 150;
+  const CAMPUS_RENDER_DISTANCE = 160;      // campus blocks drawn within this (fog is opaque by 110; was 220 -- performance pass)
+  const CAMPUS_TREE_DRAW_DISTANCE = 125;   // (was 150)
   const CAMPUS_BOUNDARY_MARGIN = 2;        // spawns stay this far inside the playable edge
 
   function livingPlayersForCampus() {
@@ -12598,7 +12790,8 @@
   // A bullet can't pass through a campus building (the tiny map never
   // checked walls for shots, so this only applies on the campus).
   function worldBlocksShot(origin, point) {
-    return isCampusMap && campusWorld.segmentBlocked(origin.x, origin.z, point.x, point.z, 0);
+    return isCampusMap && (campusWorld.segmentBlocked(origin.x, origin.z, point.x, point.z, 0) ||
+      campusWorld.vehicleBlocksShot(origin.x, origin.y, origin.z, point.x, point.y, point.z));
   }
 
   // ---- Debug overlay (CAMPUS_SPAWN_CONFIG.debug / F8): spawn rings around
@@ -12730,7 +12923,7 @@
     campusRecycler.update(deltaSeconds);
     campusSpawner.update(deltaSeconds);
     const viewing = livingPlayersForCampus();
-    campusWorld.updateVisibility(viewing.map((p) => p.camera.position), viewing.map(campusViewCone));
+    campusWorld.updateVisibility(viewing.map((p) => p.camera.position), viewing.map(campusViewCone), splitScreenLodScale());
     if (CAMPUS_SPAWN_CONFIG.debug || campusSpawnDebug) updateCampusSpawnDebug();
   }
 
@@ -17172,7 +17365,7 @@
   // directly via getMaxLoadedAmmo -- nothing else needs to happen here
   // besides updating that one flag, its storage, and which option shows
   // as active.
-  const ammoModeOptionEls = document.querySelectorAll(".ammo-mode-option");
+  const ammoModeOptionEls = document.querySelectorAll(".ammo-mode-option[data-ammo-mode]");
   function updateAmmoModeOptionButtons() {
     ammoModeOptionEls.forEach(function (el) {
       el.classList.toggle("active", el.dataset.ammoMode === ammoMode);
@@ -17187,6 +17380,42 @@
       updateAmmoModeOptionButtons();
       playClip("menu_confirm_01", { volume: 0.7 });
     });
+  });
+
+  // Resolution / Auto resolution settings: see RENDER TARGET / FXAA / RESOLUTION.
+  const renderScaleOptionEls = document.querySelectorAll(".render-scale-option");
+  function updateRenderScaleOptionButtons() {
+    renderScaleOptionEls.forEach(function (el) {
+      el.classList.toggle("active", parseFloat(el.dataset.renderScale) === renderScale);
+    });
+  }
+  updateRenderScaleOptionButtons();
+  renderScaleOptionEls.forEach(function (el) {
+    el.addEventListener("click", function () {
+      const scale = parseFloat(el.dataset.renderScale);
+      if (scale === renderScale) return;
+      renderScale = scale;
+      try {
+        localStorage.setItem(RENDER_SCALE_STORAGE_KEY, String(scale));
+      } catch (e) {
+        // Non-fatal -- the setting just won't persist this session.
+      }
+      applyRenderScaleSetting();
+      updateRenderScaleOptionButtons();
+      playClip("menu_confirm_01", { volume: 0.7 });
+    });
+  });
+  const autoResolutionToggleEl = document.getElementById("auto-resolution-toggle");
+  autoResolutionToggleEl.checked = autoResolution;
+  autoResolutionToggleEl.addEventListener("change", function () {
+    autoResolution = autoResolutionToggleEl.checked;
+    try {
+      localStorage.setItem(AUTO_RESOLUTION_STORAGE_KEY, String(autoResolution));
+    } catch (e) {
+      // Non-fatal -- the setting just won't persist this session.
+    }
+    applyRenderScaleSetting();
+    playClip("menu_confirm_01", { volume: 0.7 });
   });
 
   // Gore toggle: reflects/persists `goreEnabled` (see loadStoredGoreEnabled
@@ -24135,26 +24364,77 @@
   // lets a camera's own clear/draw calls touch the whole canvas.
   // The running camera motion (see CAMERA RUNNING MOTION) rides along for
   // the draw only.
+  // ------------------------------------------------------------------
+  // SPLIT-SCREEN RENDERING (performance pass). Each view redraws the whole
+  // scene, so split screen multiplies the draw work by the view count.
+  //  - Level of detail by screen size: a view half the window's height
+  //    shows everything at half the size, so zombies, cars and trees
+  //    switch to their simpler LODs SPLIT_SCREEN_LOD_SCALE times sooner
+  //    (a bit short of the 2x that would keep the same on-screen detail).
+  //    Draw distances are untouched.
+  //  - Zombies draw each view at that view's own distance, not the
+  //    nearest player's (zombieSystem.showLodForView).
+  //  - The scene graph's matrices are updated once per frame, not once
+  //    per view.
+  //  - Sun shadows: one shared shadow area covering every view while the
+  //    players stay together; spread out, each view redraws the shadow
+  //    map around its own camera first (else only P1 had sun shadows).
+  // ------------------------------------------------------------------
+  const SPLIT_SCREEN_LOD_SCALE = 1.6;
+  function splitScreenLodScale() {
+    return isCoopMatchActive && coopFullscreenSurvivorIndex === null ? SPLIT_SCREEN_LOD_SCALE : 1;
+  }
+  const SUN_SHADOW_HALF_M = 30;          // the shadow area's half-width around one player
+  const SUN_SHADOW_SHARED_SPREAD_M = 40; // players farther apart than this: a shadow pass per view
+  // Centers the sun (and its shadow area, half-width `half`) on (x, z).
+  function centerSunShadow(x, z, half) {
+    sunLight.target.position.set(x, 0, z);
+    sunLight.target.updateMatrixWorld();
+    sunLight.position.set(x + sunOffset.x, sunOffset.y, z + sunOffset.z);
+    sunLight.updateMatrixWorld();
+    const shadowCamera = sunLight.shadow.camera;
+    if (shadowCamera.right !== half) {
+      shadowCamera.left = shadowCamera.bottom = -half;
+      shadowCamera.right = shadowCamera.top = half;
+      shadowCamera.updateProjectionMatrix();
+    }
+  }
+
+  // The sun's shadow map is redrawn every other frame (performance pass):
+  // its light only follows the player, so a one-frame-old map (with its
+  // own matching matrix) looks the same, and the shadow pass draws every
+  // caster again.
+  let shadowFrameParity = 0;
   function renderFrame() {
     updateContactShadows();
+    updateZombieShadowCasters();
+    renderer.info.reset();
+    shadowFrameParity ^= 1;
+    renderer.setRenderTarget(sceneTarget);
     shiftCamerasByBob(1);
     try {
       renderViews();
     } finally {
       shiftCamerasByBob(-1);
+      renderer.setRenderTarget(null);
     }
+    renderer.render(fxaaScene, fxaaCamera);
   }
 
   function renderViews() {
     // Eye adaptation: each view draws at its own player's exposure.
     const exposureOf = (index) => (isCampusMap ? environmentState.exposure[index] || 1 : 1);
+    renderer.shadowMap.autoUpdate = shadowFrameParity === 1;
     if (!isCoopMatchActive) {
+      if (sunLight.shadow.camera.right !== SUN_SHADOW_HALF_M) centerSunShadow(camera.position.x, camera.position.z, SUN_SHADOW_HALF_M);
       renderer.toneMappingExposure = exposureOf(0);
       renderer.render(scene, camera);
       return;
     }
 
     if (coopFullscreenSurvivorIndex !== null) {
+      const survivorPos = players[coopFullscreenSurvivorIndex].camera.position;
+      centerSunShadow(survivorPos.x, survivorPos.z, SUN_SHADOW_HALF_M);
       renderer.toneMappingExposure = exposureOf(coopFullscreenSurvivorIndex);
       // Scissor test/viewport were already restored to full-canvas at
       // the end of the last dual-viewport frame that ran before this
@@ -24167,8 +24447,30 @@
 
     const width = window.innerWidth;
     const height = window.innerHeight;
+    // Viewports are set on sceneTarget itself (in its own pixels): three
+    // re-applies a bound target's viewport/scissor whenever it rebinds it
+    // (e.g. after the shadow pass), overriding renderer.setViewport.
+    const toTargetX = sceneTarget.width / width, toTargetY = sceneTarget.height / height;
+    sceneTarget.scissorTest = true;
+    const shadowsThisFrame = shadowFrameParity === 1;
 
-    renderer.setScissorTest(true);
+    // One scene-graph update for every view (renderer.render would redo
+    // it per view).
+    scene.updateMatrixWorld();
+    scene.autoUpdate = false;
+
+    // Sun shadows: shared while the views' cameras are close together.
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    players.forEach((player, index) => {
+      const pos = players[getSpectateViewIndex(index)].camera.position;
+      minX = Math.min(minX, pos.x); maxX = Math.max(maxX, pos.x);
+      minZ = Math.min(minZ, pos.z); maxZ = Math.max(maxZ, pos.z);
+    });
+    const spread = Math.max(maxX - minX, maxZ - minZ);
+    const sharedShadow = spread <= SUN_SHADOW_SHARED_SPREAD_M;
+    if (sharedShadow) centerSunShadow((minX + maxX) / 2, (minZ + maxZ) / 2, SUN_SHADOW_HALF_M + spread / 2);
+
+    const lodScale = splitScreenLodScale();
 
     // Each player's half (2 players) or quadrant (4 players) -- see
     // getPlayerViewportRect. A dead 4-player teammate's quadrant shows
@@ -24179,16 +24481,31 @@
       // canvas, opposite of CSS/DOM -- so a top-row view is the upper
       // y-range here.
       const glY = height - rect.y - rect.height;
-      renderer.setViewport(rect.x, glY, rect.width, rect.height);
-      renderer.setScissor(rect.x, glY, rect.width, rect.height);
-      // The sun's shadow map doesn't depend on the viewing camera, so
-      // every view after the first reuses the one it drew instead of
-      // rendering every shadow caster again.
-      renderer.shadowMap.autoUpdate = index === 0;
+      const tx = Math.round(rect.x * toTargetX), ty = Math.round(glY * toTargetY);
+      const tw = Math.round((rect.x + rect.width) * toTargetX) - tx, th = Math.round((glY + rect.height) * toTargetY) - ty;
+      sceneTarget.viewport.set(tx, ty, tw, th);
+      sceneTarget.scissor.set(tx, ty, tw, th);
+      renderer.setRenderTarget(sceneTarget); // apply them
       // A spectated teammate's camera is shaped for THEIR view -- in a
       // 3-player match P1's is the wide top half, P2/P3's a quadrant -- so
       // it's reshaped to this view for the draw and put back after.
       const viewCamera = players[getSpectateViewIndex(index)].camera;
+      if (sharedShadow) {
+        // The shared shadow map doesn't depend on the viewing camera, so
+        // every view after the first reuses the one it drew.
+        renderer.shadowMap.autoUpdate = index === 0 && shadowsThisFrame;
+      } else {
+        centerSunShadow(viewCamera.position.x, viewCamera.position.z, SUN_SHADOW_HALF_M);
+        renderer.shadowMap.autoUpdate = true;
+      }
+      // Zombies (and grass) at this view's own distance.
+      const vx = viewCamera.position.x, vz = viewCamera.position.z;
+      if (isCampusMap && campusWorld) campusWorld.prepareView(vx, vz, lodScale);
+      for (const enemyState of enemies) {
+        if (!enemyState.zombie || enemyState.dormant) continue;
+        const pos = enemyState.mesh.position;
+        zombieSystem.showLodForView(enemyState.zombie, Math.hypot(pos.x - vx, pos.z - vz) * lodScale);
+      }
       renderer.toneMappingExposure = exposureOf(getSpectateViewIndex(index));
       const ownAspect = viewCamera.aspect;
       const viewAspect = rect.width / rect.height;
@@ -24202,14 +24519,17 @@
         renderer.render(scene, viewCamera);
       }
     });
-    renderer.shadowMap.autoUpdate = true;
-
-    renderer.setScissorTest(false);
-    // Restore the full-canvas viewport -- otherwise the NEXT
+    scene.autoUpdate = true;
+    for (const enemyState of enemies) if (enemyState.zombie) zombieSystem.restoreLod(enemyState.zombie);
+    if (isCampusMap && campusWorld) campusWorld.endViews();
+    // Restore the full-target viewport -- otherwise the NEXT
     // renderer.render(scene, camera) call (singleplayer, after this co-op
     // match ends) would still be constrained to whatever half was drawn
     // last.
-    renderer.setViewport(0, 0, width, height);
+    sceneTarget.scissorTest = false;
+    sceneTarget.viewport.set(0, 0, sceneTarget.width, sceneTarget.height);
+    sceneTarget.scissor.set(0, 0, sceneTarget.width, sceneTarget.height);
+    renderer.setRenderTarget(sceneTarget);
   }
 
   // ------------------------------------------------------------------
@@ -24218,6 +24538,7 @@
   window.addEventListener("resize", function () {
     updateCameraAspectsForRenderMode();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    syncSceneTargetSize();
   });
 
   // ------------------------------------------------------------------
@@ -24643,6 +24964,8 @@
       // no single element that represents "both options" otherwise).
       getEls: () => [
         document.querySelector(".ammo-mode-options"),
+        document.querySelector(".render-scale-option").parentElement, // Resolution: the same kind of stepper
+        document.getElementById("auto-resolution-toggle").closest("label"),
         goreToggleEl.closest("label"),
         fullscreenToggleEl.closest("label"),
         aimAssistSliderEl,
@@ -24956,7 +25279,9 @@
 
     renderer.compile(scene, cam);
     scene.traverse(uploadObjectTextures);
+    renderer.setRenderTarget(sceneTarget); // where the scene really draws (see RENDER TARGET / FXAA)
     renderer.render(scene, cam);
+    renderer.setRenderTarget(null);
 
     for (const object of extras) scene.remove(object);
     emitter.points.position.set(0, 0, 0); // pooled emitters draw in world space
@@ -24969,7 +25294,9 @@
     requestAnimationFrame(animate);
     if (window.__gameTestHooks && window.__gameTestHooks.haltLoop) return; // benchmark drives frames itself
 
-    const deltaSeconds = Math.min(clock.getDelta(), 0.1); // clamp large gaps (e.g. tab switch)
+    const frameCpuStart = performance.now();
+    const rawDeltaSeconds = clock.getDelta();
+    const deltaSeconds = Math.min(rawDeltaSeconds, 0.1); // clamp large gaps (e.g. tab switch)
 
     // Co-op setup screen (Part 1 Step 2): piggybacks on this same loop
     // (already running continuously from script startup, title screen or
@@ -25174,6 +25501,8 @@
     if (pendingFaceUploads.length) uploadPendingFaceTextures(isSingleplayerMatchActive || isCoopMatchActive ? 1 : 2);
     if (rendererPrewarmPending) prewarmRendererForRun();
     renderFrame();
+    // (only while playing: menus are cheap and would read as "room to spare")
+    if (isSingleplayerMatchActive || isCoopMatchActive) updateAutoResolution(rawDeltaSeconds, performance.now() - frameCpuStart);
 
     // Clears this frame's wasActionJustPressed edges -- must run after
     // everything above (processToggleInventoryAction,
@@ -25232,6 +25561,28 @@
         enterWeatherState(WEATHER_STATES.RAINING, 600);
       },
       prewarmRendererForRun, raycastEnemies,
+      // Split-screen benchmark (#perftest-split): n players (1, 2 or 4)
+      // on the campus, the rest `spread` m apart around player 1 and
+      // facing different ways -- views only, no match setup.
+      setSplitScreen(n, spread = 0) {
+        players.length = 0;
+        players.push(...allPlayers.slice(0, Math.max(2, n)));
+        isCoopMatchActive = n > 1;
+        coopFullscreenSurvivorIndex = null;
+        document.body.classList.toggle("coop-mode", n > 1);
+        document.body.classList.toggle("quad-mode", n === 4);
+        const origin = players[0].camera.position;
+        players.forEach((p, i) => {
+          p.viewModelRoot.visible = i === 0 || n > 1;
+          if (i === 0) return;
+          const a = (i / players.length) * Math.PI * 2;
+          p.camera.position.set(origin.x + Math.cos(a) * spread, origin.y, origin.z + Math.sin(a) * spread);
+          p.campusGroundY = players[0].campusGroundY;
+          p.yaw = players[0].yaw + a;
+          applyCameraRotation(p);
+        });
+        updateCameraAspectsForRenderMode();
+      },
       updateGunBob, applyCameraRotation, setActiveViewModel,
       // Environment (#envtest): the clock and the weather's smoothed values.
       get dayNightTime() { return dayNightTime; },

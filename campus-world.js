@@ -5365,8 +5365,7 @@
     // across it, driveways, plazas, paths, a street, or any collider (trees,
     // buildings, fences, barricades, signs). Each lot is filled to an exact
     // share of its spaces (LOT_OCCUPANCY; every other lot is nearly empty).
-    // The cars are scenery only: no colliders, so movement and navigation
-    // are untouched.
+    // Each car gets simple box hitboxes (see "Car hitboxes" below).
     // ------------------------------------------------------------------
     // [lot's x1, y1] -> [lot name, share of its spaces taken, bias, cars], or a
     // function of the space's screenshot y giving that (a lot rect drawn as
@@ -5481,6 +5480,65 @@
     const vehicleSystem = window.createParkedVehicleSystem
       ? window.createParkedVehicleSystem(THREE, root, parkingSpaces, { groundHeightAt })
       : null;
+
+    // Car hitboxes: two boxes per parked car -- the body (bumper to bumper,
+    // up to the window line) and the cabin on top of it (windshield base to
+    // the rear window / cab back, full height). They block movement and
+    // navigation like any prop, and shots (vehicleBlocksShot, in 3D, so you
+    // can still fire over a hood). seeThrough: sight lines pass (glass, and
+    // most of a car is below eye height). Added straight into the collider
+    // grid after the parking spaces are worked out, so they never block a
+    // space themselves.
+    const vehicleColliders = [];
+    if (vehicleSystem) {
+      for (const car of vehicleSystem.cars) {
+        const m = car.m;
+        const fx = Math.cos(car.yaw), fz = Math.sin(car.yaw); // heading (+x of the model)
+        const bodyTop = car.y + Math.max(m.belt[0], m.belt[1]);
+        const body = makeCollider(car.x, car.z, m.L / 2, m.W / 2, bodyTop, -car.yaw);
+        // cabin, along the length from the front bumper (model x = L/2 - that)
+        const cabFront = m.cowl[0], cabBack = m.cls === "pickup" ? m.roofEnd : m.deck[0];
+        const cabMid = m.L / 2 - (cabFront + cabBack) / 2;
+        const cabin = makeCollider(car.x + fx * cabMid, car.z + fz * cabMid, (cabBack - cabFront) / 2, m.W * 0.45, car.y + m.H, -car.yaw);
+        for (const c of [body, cabin]) {
+          c.render = false;
+          c.seeThrough = true;
+          c.vehicle = true;
+          c.groundY = car.y;
+          vehicleColliders.push(c);
+        }
+      }
+      for (const c of vehicleColliders) {
+        c.stamp = 0;
+        worldColliders.push(c);
+        for (let row = bucketRow(c.minZ); row <= bucketRow(c.maxZ); row++) {
+          for (let col = bucketCol(c.minX); col <= bucketCol(c.maxX); col++) {
+            const i = row * bucketCols + col;
+            (buckets[i] || (buckets[i] = [])).push(c);
+          }
+        }
+      }
+    }
+
+    // Does the shot (ax, ay, az) -> (bx, by, bz) hit a parked car? Slab
+    // clip against each car box near the line, ground to its top.
+    function vehicleBlocksShot(ax, ay, az, bx, by, bz) {
+      if (!vehicleColliders.length) return false;
+      return forEachColliderIn(Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz), (c) => {
+        if (!c.vehicle) return false;
+        const a = toLocal(c, ax, az), b = toLocal(c, bx, bz);
+        let t0 = 0, t1 = 1;
+        const clip = (p, q) => {
+          if (Math.abs(p) < 1e-12) return q >= 0;
+          const r = q / p;
+          if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; } else { if (r < t0) return false; if (r < t1) t1 = r; }
+          return true;
+        };
+        const dx = b.x - a.x, dz = b.z - a.z, dy = by - ay;
+        return clip(-dx, a.x + c.halfX) && clip(dx, c.halfX - a.x) && clip(-dz, a.z + c.halfZ) && clip(dz, c.halfZ - a.z) &&
+          clip(-dy, ay - c.groundY) && clip(dy, c.height - ay) && t0 <= t1;
+      });
+    }
 
     const windowGroups = [];
     if (ENV.WINDOWS_ENABLED !== false) {
@@ -6115,14 +6173,14 @@
         if (++expansions > NAV_MAX_EXPANSIONS) break;
         const lx = current % NAV_WINDOW_CELLS, lz = (current / NAV_WINDOW_CELLS) | 0;
         const cx = lx + originX, cz = lz + originZ;
+        const hHere = cellHeight(cx, cz); // (once per node, not per neighbor)
         for (const [dx, dz, cost] of NAV_NEIGHBORS) {
           const nx = lx + dx, nz = lz + dz;
           if (nx < 0 || nz < 0 || nx >= NAV_WINDOW_CELLS || nz >= NAV_WINDOW_CELLS) continue;
           const ni = nz * NAV_WINDOW_CELLS + nx;
           if (navState[ni] === 2) continue;
-          const hc = cellHeight(cx, cz);
-          if (!navStepOk(hc, cellHeight(cx + dx, cz + dz))) continue;
-          if (dx !== 0 && dz !== 0 && (!navStepOk(hc, cellHeight(cx + dx, cz)) || !navStepOk(hc, cellHeight(cx, cz + dz)))) continue;
+          if (!navStepOk(hHere, cellHeight(cx + dx, cz + dz))) continue;
+          if (dx !== 0 && dz !== 0 && (!navStepOk(hHere, cellHeight(cx + dx, cz)) || !navStepOk(hHere, cellHeight(cx, cz + dz)))) continue;
           const g = navG[current] + cost;
           if (navState[ni] === 1 && g >= navG[ni]) continue;
           navG[ni] = g;
@@ -6149,7 +6207,9 @@
     // Hide zones whose footprint is farther than the draw distances from
     // every viewer (co-op has two), so far blocks cost nothing to render.
     // views (optional): which way each viewer faces -- see vehicle-models.js.
-    function updateVisibility(viewers, views) {
+    // lodScale (optional, split screen): LOD distances count as this many
+    // times longer (smaller views -- see index.html's SPLIT-SCREEN RENDERING).
+    function updateVisibility(viewers, views, lodScale = 1) {
       for (const zone of zones) {
         let distance = Infinity;
         for (const v of viewers) distance = Math.min(distance, distanceToZone(zone, v.x, v.z));
@@ -6170,9 +6230,9 @@
         for (const v of viewers) if ((v.x - w.cx) ** 2 + (v.z - w.cz) ** 2 < windowReach * windowReach) { near = true; break; }
         w.mesh.visible = near;
       }
-      if (treeSystem) treeSystem.updateVisibility(viewers);
+      if (treeSystem) treeSystem.updateVisibility(viewers, lodScale);
       if (grassSystem) grassSystem.updateVisibility(viewers);
-      if (vehicleSystem) vehicleSystem.update(viewers, views);
+      if (vehicleSystem) vehicleSystem.update(viewers, views, lodScale);
     }
 
     // 3D grass on the lawns (grass-system.js), chunked around the viewers
@@ -6198,6 +6258,11 @@
       resolveCircle,
       supportHeightAt,
       segmentBlocked,
+      vehicleBlocksShot,
+      // Split screen: before each view draws / after the last one (grass
+      // chunks faded out for that camera, and its LOD scale).
+      prepareView: (x, z, lodScale) => { if (grassSystem) grassSystem.prepareView(x, z, lodScale); },
+      endViews: () => { if (grassSystem) grassSystem.endViews(); },
       isWalkable,
       navLevelAt: (x, z, y) => { const l = navLevelAt(x, z, y); return l ? l.key : null; },
       isOnStairPortal: (x, z, y) => !!navPortalUnder(x, z, y),

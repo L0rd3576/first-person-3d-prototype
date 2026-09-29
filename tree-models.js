@@ -916,7 +916,9 @@
     }
 
     // Per frame: picks each chunk's detail level from the nearest viewer.
-    function updateVisibility(viewers) {
+    // lodScale (split screen): the LOD steps (not the draw distance) come
+    // this many times sooner.
+    function updateVisibility(viewers, lodScale = 1) {
       let budget = BUILDS_PER_UPDATE;
       const now = performance.now() / 1000;
       for (const ch of chunkList) {
@@ -924,7 +926,8 @@
         for (const v of viewers) d = Math.min(d, Math.hypot(v.x - ch.cx, v.z - ch.cz));
         // Hysteresis: a chunk keeps its current level a few meters past the line.
         const slack = (lod) => (ch.shown === lod ? LOD_HYSTERESIS_M : 0);
-        let want = d < LOD_NEAR_M + slack(0) ? 0 : d < LOD_MID_M + slack(1) ? 1 : d < DRAW_M + slack(2) ? 2 : -1;
+        const ld = d * lodScale;
+        let want = ld < LOD_NEAR_M + slack(0) ? 0 : ld < LOD_MID_M + slack(1) ? 1 : d < DRAW_M + slack(2) ? 2 : -1;
         if (want >= 0 && !ch.lods[want]) {
           if (want === 2 || budget > 0 || ch.shown < 0) {
             if (want !== 2) budget--;

@@ -686,6 +686,8 @@
         shapeKey: null,
         appearance: null,
         lod: 0,
+        shownLod: 0,
+        shadowCaster: true, // the game limits sun shadows to the nearest few (setShadowCaster)
         anim: createAnimState(modelSerial++),
       };
       return model;
@@ -922,13 +924,51 @@
       setLod(model, 0);
     }
 
+    // model.lod: the LOD from the nearest viewer -- it sets the animation
+    // rate. What's drawn (model.shownLod) is normally the same, but split
+    // screen draws each view at its own distance (showLodForView).
     function setLod(model, lod) {
       model.lod = lod;
+      showLod(model, lod);
+    }
+    function showLod(model, lod) {
+      if (model.shownLod === lod) return;
+      model.shownLod = lod;
       model.lodMeshes.forEach((mesh, i) => {
-        if (i === lod) { if (!mesh.parent) model.rig.add(mesh); }
-        else if (mesh.parent) model.rig.remove(mesh);
+        if (i === lod) {
+          if (!mesh.parent) {
+            model.rig.add(mesh);
+            // (split screen draws views without a scene-graph update in
+            // between; the mesh sits at the rig's origin)
+            mesh.matrixWorld.copy(model.rig.matrixWorld);
+          }
+        } else if (mesh.parent) model.rig.remove(mesh);
       });
-      model.headwear.castShadow = lod < 2; // same as the body: no shadow at the far LOD
+      applyShadowCasting(model);
+    }
+    // The LOD one view should draw, from its own camera distance (no
+    // hysteresis: nothing animates on it). Never finer than model.lod.
+    function showLodForView(model, distance) {
+      const lod = distance > LOD_DISTANCES[1] ? 2 : distance > LOD_DISTANCES[0] ? 1 : 0;
+      showLod(model, Math.max(lod, model.lod));
+    }
+    function restoreLod(model) {
+      showLod(model, model.lod);
+    }
+
+    // Sun shadow: never at the far LOD, and only while the game allows it
+    // for this zombie (it keeps the nearest few; the rest still get the
+    // contact shadow disc under their feet).
+    function applyShadowCasting(model) {
+      const lod = model.shownLod;
+      const on = model.shadowCaster && lod < 2;
+      model.lodMeshes[lod].castShadow = on;
+      model.headwear.castShadow = on;
+    }
+    function setShadowCaster(model, on) {
+      if (model.shadowCaster === on) return;
+      model.shadowCaster = on;
+      applyShadowCasting(model);
     }
 
     // ------------------------------------------------------------------
@@ -1601,6 +1641,9 @@
       applyAppearance,
       syncHitboxes,
       update,
+      setShadowCaster,
+      showLodForView,
+      restoreLod,
       triggerAttack,
       setWindup,
       flinch,
