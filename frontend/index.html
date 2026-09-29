@@ -3394,7 +3394,7 @@
   const INITIAL_GRACE_PERIOD = 10;       // seconds before wave 1 spawns
   const ROUND_START_SOUND_LEAD = 2.5;     // seconds before a wave starts that round_start_01 plays (was 1.5 -- explicit request)
   const BETWEEN_WAVE_GRACE_PERIOD = 30;  // seconds after a wave is fully cleared, before the next spawns (every difficulty -- was 25)
-  const MAX_ENEMIES_PER_WAVE = 100;      // caps f(w) regardless of difficulty
+  const MAX_ENEMIES_PER_WAVE = 400;      // caps f(w) regardless of difficulty
   const WAVE_SPAWN_DURATION_MULTIPLIER = 1.0; // seconds of spawn time per zombie in the wave (was 0.85, before that 2) -- a difficulty's waveSpawnSecondsPerEnemy overrides it
   const waveSpawnSecondsPerEnemy = () => currentDifficulty.waveSpawnSecondsPerEnemy ?? WAVE_SPAWN_DURATION_MULTIPLIER;
 
