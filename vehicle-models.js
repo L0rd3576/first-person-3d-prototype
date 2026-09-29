@@ -59,7 +59,7 @@
     },
     // Paint categories: [weight, [shades...]] -- realistic automotive colors.
     VEHICLE_COLOR_WEIGHTS: {
-      white: [22, [0xe9e8e3, 0xdedcd5, 0xf0efeb, 0xe4e2da]],
+      white: [18, [0xe9e8e3, 0xdedcd5, 0xf0efeb, 0xe4e2da]],
       black: [20, [0x131416, 0x1b1c1f, 0x17181b]],
       gray: [20, [0x5b5f63, 0x3d4145, 0x74787c, 0x4a4e52]],
       silver: [15, [0xb4b8bc, 0xa3a8ac, 0xc3c5c7]],

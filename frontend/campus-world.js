@@ -139,7 +139,11 @@
       [30, 360, 125, 430],    // lot south of 7th Ave, west of the Newman Center (newborders.png, circled in red)
       [30, 430, 95, 658],     // Lot F (south-west)
       [128, 505, 218, 658],   // lot south of Center for Business
-      [604, 200, 665, 277, "z"], // Metered Parking M-5, between Lommen and Comstock (rows N-S)
+      // Metered Parking M-5, between Lommen and Comstock (rows N-S): two
+      // halves either side of its planted divider (GRASS_AREAS), each one
+      // stall module wide (18 m = 27.27 px: a row along the outer edge, the
+      // aisle, a row facing the divider), 0.2 m clear of the planting
+      [603.4, 200, 630.67, 277, "z"], [636.33, 200, 663.6, 277, "z"],
       [290, 628, 395, 657, "x"], // Lot W-G
       [256, 512, 296, 541, "x"], // Z08: small lot between Bridges and Owens
       [556, 500, 788, 660, "z"], // big lot south of the mall (G-1), rows N-S
@@ -246,6 +250,11 @@
       [280, 55, 280, 145, 4], [280, 92, 380, 92, 4],
     ];
 
+    // Asphalt joining the parts of a lot split around a planted divider
+    // (drawn and walked like DRIVEWAYS, but the stalls beside them stay).
+    const LOT_LINKS = [
+      [630.67, 200, 636.33, 203], [630.67, 255, 636.33, 277], // M-5: past both ends of its divider
+    ];
     // Driveways and lot entrances: plain asphalt, no stall lines.
     const DRIVEWAYS = [
       // Z03
@@ -256,6 +265,7 @@
       [136, 182, 151, 196],                         // Lot F north, off 6th Ave
       [315, 158, 331, 168],                         // 11th-12th St lot, onto the 6th Ave dirt stretch
       [606, 182, 662, 201],                         // M-5, off 6th Ave (both sides of the divider)
+      ...LOT_LINKS,
       [955, 182, 969, 199], [1080, 182, 1094, 199], [1231, 182, 1245, 199], // G-6 / G-7, off 6th Ave
       [1280, 325, 1290, 339],                       // G-7 east, off 17th St
       [1304, 203, 1311, 217],                       // lot north of Nemzek, off 17th St
@@ -5369,8 +5379,9 @@
       // islands north of the Heating Plant (y ~333)
       "1136,198": (py) => (py < 333 ? ["G-7 north-east", 0.07, "west"] : ["G-7 south-east", 0.11, "west"]),
       "838,562": ["G-11", 0.75],
-      "604,200": ["M-5", 0.15, null, 4],   // metered parking between Lommen and Comstock: ~15% (4 of its 24 spaces)
-      "30,360": ["lot west of the Newman Center", 0, null, 1], // (4th value: exactly this many cars)
+      "603.4,200": ["M-5", 0.35],          // metered parking between Lommen and Comstock (both halves)
+      "636.33,200": ["M-5", 0.35],
+      "30,360": ["lot west of the Newman Center", 0.03],
     };
     const EMPTY_LOT_OCCUPANCY = 0.035; // everywhere else: under 4% of the spaces (rounded down)
     const parkingSpaces = [];
@@ -5382,7 +5393,7 @@
         return [Math.min(p[0], p[2]) - w, Math.min(p[1], p[3]) - w, Math.max(p[0], p[2]) + w, Math.max(p[1], p[3]) + w];
       });
       // (diagonal paths get their bounding box -- conservative, fine for this)
-      const blockersPx = [...GRASS_AREAS, ...DRIVEWAYS, ...PLAZAS, ...streetRectsPx, ...stripRects(LOT_WALKS, PATH_WIDTH_PX), ...stripRects(PATHS, PATH_WIDTH_PX)];
+      const blockersPx = [...GRASS_AREAS, ...DRIVEWAYS.filter((d) => !LOT_LINKS.includes(d)), ...PLAZAS, ...streetRectsPx, ...stripRects(LOT_WALKS, PATH_WIDTH_PX), ...stripRects(PATHS, PATH_WIDTH_PX)];
       const colliderHits = (w) => forEachColliderIn(w.minX, w.minZ, w.maxX, w.maxZ, (c) => {
         if (c.shape === "cylinder") {
           const dx = c.cx - Math.max(w.minX, Math.min(c.cx, w.maxX)), dz = c.cz - Math.max(w.minZ, Math.min(c.cz, w.maxZ));
@@ -5433,7 +5444,7 @@
       // are parallel-parking lengths along each curb, skipping the
       // intersections, crosswalks, driveways, the construction pit and the
       // barricaded stretches at the map's edge.
-      const STREET_PARKING_SHARE = 0.05;        // share of the curb spaces taken
+      const STREET_PARKING_SHARE = 0.065;       // share of the curb spaces taken
       const NO_STREET_PARKING_X = [8, 232, 815, 1885]; // 10th, 11th, 14th, 20th St
       const CURB_SPACE_M = 6.6;                // one parallel-parking space along the curb
       const CURB_TO_CAR_M = 1.25;              // curb to a parked car's middle
