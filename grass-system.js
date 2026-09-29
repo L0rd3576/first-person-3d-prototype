@@ -288,9 +288,30 @@
       "  vec2 side = vec2(-windDir.y, windDir.x);",
       "  return windDir * sway + side * breeze * 0.16 * sin(envTime * 1.6 + ph);",
       "}",
-      // Extra horizontal pushes (per unit of blade height) -- the hook for
-      // footsteps, explosions, vehicles... Nothing yet.
-      "vec2 grassDisplace(vec2 w) { return vec2(0.0); }",
+      // Extra horizontal pushes (per unit of blade height): players and
+      // zombies walking through (grassPushers, filled each frame by
+      // index.html -- bodies and the fading marks they leave behind, so
+      // the grass stands back up gradually). Strongest at the feet, gone at
+      // the radius; pushed away from the body. A box test first, so grass
+      // away from everyone skips the loop. NEAR layer and detail plants only.
+      "uniform vec4 grassPushers[8];",
+      "uniform vec4 grassPushBox;",
+      "vec2 grassDisplace(vec2 w) {",
+      "  vec2 s = vec2(0.0);",
+      "  if (GRASS_INTERACT < 0.5 || w.x < grassPushBox.x || w.y < grassPushBox.y || w.x > grassPushBox.z || w.y > grassPushBox.w) return s;",
+      "  for (int i = 0; i < 8; i++) {",
+      "    vec4 p = grassPushers[i];",
+      "    if (p.w <= 0.0) continue;",
+      "    vec2 d = w - p.xy;",
+      "    float d2 = dot(d, d);",
+      "    if (d2 >= p.z * p.z) continue;",
+      "    float dist = sqrt(d2) + 0.02;",
+      "    float k = 1.0 - dist / p.z;",
+      "    s += d / dist * (k * k * (3.0 - 2.0 * k)) * p.w;",
+      "  }",
+      "  float len = length(s);",
+      "  return len > 1.1 ? s * (1.1 / len) : s;", // a lean, never flattened
+      "}",
     ].join("\n");
     const NORMAL = [
       "float grassC = cos(grassA.w), grassS = sin(grassA.w);",
@@ -327,14 +348,22 @@
     // identical share one program in this three.js, and then only one of
     // them gets its custom uniform values -- both layers would fade alike.
     const lodScaleUniform = { value: 1 };
+    // Body interaction (ENVIRONMENT_CONFIG.GRASS_INTERACTION_*): shared
+    // uniforms from the world's environment when it has them.
+    const interactEnabled = !!(env.grassPushers && (window.ENVIRONMENT_CONFIG || {}).GRASS_INTERACTION_ENABLED !== false);
+    const pushers = env.grassPushers || { value: Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, 1, 0)) };
+    const pushBox = env.grassPushBox || { value: new THREE.Vector4(1e6, 1e6, -1e6, -1e6) };
     const lodScaleConsts = (scaleIn, scaleOut) => "const float GRASS_SCALE_IN = " + scaleIn.toFixed(1) + ";\nconst float GRASS_SCALE_OUT = " + scaleOut.toFixed(1) + ";";
     function makeMaterial(name, fade) {
       const material = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, side: THREE.DoubleSide });
       const fadeConst = "const vec4 grassFade = vec4(" + fade.map((f) => f.toFixed(3)).join(", ") + ");\n" +
-        lodScaleConsts(name === "mid" ? 1 : 0, name === "near" ? 1 : 0);
+        lodScaleConsts(name === "mid" ? 1 : 0, name === "near" ? 1 : 0) +
+        "\nconst float GRASS_INTERACT = " + (name === "near" && interactEnabled ? "1.0" : "0.0") + ";";
       material.customProgramCacheKey = () => "grass-" + name;
       material.onBeforeCompile = (shader) => {
         shader.uniforms.grassLodScale = lodScaleUniform;
+        shader.uniforms.grassPushers = pushers;
+        shader.uniforms.grassPushBox = pushBox;
         shader.uniforms.envTime = env.envTime;
         shader.uniforms.windDir = env.windDir;
         shader.uniforms.windStrength = env.windStrength;
@@ -357,10 +386,13 @@
     // selection, and bending by each plant's own height (not a blade's).
     function makeDetailMaterial(fade) {
       const material = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, side: THREE.DoubleSide });
-      const fadeConst = "const vec4 grassFade = vec4(" + fade.map((f) => f.toFixed(3)).join(", ") + ");\n" + lodScaleConsts(0, 0);
+      const fadeConst = "const vec4 grassFade = vec4(" + fade.map((f) => f.toFixed(3)).join(", ") + ");\n" + lodScaleConsts(0, 0) +
+        "\nconst float GRASS_INTERACT = " + (interactEnabled ? "1.0" : "0.0") + ";";
       material.customProgramCacheKey = () => "grass-detail";
       material.onBeforeCompile = (shader) => {
         shader.uniforms.grassLodScale = lodScaleUniform;
+        shader.uniforms.grassPushers = pushers;
+        shader.uniforms.grassPushBox = pushBox;
         shader.uniforms.envTime = env.envTime;
         shader.uniforms.windDir = env.windDir;
         shader.uniforms.windStrength = env.windStrength;
@@ -379,7 +411,7 @@
             "  vec3 p = position * vec3(size * spread, size * grassB.y * fade, size * spread);",
             "  vec3 r = vec3(p.x * grassC + p.z * grassS, p.y, -p.x * grassS + p.z * grassC);",
             "  float plantH = 0.45 * size * grassB.y * fade;",
-            "  vec2 push = grassWind(grassA.xz, grassB.w) * GRASS_BEND * plantH * grassBend;",
+            "  vec2 push = (grassWind(grassA.xz, grassB.w) + grassDisplace(grassA.xz) * 0.6) * GRASS_BEND * plantH * grassBend;",
             "  r.xz += push;",
             "  transformed = grassA.xyz + r;",
             "}",

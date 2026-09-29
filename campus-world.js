@@ -32,6 +32,10 @@
       hazeNear: { value: 18 },           // m -- no shimmer closer than this
       hazeFar: { value: 95 },            // m -- none past this
       nightLights: { value: 0 },         // 0..1 -- lit windows at night (index.html's ENVIRONMENT STATE)
+      // Grass bending around bodies (grass-system.js): x, z, radius, strength
+      // (0 = unused slot), and the box they all fall in (early-out).
+      grassPushers: { value: Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, 1, 0)) },
+      grassPushBox: { value: new THREE.Vector4(1e6, 1e6, -1e6, -1e6) },
     };
     // The realism pass's shared settings and per-surface response
     // (environment-fx.js; absent in a page that doesn't load it).
@@ -98,6 +102,19 @@
     const STREET_DROP_M = 0.12;
     const CURB_RAMP_M = 0.5;
     const CURB_TOP_WIDTH_M = 0.18; // concrete strip along the top of the curb
+
+    // The campus gates / central quad (the green outline in screenshot3.png,
+    // screenshot px): sidewalk pennants on its lanterns (STREETLIGHTS), and
+    // old, tall, shady trees (zoneDetailContents' addTree).
+    const CAMPUS_QUAD_AREA = [[330, 269], [572, 267], [575, 425], [307, 424], [252, 389], [252, 307]];
+    const inPolygon = (px, py, poly) => {
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [xi, yi] = poly[i], [xj, yj] = poly[j];
+        if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
+      }
+      return inside;
+    };
 
     // Streets as centerlines: [x1, y1, x2, y2, width px] (horizontal or
     // vertical; width defaults to ROAD_WIDTH_PX).
@@ -4223,9 +4240,13 @@
           y += dirY * shift;
         }
         const pos = mapToWorld(x, y);
+        // The campus quad's trees are old: much taller, with wide shady
+        // crowns, and a few of them (about one in six) tall conifers.
+        const oldGrowth = inPolygon(x, y, CAMPUS_QUAD_AREA);
+        if (oldGrowth && Math.round(x * 3 + y * 5) % 6 === 0) kind = "e";
         const evergreen = kind === "e";
-        const trunkHeight = evergreen ? 1.2 + rand() * 0.6 : 2.2 + rand() * 1.4;
-        let canopyRadius = evergreen ? 1.8 + rand() * 0.8 : 2.4 + rand() * 1.6;
+        const trunkHeight = oldGrowth ? (evergreen ? 1.5 + rand() * 0.6 : 5 + rand() * 1.5) : evergreen ? 1.2 + rand() * 0.6 : 2.2 + rand() * 1.4;
+        let canopyRadius = oldGrowth ? (evergreen ? 2.4 + rand() * 0.6 : 5 + rand() * 1.4) : evergreen ? 1.8 + rand() * 0.8 : 2.4 + rand() * 1.6;
         // Keep canopies out of buildings you can walk into (they'd show
         // through the walls inside): shrink to fit, or drop the tree.
         let maxCrownR;
@@ -4236,9 +4257,9 @@
           canopyRadius = Math.min(canopyRadius, d - 0.3);
           if (d - 0.3 < 8) maxCrownR = Math.min(maxCrownR === undefined ? Infinity : maxCrownR, d - 0.3);
         }
-        const canopyHeight = evergreen ? 6 + rand() * 4 : canopyRadius * (0.8 + rand() * 0.2);
+        const canopyHeight = oldGrowth && evergreen ? 12 + rand() * 4 : evergreen ? 6 + rand() * 4 : canopyRadius * (0.8 + rand() * 0.2);
         const shade = 0.75 + rand() * 0.35;
-        trees.push({ x: pos.x, z: pos.z, evergreen, trunkHeight, canopyRadius, canopyHeight, shade, maxCrownR });
+        trees.push({ x: pos.x, z: pos.z, evergreen, trunkHeight, canopyRadius, canopyHeight, shade, maxCrownR, oldGrowth });
         const c = makeCollider(pos.x, pos.z, TREE_TRUNK_RADIUS, TREE_TRUNK_RADIUS,
           trunkHeight + (evergreen ? canopyHeight : canopyHeight * 1.8), 0);
         c.shape = "cylinder";
@@ -4540,6 +4561,7 @@
           const collider = makeCollider(cx, cz, UNIT_W / 2, 0.45, 1.4, yaw);
           collider.render = false;
           collider.seeThrough = true;
+          collider.fx = "wood";
           const zone = zones[ZONES.indexOf(zoneAt(px, py))];
           zone.colliders.push(collider);
         }
@@ -4565,6 +4587,7 @@
           const swCollider = makeCollider(sx, sz, 1.0, 0.25, 1.12, yaw);
           swCollider.render = false;
           swCollider.seeThrough = true;
+          swCollider.fx = "metal";
           zones[ZONES.indexOf(zoneAt(px, py))].colliders.push(swCollider);
         }
         // invisible barrier across the full street width (map-edge closures only)
@@ -4573,6 +4596,7 @@
         const barrier = makeCollider(center.x, center.z, barrierLength / 2, 0.3, BARRIER_HEIGHT_M, yaw);
         barrier.render = false;
         barrier.seeThrough = true;
+        barrier.noImpact = true; // invisible: shots never mark it
         zones[ZONES.indexOf(zoneAt(px, py))].colliders.push(barrier);
       }
       // ---- The playable area's edge: invisible walls strung between the
@@ -4587,6 +4611,7 @@
           Math.atan2(-(b.z - a.z), b.x - a.x));
         wall.render = false;
         wall.seeThrough = true;
+        wall.noImpact = true;
         zones[ZONES.indexOf(zoneAt((ax + bx) / 2, (ay + by) / 2))].colliders.push(wall);
       };
       const rows = { north: [], west: [], south: [] };
@@ -4655,6 +4680,7 @@
       const ballastCollider = makeCollider(railStart.x, railMidZ, 1.7, railLength / 2, 0.35, 0);
       ballastCollider.render = false;
       ballastCollider.seeThrough = true;
+      ballastCollider.fx = "gravel";
       zones[ZONES.indexOf(zoneAt(RAIL_X_PX, 300))].colliders.push(ballastCollider);
       const tieMatrices = [];
       const tie = new THREE.Matrix4();
@@ -4830,6 +4856,7 @@
         const collider = makeCollider(sgn.x, sgn.z, POST_M, POST_M, POST_TOP_M, 0);
         collider.render = false;
         collider.seeThrough = true;
+        collider.fx = "metal";
         const spx = sgn.x / MAP_SCALE + MAP_CENTER_X, spy = sgn.z / MAP_SCALE + MAP_CENTER_Y;
         zones[ZONES.indexOf(zoneAt(spx, spy))].colliders.push(collider);
       }
@@ -4841,6 +4868,530 @@
         mesh.name = "StopSigns";
         root.add(mesh);
       }
+    }
+
+    // ------------------------------------------------------------------
+    // STREETLIGHTS (visual polish pass). Cobra-head lights along the
+    // streets -- staggered side to side every STREET_LAMP_SPACING_M at the
+    // curb edge of the sidewalk, arm reaching over the road -- and short
+    // post-top lanterns along the campus walks. Everything is cosmetic:
+    // each pole has a thin see-through collider like a stop sign's post,
+    // nothing else.
+    //   - They warm up through dusk and go out through the sunrise, each
+    //     at its own moment; a few flicker now and then and a few are
+    //     simply broken (ENVIRONMENT_CONFIG), and each has its own color
+    //     temperature -- all from a hash of its position, the same every run.
+    //   - Poles: one instanced draw per kind; the lens glow per instance.
+    //   - Halos: one additive point draw (the "bloom").
+    //   - The light on the world: the few nearest lit lamps to each view's
+    //     camera go to environment-fx.js's local-light uniforms
+    //     (prepareLights) -- no three.js lights.
+    // ------------------------------------------------------------------
+    let streetLamps = null;
+    if (ENV.STREETLIGHTS_ENABLED !== false) {
+      const STREET_LAMP_SPACING_M = 34;
+      const PATH_LAMP_SPACING_M = 23;
+      const KINDS = {
+        cobra: { height: 6.9, arm: 1.9, radius: 15, intensity: 4.0, halo: 1.5 },
+        post: { height: 3.7, arm: 0, radius: 8.5, intensity: 2.4, halo: 0.9 },
+      };
+      const lampHash = (x, z, k) => {
+        let h = Math.imul(Math.round(x * 37) ^ 0x68e31da4, 0x1b873593) ^ Math.imul(Math.round(z * 53) + k * 977, 0xcc9e2d51);
+        h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+        return ((h ^ (h >>> 13)) >>> 0) / 4294967296;
+      };
+      // Every existing collider (trunks, signs, props...) for spacing checks.
+      const allColliders = zones.flatMap((z) => z.colliders);
+      const clearOfColliders = (x, z, pad) => !allColliders.some((c) => x > c.minX - pad && x < c.maxX + pad && z > c.minZ - pad && z < c.maxZ + pad);
+      const inBounds = (px, py) => px > MAP_BOUNDS[0] + 6 && px < MAP_BOUNDS[2] - 6 && py > MAP_BOUNDS[1] + 6 && py < MAP_BOUNDS[3] - 6;
+      // Banners (gamecampusstreetbanners.png / gamecampussidewalkbanners.jpg):
+      // street banners on the cobra lights along 11th and 14th St between 6th
+      // and 9th Ave, and along 6th and 7th Ave between 10th and 11th St;
+      // "Dragon Territory" pennants on every lantern inside the green
+      // outline in screenshot3.png (the campus gates / central quad).
+      const bannerFor = (kind, px, py) => {
+        if (kind === "post") return inPolygon(px, py, CAMPUS_QUAD_AREA) ? "pennant" : null;
+        const near = (a, b) => Math.abs(a - b) < 20;
+        if ((near(px, 232) || near(px, 815)) && py > 190 && py < 665) return "street";
+        if ((near(py, 175) || near(py, 343)) && px > 8 && px < 232) return "street";
+        return null;
+      };
+      const list = []; // { x, z, yaw, kind, banner }
+      const tryPlace = (px, py, yaw, kind) => {
+        if (!inBounds(px, py) || insideAnyBuilding(px, py)) return;
+        if (DRIVEWAYS.some((r) => inRect(px, py, r, 2.5)) || LOTS.some((r) => inRect(px, py, r, 1))) return;
+        const w = mapToWorld(px, py);
+        if (!clearOfColliders(w.x, w.z, 1.1)) return;
+        if (list.some((l) => (l.x - w.x) ** 2 + (l.z - w.z) ** 2 < 64)) return;
+        list.push({ x: w.x, z: w.z, yaw, kind, banner: bannerFor(kind, px, py) });
+      };
+      // Streets: the arm points across the road.
+      for (const r of ROADS) {
+        const horizontal = isHorizontal(r);
+        const a0 = horizontal ? Math.min(r[0], r[2]) : Math.min(r[1], r[3]);
+        const a1 = horizontal ? Math.max(r[0], r[2]) : Math.max(r[1], r[3]);
+        const c = horizontal ? r[1] : r[0];
+        const lateral = roadHalfWidth(r) + 0.55 / MAP_SCALE;
+        const step = STREET_LAMP_SPACING_M / MAP_SCALE;
+        let side = lampHash(r[0], r[1], 1) < 0.5 ? 1 : -1;
+        for (let s = a0 + step * 0.5; s < a1 - 8; s += step, side = -side) {
+          // not at a crossing: stay clear of every perpendicular street
+          const nearCross = ROADS.some((o) => o !== r && isHorizontal(o) !== horizontal &&
+            Math.abs((horizontal ? o[0] : o[1]) - s) < roadHalfWidth(o) + SIDEWALK_WIDTH_PX + 10 &&
+            c >= Math.min(horizontal ? o[1] : o[0], horizontal ? o[3] : o[2]) - 20 &&
+            c <= Math.max(horizontal ? o[1] : o[0], horizontal ? o[3] : o[2]) + 20);
+          if (nearCross) continue;
+          const px = horizontal ? s : c + side * lateral, py = horizontal ? c + side * lateral : s;
+          // the arm reaches toward the road's centerline
+          // (the model's arm is along its -z; yaw turns that to (-sin, -cos))
+          const yaw = horizontal ? (side > 0 ? 0 : Math.PI) : (side > 0 ? Math.PI / 2 : -Math.PI / 2);
+          tryPlace(px, py, yaw, "cobra");
+        }
+      }
+      // Campus walks (inside the campus core): lanterns beside the path.
+      for (const p of PATHS) {
+        const len = Math.hypot(p[2] - p[0], p[3] - p[1]);
+        const step = PATH_LAMP_SPACING_M / MAP_SCALE;
+        if (len < step * 0.7) continue;
+        const ux = (p[2] - p[0]) / len, uy = (p[3] - p[1]) / len;
+        const off = (p[4] || PATH_WIDTH_PX) / 2 + 2;
+        let side = 1;
+        for (let s = step * 0.5; s < len; s += step, side = -side) {
+          const px = p[0] + ux * s - uy * off * side, py = p[1] + uy * s + ux * off * side;
+          if (!isInsideCampusCore(px, py) || isPaved(px, py)) continue;
+          tryPlace(px, py, Math.atan2(ux, uy), "post"); // (round lantern: the yaw just turns its pennants to face along the walk)
+        }
+      }
+
+      // Per-lamp look: color temperature, when it comes on, flicker/broken.
+      const COLORS = [[1.0, 0.76, 0.44], [1.0, 0.87, 0.68], [0.96, 0.95, 0.9], [0.82, 0.9, 1.0]];
+      const flickerShare = ENV.STREETLIGHT_FLICKER_SHARE ?? 0.05, brokenShare = ENV.STREETLIGHT_BROKEN_SHARE ?? 0.04;
+      const lamps = list.map((l, i) => {
+        const kind = KINDS[l.kind];
+        const h = (k) => lampHash(l.x, l.z, k);
+        const ct = h(2);
+        const color = l.kind === "post"
+          ? (ct < 0.6 ? COLORS[1] : ct < 0.85 ? COLORS[0] : COLORS[2])
+          : (ct < 0.45 ? COLORS[0] : ct < 0.75 ? COLORS[1] : ct < 0.9 ? COLORS[2] : COLORS[3]);
+        const fx = -Math.sin(l.yaw), fz = -Math.cos(l.yaw); // arm direction
+        return {
+          index: i, kind: l.kind, x: l.x, z: l.z, yaw: l.yaw, banner: l.banner,
+          ground: groundHeightAt(l.x, l.z),
+          headX: l.x + fx * kind.arm, headZ: l.z + fz * kind.arm,
+          headY: groundHeightAt(l.x, l.z) + kind.height - (l.kind === "cobra" ? 0.25 : 0.2),
+          radius: kind.radius, intensity: kind.intensity * (0.85 + 0.3 * h(3)),
+          color, onAt: 0.08 + 0.55 * h(4), flicker: h(5) < flickerShare, broken: h(6) < brokenShare,
+          seed: h(7), level: 0,
+        };
+      });
+
+      // Colliders: a thin post, like the stop signs'.
+      for (const l of lamps) {
+        const c = makeCollider(l.x, l.z, 0.09, 0.09, KINDS[l.kind].height, 0);
+        c.render = false;
+        c.seeThrough = true;
+        c.fx = "metal";
+        const spx = l.x / MAP_SCALE + MAP_CENTER_X, spy = l.z / MAP_SCALE + MAP_CENTER_Y;
+        zones[ZONES.indexOf(zoneAt(spx, spy))].colliders.push(c);
+      }
+
+      // Models, in their own space (post at the origin, arm toward -z).
+      const lampGeometry = (kind) => {
+        const k = KINDS[kind];
+        const parts = [];
+        const add = (g, x, y, z, lens = 0) => {
+          g.translate(x, y, z);
+          const ng = g.index ? g.toNonIndexed() : g;
+          ng.setAttribute("lampLens", new THREE.Float32BufferAttribute(new Array(ng.attributes.position.count).fill(lens), 1));
+          ng.deleteAttribute("uv");
+          parts.push(ng);
+        };
+        if (kind === "cobra") {
+          add(new THREE.CylinderGeometry(0.075, 0.12, k.height, 8), 0, k.height / 2, 0);
+          add(new THREE.CylinderGeometry(0.2, 0.26, 0.5, 8), 0, 0.25, 0);                  // base
+          add(new THREE.BoxGeometry(0.07, 0.07, k.arm).rotateX(-0.12), 0, k.height - 0.12, -k.arm / 2); // arm, rising slightly
+          add(new THREE.BoxGeometry(0.36, 0.16, 0.7), 0, k.height - 0.15, -k.arm);        // head
+          add(new THREE.BoxGeometry(0.28, 0.03, 0.5), 0, k.height - 0.245, -k.arm, 1);    // lens, facing down
+        } else {
+          add(new THREE.CylinderGeometry(0.055, 0.08, k.height - 0.5, 8), 0, (k.height - 0.5) / 2, 0);
+          add(new THREE.CylinderGeometry(0.14, 0.18, 0.35, 8), 0, 0.175, 0);
+          add(new THREE.CylinderGeometry(0.16, 0.12, 0.42, 6), 0, k.height - 0.28, 0, 1); // lantern glass
+          add(new THREE.CylinderGeometry(0.02, 0.24, 0.16, 6), 0, k.height - 0.0, 0);     // cap
+          add(new THREE.CylinderGeometry(0.1, 0.1, 0.06, 6), 0, k.height - 0.52, 0);      // collar
+        }
+        const out = new THREE.BufferGeometry();
+        for (const name of ["position", "normal", "lampLens"]) {
+          const size = parts[0].attributes[name].itemSize;
+          const arrays = parts.map((g) => g.attributes[name].array);
+          const merged = new Float32Array(arrays.reduce((n, a) => n + a.length, 0));
+          let o = 0;
+          for (const a of arrays) { merged.set(a, o); o += a.length; }
+          out.setAttribute(name, new THREE.BufferAttribute(merged, size));
+        }
+        return out;
+      };
+      const brightness = ENV.STREETLIGHT_BRIGHTNESS ?? 1;
+      const poleMaterial = new THREE.MeshLambertMaterial({ color: 0x6e7479 });
+      poleMaterial.onBeforeCompile = (shader) => {
+        shader.vertexShader = shader.vertexShader
+          .replace("#include <common>", "#include <common>\nattribute float lampLens;\nattribute float lampLevel;\nattribute vec3 lampColor;\nvarying float vLampLens;\nvarying float vLampLevel;\nvarying vec3 vLampColor;")
+          .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLampLens = lampLens;\nvLampLevel = lampLevel;\nvLampColor = lampColor;");
+        shader.fragmentShader = shader.fragmentShader
+          .replace("#include <common>", "#include <common>\nvarying float vLampLens;\nvarying float vLampLevel;\nvarying vec3 vLampColor;")
+          .replace("#include <color_fragment>", "#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.78, 0.76, 0.7), vLampLens);")
+          .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += vLampColor * vLampLevel * vLampLens * " + (1.6 * brightness).toFixed(2) + ";");
+      };
+      poleMaterial.customProgramCacheKey = () => "street-lamp";
+      const meshes = [];
+      const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), yAxis = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1);
+      for (const kind of Object.keys(KINDS)) {
+        const mine = lamps.filter((l) => l.kind === kind);
+        if (mine.length === 0) continue;
+        const g = lampGeometry(kind);
+        const level = new THREE.InstancedBufferAttribute(new Float32Array(mine.length), 1);
+        level.setUsage(THREE.DynamicDrawUsage);
+        g.setAttribute("lampLevel", level);
+        g.setAttribute("lampColor", new THREE.InstancedBufferAttribute(new Float32Array(mine.flatMap((l) => l.color)), 3));
+        const mesh = new THREE.InstancedMesh(g, poleMaterial, mine.length);
+        mine.forEach((l, i) => {
+          q.setFromAxisAngle(yAxis, l.yaw);
+          mesh.setMatrixAt(i, m4.compose(new THREE.Vector3(l.x, l.ground, l.z), q, one));
+          l.slot = { attr: level, i };
+        });
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.frustumCulled = false; // spread over the whole map: one draw each
+        mesh.castShadow = true;
+        mesh.name = "StreetLights";
+        root.add(mesh);
+        meshes.push({ mesh, level });
+      }
+
+      // Banners (redrawn from the cropped photos gamecampusstreetbanners.png /
+      // gamecampussidewalkbanners.jpg): fabric on little brackets, one
+      // instanced draw per kind. One texture atlas: the street banner, the
+      // two pennants' faces and a patch of gray for the brackets. Matte
+      // (Lambert, no specular) -- printed fabric barely glints.
+      {
+        const AW = 1024, AH = 1024;
+        const REGION = {
+          street: { x: 0, y: 0, w: 400, h: 1000 },     // 0.6 x 1.5 m
+          pennantA: { x: 420, y: 0, w: 300, h: 600 },  // 0.5 x 1.0 m, left pennant
+          pennantB: { x: 724, y: 0, w: 300, h: 600 },  // right pennant
+          metal: { x: 420, y: 700, w: 64, h: 64 },
+        };
+        const STREET_RED = "#b3213b", STREET_WHITE = "#efe4e8";
+        const PENNANT_RED = "#c4444f", PENNANT_DARK = "#a9333f", PENNANT_WHITE = "#ece8ec";
+        const atlas = canvasTexture(AW, AH, (ctx) => {
+          const rand = seededRandom(4242);
+          const fabric = (r, base) => {
+            ctx.fillStyle = base; ctx.fillRect(r.x, r.y, r.w, r.h);
+            for (let i = 0; i < r.w * r.h / 30; i++) {
+              ctx.fillStyle = rand() < 0.5 ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.045)";
+              ctx.fillRect(r.x + rand() * r.w, r.y + rand() * r.h, 2, 2);
+            }
+          };
+          // Draws in the photo's own pixel space: the region's rect is the
+          // photo rect (x0, y0, x1, y1), clipped to it.
+          const inPhoto = (r, x0, y0, x1, y1, draw) => {
+            ctx.save();
+            ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+            ctx.translate(r.x, r.y); ctx.scale(r.w / (x1 - x0), r.h / (y1 - y0)); ctx.translate(-x0, -y0);
+            draw();
+            ctx.restore();
+          };
+
+          // ---- street banner (photo coords: 0..280 across, 0..725 down)
+          const S = REGION.street;
+          fabric(S, STREET_RED);
+          inPhoto(S, 0, 0, 280, 725, () => {
+            // pole pocket at the top (a folded, stitched hem) and the wider hem at the bottom
+            ctx.fillStyle = "rgba(0,0,0,0.14)"; ctx.fillRect(0, 0, 280, 62);
+            ctx.fillStyle = "rgba(255,255,255,0.22)"; ctx.fillRect(0, 62, 280, 3);
+            ctx.fillStyle = "rgba(0,0,0,0.10)"; ctx.fillRect(0, 662, 280, 63);
+            ctx.fillStyle = "rgba(255,255,255,0.14)"; ctx.fillRect(0, 662, 280, 3);
+            // the disc
+            const cx = 140, cy = 378, R = 111;
+            ctx.fillStyle = STREET_WHITE; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
+            // the M: two heavy uprights, and a V of two heavy diagonals between them
+            ctx.fillStyle = STREET_RED;
+            const top = 318, bot = 448;
+            ctx.beginPath(); // left upright
+            ctx.moveTo(90, top); ctx.lineTo(112, top); ctx.lineTo(112, bot); ctx.lineTo(90, bot); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); // left diagonal
+            ctx.moveTo(112, top); ctx.lineTo(136, top); ctx.lineTo(160, bot - 18); ctx.lineTo(160, bot); ctx.lineTo(148, bot); ctx.lineTo(112, top + 45); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); // right diagonal, into the right upright
+            ctx.moveTo(150, bot); ctx.lineTo(185, top + 20); ctx.lineTo(190, top); ctx.lineTo(210, top); ctx.lineTo(210, bot); ctx.lineTo(190, bot); ctx.lineTo(188, top + 55); ctx.lineTo(170, bot); ctx.closePath(); ctx.fill();
+            // the flame rising out of the V, two tongues with a white core
+            ctx.fillStyle = STREET_RED;
+            ctx.beginPath();
+            ctx.moveTo(146, bot - 8);
+            ctx.bezierCurveTo(132, top + 60, 150, top + 30, 152, top - 30);
+            ctx.bezierCurveTo(172, top + 10, 172, top + 50, 158, bot - 8);
+            ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = STREET_WHITE; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(150, bot - 30); ctx.bezierCurveTo(146, top + 70, 158, top + 35, 154, top + 5); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(158, bot - 20); ctx.bezierCurveTo(168, top + 70, 165, top + 50, 160, top + 30); ctx.stroke();
+            ctx.fillStyle = STREET_RED; ctx.beginPath(); ctx.arc(216, bot - 1, 2.5, 0, Math.PI * 2); ctx.fill(); // the little (R)
+          });
+
+          // ---- pennant A, the left one (photo: x 5..460, y 80..935; apex bottom right)
+          const A = REGION.pennantA;
+          fabric(A, PENNANT_RED);
+          inPhoto(A, 5, 80, 460, 935, () => {
+            ctx.fillStyle = PENNANT_DARK; ctx.fillRect(0, 80, 470, 72);                    // pocket
+            ctx.fillStyle = "rgba(255,255,255,0.25)"; ctx.fillRect(0, 150, 470, 3);
+            ctx.fillStyle = PENNANT_WHITE; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+            ctx.font = `900 84px "Arial Black", "Century Gothic", Arial, sans-serif`;        // DRAGON
+            ctx.save(); ctx.translate(245, 232); ctx.scale(0.86, 1); ctx.fillText("DRAGON", 0, 0); ctx.restore();
+            ctx.font = `400 44px "Century Gothic", Futura, Arial, sans-serif`;               // TERRITORY, letter-spaced
+            const word = "TERRITORY", gap = 7, ws = [...word].map((c) => ctx.measureText(c).width);
+            let tx = 246 - (ws.reduce((a, b) => a + b, 0) + gap * (word.length - 1)) / 2;
+            ctx.textAlign = "left";
+            [...word].forEach((c, i) => { ctx.fillText(c, tx, 290); tx += ws[i] + gap; });
+            ctx.beginPath(); ctx.arc(250, 342, 29, 0, Math.PI * 2); ctx.fill();             // the M mark
+            ctx.fillStyle = PENNANT_RED; ctx.textAlign = "center";
+            ctx.font = `900 30px "Arial Black", Arial, sans-serif`; ctx.fillText("M", 250, 353);
+            // the dragon's claw and spines, then its big coil, running off the pole edge
+            ctx.fillStyle = PENNANT_WHITE;
+            ctx.beginPath();
+            ctx.moveTo(330, 470); ctx.lineTo(330, 396); ctx.bezierCurveTo(345, 372, 380, 350, 430, 296);
+            ctx.lineTo(462, 300); ctx.lineTo(462, 470); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = PENNANT_RED; ctx.lineWidth = 16; ctx.lineCap = "round";
+            ctx.beginPath(); ctx.moveTo(405, 470); ctx.bezierCurveTo(398, 410, 420, 370, 440, 330); ctx.stroke();
+            ctx.fillStyle = PENNANT_WHITE;
+            ctx.beginPath(); ctx.arc(462, 645, 212, 0, Math.PI * 2); ctx.fill();            // the coil
+            ctx.fillStyle = PENNANT_RED;
+            ctx.beginPath(); ctx.arc(462, 612, 100, 0, Math.PI * 2); ctx.fill();             // its hollow
+            ctx.fillStyle = PENNANT_RED; ctx.fillRect(250, 838, 220, 60);                    // red below the coil...
+            ctx.fillStyle = PENNANT_WHITE;
+            ctx.beginPath(); ctx.moveTo(368, 838); ctx.lineTo(425, 838); ctx.lineTo(392, 872); ctx.closePath(); ctx.fill(); // ...and its small tooth
+          });
+
+          // ---- pennant B, the right one (photo: x 635..1062, y 60..925; apex bottom left)
+          const B = REGION.pennantB;
+          fabric(B, PENNANT_RED);
+          inPhoto(B, 635, 60, 1062, 925, () => {
+            ctx.fillStyle = PENNANT_DARK; ctx.fillRect(630, 60, 440, 50);                    // pocket
+            ctx.fillStyle = PENNANT_WHITE;
+            ctx.beginPath();                                                                // head
+            ctx.moveTo(866, 62); ctx.lineTo(1070, 62); ctx.lineTo(1070, 170);
+            ctx.bezierCurveTo(1010, 240, 960, 300, 930, 345);
+            ctx.bezierCurveTo(900, 375, 850, 395, 800, 398);
+            ctx.bezierCurveTo(760, 402, 720, 398, 690, 392);
+            ctx.bezierCurveTo(676, 380, 682, 362, 700, 350);
+            ctx.bezierCurveTo(720, 335, 760, 322, 790, 280);
+            ctx.bezierCurveTo(815, 240, 830, 190, 842, 130);
+            ctx.bezierCurveTo(846, 100, 852, 78, 866, 62);
+            ctx.closePath(); ctx.fill();
+            ctx.fillStyle = PENNANT_RED;
+            ctx.beginPath(); ctx.ellipse(950, 62, 70, 42, 0, 0, Math.PI); ctx.fill();       // notch in the crest
+            ctx.beginPath(); ctx.moveTo(880, 290); ctx.bezierCurveTo(920, 260, 970, 220, 1030, 190);
+            ctx.bezierCurveTo(990, 230, 960, 260, 935, 300); ctx.closePath(); ctx.fill();    // red flash across the cheek
+            ctx.lineWidth = 5; ctx.strokeStyle = PENNANT_RED; ctx.lineCap = "round";
+            ctx.beginPath(); ctx.arc(738, 340, 12, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke(); // nostril
+            ctx.beginPath(); ctx.arc(790, 337, 12, Math.PI * 0.1, Math.PI * 0.9, true); ctx.stroke(); // closed eye
+            // the mouth: red, with white fangs, under a white lower jaw
+            ctx.fillStyle = PENNANT_RED;
+            ctx.beginPath(); ctx.moveTo(700, 400); ctx.lineTo(880, 385); ctx.lineTo(820, 470); ctx.lineTo(740, 450); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = PENNANT_WHITE;
+            ctx.beginPath(); ctx.moveTo(710, 405); ctx.lineTo(745, 440); ctx.lineTo(752, 405); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(770, 425); ctx.lineTo(805, 462); ctx.lineTo(806, 415); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = PENNANT_WHITE; ctx.lineWidth = 26;
+            ctx.beginPath(); ctx.moveTo(950, 350); ctx.bezierCurveTo(900, 440, 850, 480, 800, 500); ctx.stroke(); // lower jaw
+            // horn ridges toward the pole
+            ctx.lineWidth = 42;
+            ctx.beginPath(); ctx.moveTo(632, 188); ctx.bezierCurveTo(690, 176, 750, 196, 800, 208); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(636, 250); ctx.bezierCurveTo(690, 240, 740, 256, 792, 262); ctx.stroke();
+            // neck sweeping down and out to the bottom of the pennant
+            ctx.lineWidth = 34;
+            ctx.beginPath(); ctx.moveTo(930, 400); ctx.bezierCurveTo(830, 500, 720, 560, 660, 690); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(640, 738); ctx.lineTo(832, 738); ctx.lineWidth = 118; ctx.stroke(); // body coil
+            ctx.fillStyle = PENNANT_RED; ctx.fillRect(630, 806, 240, 30);
+            ctx.fillStyle = PENNANT_WHITE;
+            ctx.beginPath(); ctx.moveTo(630, 840); ctx.lineTo(735, 840); ctx.lineTo(690, 925); ctx.lineTo(630, 925); ctx.closePath(); ctx.fill();
+          });
+
+          ctx.fillStyle = "#8f959a"; // brackets
+          ctx.fillRect(REGION.metal.x, REGION.metal.y, REGION.metal.w, REGION.metal.h);
+        });
+        atlas.wrapS = atlas.wrapT = THREE.ClampToEdgeWrapping;
+        const uv = (r, u, v) => [(r.x + u * r.w) / AW, 1 - (r.y + v * r.h) / AH]; // v: 0 top .. 1 bottom
+        const pos = [], nor = [], tex = [];
+        const tri = (a, b, c, ua, ub, uc) => {
+          const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+          const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+          const len = Math.hypot(...n) || 1;
+          for (const [p, t] of [[a, ua], [b, ub], [c, uc]]) { pos.push(...p); nor.push(n[0] / len, n[1] / len, n[2] / len); tex.push(...t); }
+        };
+        const bar = (x0, y0, z0, x1, y1, z1) => {
+          const g = new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0).translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2).toNonIndexed();
+          const p = g.attributes.position.array, n = g.attributes.normal.array, t = uv(REGION.metal, 0.5, 0.5);
+          for (let i = 0; i < p.length; i += 3) { pos.push(p[i], p[i + 1], p[i + 2]); nor.push(n[i], n[i + 1], n[i + 2]); tex.push(...t); }
+        };
+        const buildBanner = (kind) => {
+          pos.length = nor.length = tex.length = 0;
+          if (kind === "street") {
+            // Hung at the middle of the pole: a bracket arm out over the road (-z) at the top
+            // AND the bottom, each clamped to the pole, the banner between them, printed on both sides.
+            const mid = KINDS.cobra.height / 2, yT = mid + 0.75, yB = mid - 0.75, z0 = -0.14, z1 = -0.74, R = REGION.street, f = 0.003;
+            for (const y of [yT + 0.02, yB - 0.02]) {
+              bar(-0.02, y - 0.02, 0.05, 0.02, y + 0.02, z1 - 0.1); // arm, a little past the banner's far edge
+              bar(-0.045, y - 0.06, -0.02, 0.045, y + 0.06, 0.09);  // clamp on the pole
+            }
+            tri([f, yT, z0], [f, yB, z0], [f, yB, z1], uv(R, 0, 0), uv(R, 0, 1), uv(R, 1, 1));
+            tri([f, yT, z0], [f, yB, z1], [f, yT, z1], uv(R, 0, 0), uv(R, 1, 1), uv(R, 1, 0));
+            tri([-f, yT, z1], [-f, yB, z1], [-f, yB, z0], uv(R, 0, 0), uv(R, 0, 1), uv(R, 1, 1));
+            tri([-f, yT, z1], [-f, yB, z0], [-f, yT, z0], uv(R, 0, 0), uv(R, 1, 1), uv(R, 1, 0));
+          } else {
+            // A crossbar through the lantern pole with a right-triangle pennant hanging from each
+            // end (its vertical edge against the pole), and a small arm at each apex
+            const yT = 3.1, yB = 2.1, gap = 0.08, w = 0.5, f = 0.003;
+            bar(-0.62, yT - 0.005, -0.015, 0.62, yT + 0.03, 0.015);
+            bar(-0.075, yT - 0.05, -0.075, 0.075, yT + 0.08, 0.075);
+            bar(-0.12, yB - 0.02, -0.012, 0.12, yB + 0.01, 0.012);
+            bar(-0.075, yB - 0.05, -0.075, 0.075, yB + 0.06, 0.075);
+            const A = REGION.pennantA, B = REGION.pennantB;
+            const xa = -gap - w, xb = -gap; // left pennant: x xa..xb, apex under xb
+            tri([xa, yT, f], [xb, yB, f], [xb, yT, f], uv(A, 0, 0), uv(A, 1, 1), uv(A, 1, 0));
+            tri([xb, yT, -f], [xb, yB, -f], [xa, yT, -f], uv(A, 1, 0), uv(A, 1, 1), uv(A, 0, 0));
+            const xc = gap, xd = gap + w;   // right pennant: apex under xc
+            tri([xc, yT, f], [xc, yB, f], [xd, yT, f], uv(B, 0, 0), uv(B, 0, 1), uv(B, 1, 0));
+            tri([xd, yT, -f], [xc, yB, -f], [xc, yT, -f], uv(B, 1, 0), uv(B, 0, 1), uv(B, 0, 0));
+          }
+          const g = new THREE.BufferGeometry();
+          g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+          g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+          g.setAttribute("uv", new THREE.Float32BufferAttribute(tex, 2));
+          return g;
+        };
+        const bannerMaterial = new THREE.MeshLambertMaterial({ map: atlas, side: THREE.DoubleSide });
+        for (const kind of ["street", "pennant"]) {
+          const mine = lamps.filter((l) => l.banner === kind);
+          if (mine.length === 0) continue;
+          const mesh = new THREE.InstancedMesh(buildBanner(kind), bannerMaterial, mine.length);
+          mine.forEach((l, i) => {
+            q.setFromAxisAngle(yAxis, l.yaw);
+            mesh.setMatrixAt(i, m4.compose(new THREE.Vector3(l.x, l.ground, l.z), q, one));
+          });
+          mesh.instanceMatrix.needsUpdate = true;
+          mesh.frustumCulled = false;
+          mesh.name = kind === "street" ? "StreetBanners" : "PennantBanners";
+          root.add(mesh);
+        }
+      }
+
+      // Halos around the lit heads.
+      const haloPos = new Float32Array(lamps.length * 3), haloLevel = new Float32Array(lamps.length), haloData = new Float32Array(lamps.length * 4);
+      lamps.forEach((l, i) => {
+        haloPos.set([l.headX, l.headY - 0.05, l.headZ], i * 3);
+        haloData.set([...l.color, KINDS[l.kind].halo], i * 4);
+      });
+      const haloGeometry = new THREE.BufferGeometry();
+      haloGeometry.setAttribute("position", new THREE.BufferAttribute(haloPos, 3));
+      const haloLevelAttr = new THREE.BufferAttribute(haloLevel, 1);
+      haloLevelAttr.setUsage(THREE.DynamicDrawUsage);
+      haloGeometry.setAttribute("level", haloLevelAttr);
+      haloGeometry.setAttribute("haloData", new THREE.BufferAttribute(haloData, 4));
+      const haloUniforms = { pixelScale: { value: 400 }, haze: { value: 1 } };
+      const halos = new THREE.Points(haloGeometry, new THREE.ShaderMaterial({
+        uniforms: haloUniforms,
+        vertexShader: [
+          "uniform float pixelScale; attribute float level; attribute vec4 haloData; varying vec3 vCol; varying float vA;",
+          "void main() {",
+          "  vec4 mv = viewMatrix * vec4(position, 1.0);",
+          "  float d = -mv.z;",
+          // fades out up close (no screen-filling sprite) and into the distance
+          "  vA = level * smoothstep(1.5, 5.0, d) * (1.0 - smoothstep(90.0, 160.0, d));",
+          "  vCol = haloData.rgb;",
+          "  gl_PointSize = vA > 0.001 ? clamp(pixelScale * haloData.a / max(d, 0.1), 2.0, 160.0) : 0.0;",
+          "  gl_Position = projectionMatrix * mv;",
+          "}",
+        ].join("\n"),
+        fragmentShader: [
+          "uniform float haze; varying vec3 vCol; varying float vA;",
+          "void main() {",
+          "  float r = length(gl_PointCoord - 0.5) * 2.0;",
+          "  float a = (exp(-r * r * 9.0) * 0.8 + exp(-r * r * 2.2) * 0.22 * haze) * (1.0 - smoothstep(0.85, 1.0, r)) * vA;",
+          "  if (a < 0.003) discard;",
+          "  gl_FragColor = vec4(vCol * a, 1.0);",
+          "}",
+        ].join("\n"),
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+      }));
+      halos.frustumCulled = false;
+      halos.renderOrder = 7;
+      halos.visible = false;
+      root.add(halos);
+
+      let anyOn = false, cleared = true;
+      const nearScratch = [];
+      const lightOut = Array.from({ length: 16 }, () => ({ x: 0, y: 0, z: 0, intensity: 0, r: 1, g: 1, b: 1, radius: 1 }));
+      const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+      streetLamps = {
+        lamps,
+        // Once per frame: on = 0..1 how far into "lights on" the evening is
+        // (index.html's ENVIRONMENT STATE); time = world seconds; haze 0..1
+        // (rain/fog widens the halos); pixelScale for the halo size.
+        update(on, time, haze, pixelScale) {
+          haloUniforms.pixelScale.value = pixelScale;
+          haloUniforms.haze.value = 0.6 + 0.8 * haze;
+          if (on <= 0 && cleared) { halos.visible = false; return; }
+          anyOn = false;
+          for (const l of lamps) {
+            let v = l.broken ? 0 : smooth(l.onAt, l.onAt + 0.22, on);
+            if (v > 0 && l.flicker) {
+              // now and then an episode of a few seconds of stutter
+              const episode = Math.sin(Math.floor(time / 6 + l.seed * 40) * 12.9898 + l.seed * 78.2) * 43758.5453;
+              if (episode - Math.floor(episode) > 0.55) {
+                const beat = Math.sin(Math.floor(time * 11 + l.seed * 97) * 78.233) * 12345.678;
+                if (beat - Math.floor(beat) > 0.6) v *= 0.12;
+              }
+            }
+            // (squared: a slow dim start, like a lamp warming up -- its light
+            // is redder while dim too, see prepareLights)
+            l.level = v;
+            l.slot.attr.array[l.slot.i] = v * v;
+            haloLevel[l.index] = v * v;
+            if (v > 0) anyOn = true;
+          }
+          for (const m of meshes) m.level.needsUpdate = true;
+          haloLevelAttr.needsUpdate = true;
+          halos.visible = anyOn;
+          cleared = !anyOn;
+        },
+        // Before a view draws: its nearest lit lamps become the world's local lights.
+        prepareLights(x, z) {
+          const fx = window.environmentFX;
+          if (!fx) return;
+          const N = fx.LOCAL_LIGHT_COUNT;
+          let count = 0;
+          if (anyOn) {
+            nearScratch.length = 0;
+            for (const l of lamps) {
+              if (l.level <= 0.01) continue;
+              const d2 = (l.headX - x) ** 2 + (l.headZ - z) ** 2;
+              if (d2 > 75 * 75) continue;
+              nearScratch.push({ l, d2 });
+            }
+            nearScratch.sort((p, q) => p.d2 - q.d2);
+            const lightScale = (ENV.LOCAL_LIGHT_INTENSITY ?? 1) * brightness;
+            for (let i = 0; i < Math.min(N, nearScratch.length); i++) {
+              const l = nearScratch[i].l, o = lightOut[i];
+              // the farthest of the set fades out as it's about to drop off it
+              const edge = nearScratch.length > N ? 1 - smooth(0.7, 1, Math.sqrt(nearScratch[i].d2) / Math.sqrt(nearScratch[N].d2)) : 1;
+              o.x = l.headX; o.y = l.headY - 0.1; o.z = l.headZ;
+              o.intensity = l.level * l.level * l.intensity * lightScale * edge;
+              // redder while it's still warming up
+              o.r = l.color[0]; o.g = l.color[1] * (0.7 + 0.3 * l.level); o.b = l.color[2] * (0.5 + 0.5 * l.level);
+              o.radius = l.radius;
+              count++;
+            }
+          }
+          fx.setLocalLights(lightOut, count);
+        },
+        count: () => lamps.length,
+        prewarmObjects: [halos],
+      };
     }
 
     // ------------------------------------------------------------------
@@ -5507,6 +6058,7 @@
           c.groundY = car.y;
           vehicleColliders.push(c);
         }
+        cabin.vehicleCabin = true; // (impacts: its sides are windows)
       }
       for (const c of vehicleColliders) {
         c.stamp = 0;
@@ -5540,6 +6092,111 @@
       });
     }
 
+    // ---- Visual effects queries (bullet impacts, footstep puffs): never
+    // used by gameplay -- shots still hit/miss exactly as segmentBlocked and
+    // vehicleBlocksShot decide.
+    //
+    // What the ground at (x, z) is made of, finer than surfaceAt (which
+    // picks the footstep sound): "floor" (indoors / up on something),
+    // "asphalt", "concrete", "dirt", "gravel" or "grass".
+    function groundMaterialAt(x, z, feetY = 0) {
+      const base = surfaceAt(x, z, feetY);
+      const px = x / MAP_SCALE + MAP_CENTER_X, py = z / MAP_SCALE + MAP_CENTER_Y;
+      if (base === "concrete") {
+        if (feetY > groundHeightAt(x, z) + 0.05 || isInsideHollowBuilding(x, z)) return "floor";
+        for (const r of [...streetRectsPx, ...LOTS]) if (inRect(px, py, r, 0)) return "asphalt";
+        return "concrete";
+      }
+      if (DIRT_AREAS.slice(0, 2).some((r) => inRect(px, py, r, 0))) return "gravel";
+      if (DIRT_AREAS.some((r) => inRect(px, py, r, 0)) || DIRT_CIRCLES.some((c) => Math.hypot(px - c[0], py - c[1]) < c[2])) return "dirt";
+      if (pitRectsPx.some((r) => inRect(px, py, r, 0))) return "dirt";
+      return "grass";
+    }
+
+    // What a collider is made of, for the look of a bullet hitting it.
+    function colliderMaterial(c, ny) {
+      if (c.fx) return c.fx;
+      if (c.glass) return "glass";
+      if (c.isTree) return "wood";
+      if (c.vehicle) return c.vehicleCabin && Math.abs(ny) < 0.5 ? "glass" : "metal";
+      if (c.seeThrough || c.climbable) return "metal"; // chain-link, bleachers, rails
+      if (c.style === "house") return "plaster";
+      if (c.style === "brick" && c.color === undefined) return "brick";
+      return "concrete";
+    }
+
+    // The first visible surface along a ray -- colliders (buildings, walls,
+    // props, trunks, cars) and the ground -- as { distance, x, y, z, nx, ny,
+    // nz, material, ground } or null. Marched in short steps through the
+    // bucket grid, so a long shot only looks at colliders near its path.
+    const RAY_STEP_M = 14;
+    function raycast(ox, oy, oz, dx, dy, dz, maxDistance = 150) {
+      let best = maxDistance, hit = null;
+      // Ground: solve against the local ground height (a few refinements
+      // handle sunken streets and pits).
+      if (dy < -1e-4) {
+        let t = (oy - groundHeightAt(ox, oz)) / -dy;
+        for (let i = 0; i < 3 && t > 0; i++) t = (oy - groundHeightAt(ox + dx * t, oz + dz * t)) / -dy;
+        if (t > 0 && t < best) {
+          best = t;
+          hit = { distance: t, nx: 0, ny: 1, nz: 0, ground: true };
+        }
+      }
+      const test = (c) => {
+        if (c.noImpact || c.stairRamp) return;
+        const a = toLocal(c, ox, oz);
+        const ldx = dx * c.cos - dz * c.sin, ldz = dx * c.sin + dz * c.cos;
+        const bottom = c.base !== undefined ? c.base : (c.groundY !== undefined ? c.groundY : -2);
+        if (c.shape === "cylinder") {
+          const qa = ldx * ldx + ldz * ldz;
+          if (qa < 1e-9) return;
+          const qb = 2 * (a.x * ldx + a.z * ldz), qc = a.x * a.x + a.z * a.z - c.radius * c.radius;
+          const disc = qb * qb - 4 * qa * qc;
+          if (disc < 0 || qc <= 0) return;
+          const t = (-qb - Math.sqrt(disc)) / (2 * qa);
+          if (t <= 0 || t >= best) return;
+          const y = oy + dy * t;
+          // a trunk's collider runs up into the canopy: only the trunk is wood
+          if (y < bottom || y > (c.isTree ? Math.min(c.height, 2.8) : c.height)) return;
+          const hx = ox + dx * t - c.cx, hz = oz + dz * t - c.cz, hl = Math.hypot(hx, hz) || 1;
+          best = t;
+          hit = { distance: t, nx: hx / hl, ny: 0, nz: hz / hl, collider: c };
+          return;
+        }
+        // Slab test in the box's own frame; track which face we enter by.
+        let t0 = -Infinity, t1 = Infinity, axis = -1, sign = 0;
+        const slab = (o, d, lo, hi, ax) => {
+          if (Math.abs(d) < 1e-12) return o >= lo && o <= hi;
+          let ta = (lo - o) / d, tb = (hi - o) / d, s = -1;
+          if (ta > tb) { const tmp = ta; ta = tb; tb = tmp; s = 1; }
+          if (ta > t0) { t0 = ta; axis = ax; sign = s; }
+          if (tb < t1) t1 = tb;
+          return t0 <= t1;
+        };
+        if (!slab(a.x, ldx, -c.halfX, c.halfX, 0) || !slab(a.z, ldz, -c.halfZ, c.halfZ, 2) || !slab(oy, dy, bottom, c.height, 1)) return;
+        if (t0 <= 0 || t0 >= best) return; // starting inside it, or further than what's already hit
+        let nx = 0, ny = 0, nz = 0;
+        if (axis === 1) ny = sign;
+        else if (axis === 0) { nx = sign * c.cos; nz = -sign * c.sin; } // local x axis in the world
+        else { nx = sign * c.sin; nz = sign * c.cos; }                   // local z axis in the world
+        best = t0;
+        hit = { distance: t0, nx, ny, nz, collider: c };
+      };
+      for (let s = 0; s < best; s += RAY_STEP_M) {
+        const e = Math.min(best, s + RAY_STEP_M);
+        const x1 = ox + dx * s, z1 = oz + dz * s, x2 = ox + dx * e, z2 = oz + dz * e;
+        forEachColliderIn(Math.min(x1, x2) - 0.5, Math.min(z1, z2) - 0.5, Math.max(x1, x2) + 0.5, Math.max(z1, z2) + 0.5, test);
+        if (hit && hit.distance <= e) break;
+      }
+      if (!hit) return null;
+      hit.x = ox + dx * hit.distance;
+      hit.y = oy + dy * hit.distance;
+      hit.z = oz + dz * hit.distance;
+      hit.material = hit.collider ? colliderMaterial(hit.collider, hit.ny) : groundMaterialAt(hit.x, hit.z, hit.y);
+      if (hit.material === "floor") hit.material = "concrete";
+      return hit;
+    }
+
     const windowGroups = [];
     if (ENV.WINDOWS_ENABLED !== false) {
       const WINDOW_W = 1.45, WINDOW_H = 1.55, WINDOW_PITCH = 3.3, STOREY_M = 3.8, SILL_M = 0.95;
@@ -5548,11 +6205,12 @@
       const windowMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
       windowMaterial.onBeforeCompile = (shader) => {
         shader.uniforms.nightLights = environment.nightLights;
+        shader.uniforms.envTime = environment.envTime;
         shader.vertexShader = shader.vertexShader
           .replace("#include <common>", "#include <common>\nattribute vec4 windowData;\nvarying vec4 vWindowData;\nvarying vec2 vWindowUv;")
           .replace("#include <begin_vertex>", "#include <begin_vertex>\nvWindowData = windowData;\nvWindowUv = uv;");
         shader.fragmentShader = shader.fragmentShader
-          .replace("#include <common>", "#include <common>\nuniform float nightLights;\nvarying vec4 vWindowData;\nvarying vec2 vWindowUv;\nfloat windowGlass = 0.0;")
+          .replace("#include <common>", "#include <common>\nuniform float nightLights;\nuniform float envTime;\nvarying vec4 vWindowData;\nvarying vec2 vWindowUv;\nfloat windowGlass = 0.0;")
           .replace("#include <color_fragment>", [
             "#include <color_fragment>",
             // frame (light aluminum) around, and one mullion down the middle
@@ -5569,9 +6227,26 @@
             "#include <emissivemap_fragment>",
             "{",
             "  float lit = smoothstep(vWindowData.x, vWindowData.x + 0.1, nightLights);",
-            // blinds: soft horizontal banding, different per window
+            // A few windows switch on and off now and then (someone's in,
+            // then leaves) -- each on its own slow clock, same every run.
+            "  float wSeed = fract(vWindowData.w * 7.31 + vWindowData.z * 3.17);",
+            "  if (wSeed < " + (ENV.WINDOW_SWITCH_SHARE ?? 0.12).toFixed(3) + ") {",
+            "    float period = 45.0 + 60.0 * fract(wSeed * 53.7);",
+            "    float slot = floor(envTime / period + vWindowData.z * 9.0);",
+            "    float on = step(0.45, fract(sin(slot * 12.9898 + vWindowData.w * 78.233) * 43758.5453));",
+            "    lit = smoothstep(0.35, 0.55, nightLights) * on;",
+            "  }",
+            // blinds (soft horizontal banding) or curtains (darker side panels)
             "  float blinds = 0.82 + 0.18 * sin(vWindowUv.y * (30.0 + 40.0 * vWindowData.w) + vWindowData.w * 10.0);",
-            "  vec3 warm = mix(vec3(1.0, 0.72, 0.42), vec3(0.95, 0.88, 0.75), vWindowData.z);",
+            "  if (fract(vWindowData.w * 5.3) < 0.35) {",
+            "    float gap = 0.18 + 0.2 * fract(vWindowData.w * 11.7);",
+            "    blinds = mix(0.42, 1.0, smoothstep(0.5 - gap - 0.03, 0.5 - gap, 0.5 - abs(vWindowUv.x - 0.5)));",
+            "  }",
+            // ceiling light: a little brighter toward the top of the pane
+            "  blinds *= 0.82 + 0.3 * vWindowUv.y;",
+            // color temperature: warm bulbs, warm white, neutral, cool office tubes
+            "  float ct = vWindowData.z;",
+            "  vec3 warm = ct < 0.45 ? vec3(1.0, 0.72, 0.42) : ct < 0.75 ? vec3(1.0, 0.85, 0.64) : ct < 0.9 ? vec3(0.95, 0.93, 0.87) : vec3(0.78, 0.88, 1.0);",
             "  totalEmissiveRadiance += warm * lit * vWindowData.y * windowGlass * blinds * " + (ENV.WINDOW_BRIGHTNESS ?? 1).toFixed(2) + ";",
             "}",
           ].join("\n"));
@@ -5595,6 +6270,11 @@
       const matrix = new THREE.Matrix4();
       const quat = new THREE.Quaternion();
       const yAxis = new THREE.Vector3(0, 1, 0);
+      // Alex Nemzek Hall / Fieldhouse (Z17) has no windows.
+      const inNemzek = (x, z) => {
+        const px = x / MAP_SCALE + MAP_CENTER_X, py = z / MAP_SCALE + MAP_CENTER_Y;
+        return px > 1297 && px < 1500 && py > 175 && py < 450;
+      };
       // Windows along one wall face: from (ax, az) to (bx, bz), facing
       // (nx, nz), up to `top`; `skip(s, y0, y1)` rules out spots (doors).
       function addFace(list, ax, az, bx, bz, nx, nz, top, occ, skip) {
@@ -5613,6 +6293,7 @@
             if (skip && skip(s, y0, y1)) continue;
             const x = ax + ux * s, z = az + uz * s;
             if (!openAir(x + nx * 0.6, z + nz * 0.6)) continue;
+            if (inNemzek(x, z)) continue;
             const r = hash(x * 3.1 + row, z * 2.7 - row);
             const lit = r < occ ? 0.05 + 0.85 * hash(z, x) : 3; // when it switches on (3 = never)
             matrix.compose(new THREE.Vector3(x + nx * 0.012, (y0 + y1) / 2, z + nz * 0.012), quat, new THREE.Vector3(WINDOW_W, WINDOW_H, 1));
@@ -6259,6 +6940,14 @@
       supportHeightAt,
       segmentBlocked,
       vehicleBlocksShot,
+      // visual effects only (impacts, footstep puffs, streetlights)
+      raycast,
+      groundMaterialAt,
+      updateStreetLights: (on, time, haze, pixelScale) => { if (streetLamps) streetLamps.update(on, time, haze, pixelScale); },
+      prepareLights: (x, z) => { if (streetLamps) streetLamps.prepareLights(x, z); },
+      streetLightCount: () => (streetLamps ? streetLamps.count() : 0),
+      // (hidden until needed: shown for the renderer's shader pre-warm)
+      prewarmObjects: () => (streetLamps ? streetLamps.prewarmObjects : []),
       // Split screen: before each view draws / after the last one (grass
       // chunks faded out for that camera, and its LOD scale).
       prepareView: (x, z, lodScale) => { if (grassSystem) grassSystem.prepareView(x, z, lodScale); },

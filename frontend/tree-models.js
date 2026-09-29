@@ -752,12 +752,15 @@
       const size = conifer ? tree.trunkHeight + tree.canopyHeight : tree.trunkHeight + tree.canopyHeight * 1.8;
       const small = size < 7.3;
       const forced = tree.forceType && [...BROADLEAF_TYPES, ...CONIFER_TYPES].find((s) => s.name === tree.forceType); // tests only
+      // Old growth (the campus quad): only the big, full-crowned broadleaf types, and taller
+      const OLD_TYPES = ["mature", "vase", "irregular", "open"];
+      const old = !!tree.oldGrowth;
       const spec = forced || (conifer
         ? pickWeighted(CONIFER_TYPES, h(1), (s) => s.weight)
-        : pickWeighted(BROADLEAF_TYPES, h(1), (s) => s.weight * (small && s.small ? 2.5 : 1)));
+        : pickWeighted(BROADLEAF_TYPES, h(1), (s) => (old ? (OLD_TYPES.includes(s.name) ? s.weight : 0) : s.weight * (small && s.small ? 2.5 : 1))));
       const build = typeBuild(spec, CONIFER_TYPES.includes(spec), Math.floor(h(2) * TREE_BUILDS_PER_TYPE));
       let sh = (size / spec.H) * (0.85 + 0.35 * h(3));
-      sh = Math.min(16, Math.max(4.5, sh * spec.H)) / spec.H;
+      sh = (old ? Math.min(21, Math.max(14, sh * spec.H)) : Math.min(16, Math.max(4.5, sh * spec.H))) / spec.H;
       let sw = sh * (0.9 + 0.25 * h(4));
       // Near a walk-in building the crown was already shrunk to fit -- keep it that way.
       if (tree.maxCrownR !== undefined) sw = Math.min(sw, tree.maxCrownR / build.crownR);
@@ -916,7 +919,9 @@
     }
 
     // Per frame: picks each chunk's detail level from the nearest viewer.
-    function updateVisibility(viewers) {
+    // lodScale (split screen): the LOD steps (not the draw distance) come
+    // this many times sooner.
+    function updateVisibility(viewers, lodScale = 1) {
       let budget = BUILDS_PER_UPDATE;
       const now = performance.now() / 1000;
       for (const ch of chunkList) {
@@ -924,7 +929,8 @@
         for (const v of viewers) d = Math.min(d, Math.hypot(v.x - ch.cx, v.z - ch.cz));
         // Hysteresis: a chunk keeps its current level a few meters past the line.
         const slack = (lod) => (ch.shown === lod ? LOD_HYSTERESIS_M : 0);
-        let want = d < LOD_NEAR_M + slack(0) ? 0 : d < LOD_MID_M + slack(1) ? 1 : d < DRAW_M + slack(2) ? 2 : -1;
+        const ld = d * lodScale;
+        let want = ld < LOD_NEAR_M + slack(0) ? 0 : ld < LOD_MID_M + slack(1) ? 1 : d < DRAW_M + slack(2) ? 2 : -1;
         if (want >= 0 && !ch.lods[want]) {
           if (want === 2 || budget > 0 || ch.shown < 0) {
             if (want !== 2) budget--;

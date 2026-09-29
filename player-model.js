@@ -1,6 +1,7 @@
 // Player model: the co-op players' third-person bodies -- a realistic,
-// low-poly human (clothing, a helmet over the head -- paper bag, bucket,
-// cardboard box or traffic cone -- with the PNG face pasted on its front)
+// low-poly human (clothing -- a picked shirt and pants, see CLOTHING -- and
+// a helmet over the head -- one of 16, from a paper bag to a motorcycle
+// helmet, see HELMETS -- with the PNG face pasted on its front)
 // on the same 19-bone rig
 // layout as the zombies (zombie-model.js), with human locomotion (walk ->
 // run -> sprint on one continuous gait), crouch/slide/jump, hit and death
@@ -13,6 +14,7 @@
 //   const character = humans.createCharacter(humans.randomAppearance(i), faceKey, layer);
 //   scene.add(character.root);   // root origin = the feet, +Z forward
 //   humans.setFace(character, key); humans.setHelmet(character, helmetKey);
+//   humans.setClothing(character, shirtKey, pantsKey);
 //   humans.setWeapon(character, weaponId);
 //   humans.update(character, dt, state);   // see update() for `state`
 //
@@ -80,12 +82,16 @@
       { torso: 8, limb: 6, hand: 4, foot: 5, headA: 10, headS: 7, detail: false },
     ];
 
+    // `pat`: each vertex's cloth pattern id (see CLOTH PATTERNS) -- a color
+    // callback sets g.nextPattern just before its vertex is pushed.
     function builder() {
-      return { pos: [], col: [], skinIndex: [], skinWeight: [], index: [] };
+      return { pos: [], col: [], skinIndex: [], skinWeight: [], index: [], pat: [], nextPattern: 0 };
     }
     function pushVertex(g, p, weights, color) {
       g.pos.push(p.x, p.y, p.z);
       g.col.push(color.r, color.g, color.b);
+      g.pat.push(g.nextPattern || 0);
+      g.nextPattern = 0;
       let sum = 0;
       for (let i = 0; i < 4 && i < weights.length; i++) sum += weights[i][1];
       for (let i = 0; i < 4; i++) {
@@ -191,6 +197,56 @@
       { shirt: ["jacket", 0x3a2a20, 0x1f2a44], pants: ["cargo", 0x3c3f33], shoes: ["boots", 0x2a1f18] },           // brown jacket over navy tee, dark cargos
     ];
 
+    // ------------------------------------------------------------------
+    // CLOTHING (explicit request: picked on the co-op setup screens, one
+    // shirt and one pants choice, kept separate). Each is a style of the
+    // body's own clothing layers -- same tubes, same skeleton, baked into
+    // the body geometry like the random outfits -- plus an optional cloth
+    // pattern drawn in the body shader (no textures):
+    //   kind: how it's cut (see buildBodyGeometry), color, under (the
+    //   shirt under a jacket/vest), pattern: a CLOTH PATTERNS id.
+    // ------------------------------------------------------------------
+    const PATTERN = { none: 0, plaid: 1, camo: 2, hiVis: 3, zipper: 4, buttonUp: 5, kneePads: 6, crease: 7 };
+    const SHIRTS = {
+      tee: { name: "T-Shirt", kind: "tee", color: 0xe9e6de },
+      hoodie: { name: "Hoodie", kind: "hoodie", color: 0x3b3e45 },
+      flannel: { name: "Flannel", kind: "flannel", color: 0xa3302b, pattern: PATTERN.plaid },
+      workShirt: { name: "Work Shirt", kind: "workshirt", color: 0x5f7f9f, pattern: PATTERN.buttonUp },
+      constructionVest: { name: "Construction Vest", kind: "vest", color: 0xd4ef2e, under: 0x6d7076, pattern: PATTERN.hiVis },
+      militaryJacket: { name: "Military Jacket", kind: "jacket", color: 0x5f6947, under: 0x3a3f2e, pattern: PATTERN.camo },
+      rainJacket: { name: "Rain Jacket", kind: "rainjacket", color: 0xf0c020, pattern: PATTERN.zipper },
+    };
+    const PANTS = {
+      jeans: { name: "Jeans", kind: "jeans", color: 0x3b5578 },
+      army: { name: "Army Pants", kind: "cargo", color: 0x5f6847, pattern: PATTERN.camo },
+      suit: { name: "Suit Pants", kind: "suit", color: 0x2a2e37, pattern: PATTERN.crease },
+      work: { name: "Work Pants", kind: "work", color: 0x8b7048, pattern: PATTERN.kneePads },
+      athletic: { name: "Athletic Pants", kind: "athletic", color: 0x2b2d31, accent: 0xf2f2f2 },
+    };
+    const SHIRT_KEYS = Object.keys(SHIRTS);
+    const PANTS_KEYS = Object.keys(PANTS);
+
+    // A copy of `ap` wearing that shirt and those pants (build, skin,
+    // shoes and everything else kept).
+    function dressAppearance(ap, shirtKey, pantsKey) {
+      const shirt = SHIRTS[shirtKey] || SHIRTS.tee;
+      const pants = PANTS[pantsKey] || PANTS.jeans;
+      const layered = shirt.kind === "jacket" || shirt.kind === "vest";
+      return {
+        ...ap,
+        shirtStyle: SHIRTS[shirtKey] ? shirtKey : "tee",
+        pantsStyle: PANTS[pantsKey] ? pantsKey : "jeans",
+        shirtKind: shirt.kind,
+        shirt: new THREE.Color(layered ? shirt.under : shirt.color),
+        outer: new THREE.Color(shirt.color),
+        shirtPattern: shirt.pattern || 0,
+        pantsKind: pants.kind,
+        pants: new THREE.Color(pants.color),
+        accent: new THREE.Color(pants.accent !== undefined ? pants.accent : 0xf2f2f2),
+        pantsPattern: pants.pattern || 0,
+      };
+    }
+
     // Every player is athletic (explicit request -- never a heavy build):
     // broad shoulders tapering to a narrow waist (`waist` scales the waist
     // and hips' width), with some variety in how lean or strong.
@@ -250,11 +306,21 @@
       // Fabric/skin shade variation per vertex, very subtle.
       const shade = (color, amount = 0.03) => { vi++; return cTmp.copy(color).multiplyScalar(1 - amount + 2 * amount * hash(vi, seed)); };
 
-      const sleeveLen = ap.shirtKind === "tee" ? 0.42 : 1.1; // fraction of the upper arm (1.1 = full length, wrist cuff on forearm)
-      const torsoLoose = { tee: 0.006, longsleeve: 0.006, sweatshirt: 0.014, hoodie: 0.018, jacket: 0.024 }[ap.shirtKind];
-      const outerColor = ap.shirtKind === "jacket" ? ap.outer : ap.shirt;
-      const pantsLoose = { jeans: 0.006, cargo: 0.013, athletic: 0.01, shorts: 0.012 }[ap.pantsKind];
+      // (a vest is worn over a tee: its sleeves are the tee's)
+      const shortSleeves = ap.shirtKind === "tee" || ap.shirtKind === "vest";
+      const sleeveLen = shortSleeves ? 0.42 : 1.1; // fraction of the upper arm (1.1 = full length, wrist cuff on forearm)
+      const torsoLoose = { tee: 0.006, longsleeve: 0.006, sweatshirt: 0.014, hoodie: 0.018, jacket: 0.024,
+        flannel: 0.01, workshirt: 0.01, vest: 0.02, rainjacket: 0.026 }[ap.shirtKind];
+      const outerColor = ap.shirtKind === "jacket" || ap.shirtKind === "vest" ? ap.outer : ap.shirt;
+      const pantsLoose = { jeans: 0.006, cargo: 0.013, athletic: 0.01, shorts: 0.012, suit: 0.004, work: 0.014 }[ap.pantsKind];
       const beltColor = new THREE.Color(0x2a2420);
+      // Cloth patterns (see CLOTH PATTERNS): tagged per vertex as the
+      // shirt / pants colors are handed out.
+      const shirtCloth = (color, amount) => { g.nextPattern = ap.shirtPattern || 0; return shade(color, amount); };
+      const sleeveCloth = (color, amount) => { g.nextPattern = ap.shirtKind === "vest" ? 0 : ap.shirtPattern || 0; return shade(color, amount); };
+      const pantsCloth = (color, amount) => { g.nextPattern = ap.pantsPattern || 0; return shade(color, amount); };
+      const hooded = ap.shirtKind === "hoodie" || ap.shirtKind === "rainjacket";
+      const collared = ap.shirtKind === "jacket" || ap.shirtKind === "workshirt" || ap.shirtKind === "flannel";
 
       // ---- Pelvis ----
       addTube(g, {
@@ -264,7 +330,7 @@
         rings: [[0, 0.158 * ap.hips, 0.092 * gt], [0.3, 0.172 * ap.hips, 0.108 * gt], [0.6, 0.174 * ap.hips, 0.112 * gt, 0, -0.008], [0.85, 0.162 * ap.hips, 0.104 * gt], [1, 0.155 * gt, 0.1 * gt]],
         capStart: true, capBulge: 0.008, blend: [0, 0.3],
         radius: () => pantsLoose,
-        color: (t) => (t > 0.86 && ap.pantsKind !== "athletic" && ap.pantsKind !== "shorts" ? beltColor : shade(ap.pants)),
+        color: (t) => (t > 0.86 && ap.pantsKind !== "athletic" && ap.pantsKind !== "shorts" ? beltColor : pantsCloth(ap.pants)),
       });
       // ---- Abdomen (shirt; hoodie/sweatshirt ribbed hem low on the hips) ----
       addTube(g, {
@@ -274,9 +340,9 @@
         blend: [0.25, 0.25],
         radius: (t) => torsoLoose + (t < 0.12 ? 0.004 : 0),
         color: (t, ang, p) => {
-          if ((ap.shirtKind === "hoodie" || ap.shirtKind === "sweatshirt") && t < 0.1) return shade(outerColor, 0.02).multiplyScalar(0.85); // ribbed hem
-          if (ap.shirtKind === "hoodie" && p.z > 0.06 && t > 0.2 && t < 0.62 && Math.abs(p.x) < 0.1) return shade(outerColor).multiplyScalar(0.88); // kangaroo pocket
-          return shade(outerColor);
+          if ((ap.shirtKind === "hoodie" || ap.shirtKind === "sweatshirt") && t < 0.1) return shirtCloth(outerColor, 0.02).multiplyScalar(0.85); // ribbed hem
+          if (ap.shirtKind === "hoodie" && p.z > 0.06 && t > 0.2 && t < 0.62 && Math.abs(p.x) < 0.1) return shirtCloth(outerColor).multiplyScalar(0.88); // kangaroo pocket
+          return shirtCloth(outerColor);
         },
       });
       // ---- Chest: broad shoulders sloping into the neck (trapezius) ----
@@ -293,8 +359,8 @@
         },
         radius: (t) => (t < 0.95 ? torsoLoose : torsoLoose * 0.5),
         color: (t, ang, p) => {
-          if (ap.shirtKind === "tee" && t > 0.97) return shade(ap.skin, 0.012); // crew neck opening
-          return shade(outerColor);
+          if (shortSleeves && t > 0.97) return shade(ap.skin, 0.012); // crew neck opening
+          return shirtCloth(outerColor);
         },
       });
       // ---- Neck ----
@@ -306,24 +372,24 @@
       // (The head itself is always covered by a helmet -- see HELMETS.)
 
       // ---- Hood (bunched on the upper back) / jacket collar ----
-      if (lod.detail && ap.shirtKind === "hoodie") {
+      if (lod.detail && hooded) {
         addTube(g, {
           bone: B.chest, a: new THREE.Vector3(0, 1.49 * H, -0.075), b: new THREE.Vector3(0, 1.36 * H, -0.125), u: X, v: Z, radial: 10,
           rings: [[0, 0.07, 0.035], [0.4, 0.105, 0.05], [1, 0.07, 0.03]], capStart: true, capEnd: true,
-          color: () => shade(outerColor).multiplyScalar(0.92),
+          color: () => shirtCloth(outerColor).multiplyScalar(0.92),
         });
-        for (const side of [1, -1]) { // drawstrings
+        for (const side of ap.shirtKind === "hoodie" ? [1, -1] : []) { // drawstrings
           addTube(g, {
             bone: B.chest, a: new THREE.Vector3(0.025 * side, 1.47 * H, 0.1), b: new THREE.Vector3(0.03 * side, 1.34 * H, 0.13), u: X, v: Z, radial: 4,
             rings: [[0, 0.004, 0.004], [1, 0.004, 0.004]], color: () => cTmp.set(0xeeeeee),
           });
         }
       }
-      if (lod.detail && ap.shirtKind === "jacket") {
+      if (lod.detail && collared) {
         addTube(g, {
           bone: B.chest, child: B.neck, a: at(1.46), b: at(1.53), u: X, v: Z, radial: 12,
           rings: [[0, 0.085, 0.078, 0, -0.01], [1, 0.078, 0.07, 0, -0.012]], blend: [0, 0.4],
-          color: (t, ang) => shade(ap.outer).multiplyScalar(Math.sin(ang) > 0.85 ? 0.6 : 1),
+          color: (t, ang) => shirtCloth(outerColor).multiplyScalar(Math.sin(ang) > 0.85 ? 0.6 : 1),
         });
       }
 
@@ -331,14 +397,14 @@
         const L = side > 0;
         const cl = L ? B.clavL : B.clavR, ua = L ? B.upperArmL : B.upperArmR, fa = L ? B.forearmL : B.forearmR, hd = L ? B.handL : B.handR;
         const th = L ? B.thighL : B.thighR, sh = L ? B.shinL : B.shinR, ft = L ? B.footL : B.footR;
-        const sleeveColor = ap.shirtKind === "jacket" ? ap.outer : ap.shirt;
+        const sleeveColor = ap.shirtKind === "jacket" ? ap.outer : ap.shirt; // (a vest's sleeves are the tee under it)
         // Upper arm: deltoid cap into the clavicle, bicep, taper to the elbow.
         addTube(g, {
           bone: ua, parent: cl, child: fa, a: J[ua].clone().add(new THREE.Vector3(-0.01 * side, 0.03, 0)), b: J[fa], u: X, v: Z, radial: lod.limb,
           rings: [[0, 0.058 * gl, 0.058 * gl], [0.15, 0.056 * gl, 0.06 * gl], [0.45, 0.046 * gl, 0.05 * gl], [0.8, 0.04 * gl, 0.042 * gl], [1, 0.037 * gl, 0.039 * gl]],
           blend: [0.3, 0.2], capStart: true, capBulge: 0.015,
-          radius: (t) => (t < sleeveLen ? torsoLoose * 0.7 + (ap.shirtKind === "tee" && t > sleeveLen - 0.1 ? 0.004 : 0) : 0),
-          color: (t) => (t < sleeveLen ? shade(sleeveColor) : shade(ap.skin, 0.012)),
+          radius: (t) => (t < sleeveLen ? (ap.shirtKind === "vest" ? 0.006 : torsoLoose) * 0.7 + (shortSleeves && t > sleeveLen - 0.1 ? 0.004 : 0) : 0),
+          color: (t) => (t < sleeveLen ? sleeveCloth(sleeveColor) : shade(ap.skin, 0.012)),
         });
         // Forearm: fuller below the elbow; sleeves end in a cuff at the wrist.
         const cuff = sleeveLen > 1;
@@ -347,7 +413,7 @@
           rings: [[0, 0.037 * gl, 0.039 * gl], [0.25, 0.041 * gl, 0.04 * gl], [0.7, 0.032 * gl, 0.028 * gl], [1, 0.027 * gl, 0.022 * gl]],
           blend: [0.2, 0.2],
           radius: (t) => (cuff && t < 0.93 ? torsoLoose * 0.6 : 0),
-          color: (t) => (cuff && t < 0.93 ? (t > 0.84 && ap.shirtKind !== "tee" ? shade(sleeveColor).multiplyScalar(0.85) : shade(sleeveColor)) : shade(ap.skin, 0.012)),
+          color: (t) => (cuff && t < 0.93 ? (t > 0.84 ? sleeveCloth(sleeveColor).multiplyScalar(0.85) : sleeveCloth(sleeveColor)) : shade(ap.skin, 0.012)),
         });
         // Hand: a palm, then fingers curling in toward the palm (a gripping
         // hand -- players always hold a weapon or make a fist), and a thumb
@@ -388,8 +454,8 @@
           color: (t, ang) => {
             if (shorts && t > 0.55) return shade(ap.skin, 0.012);
             if (ap.pantsKind === "athletic" && Math.cos(ang) * side > 0.92) return cTmp.copy(ap.accent);
-            if (ap.pantsKind === "cargo" && t > 0.42 && t < 0.66 && Math.cos(ang) * side > 0.55) return shade(ap.pants).multiplyScalar(0.9);
-            return shade(ap.pants);
+            if (ap.pantsKind === "cargo" && t > 0.42 && t < 0.66 && Math.cos(ang) * side > 0.55) return pantsCloth(ap.pants).multiplyScalar(0.9);
+            return pantsCloth(ap.pants);
           },
         });
         // Shin: calf; pant hem over the shoe (or boot shaft).
@@ -403,7 +469,7 @@
             if (boots && t > 0.75) return shade(ap.shoe);
             if (shorts) return t > 0.9 ? cTmp.set(0xf2f2f2) : shade(ap.skin, 0.012); // socks
             if (ap.pantsKind === "athletic" && Math.cos(ang) * side > 0.92) return cTmp.copy(ap.accent);
-            return shade(ap.pants);
+            return pantsCloth(ap.pants);
           },
         });
         // Shoe: a one-color upper (rounded toe), a separate sole underneath
@@ -440,6 +506,7 @@
       geometry.setAttribute("color", new THREE.Float32BufferAttribute(g.col, 3));
       geometry.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(g.skinIndex, 4));
       geometry.setAttribute("skinWeight", new THREE.Float32BufferAttribute(g.skinWeight, 4));
+      geometry.setAttribute("clothPattern", new THREE.Float32BufferAttribute(g.pat, 1));
       geometry.setIndex(g.index);
       geometry.computeVertexNormals();
       geometry.computeBoundingSphere();
@@ -597,6 +664,39 @@
     const BUCKET = { r0: 0.18, r1: 0.15, y0: -0.1, y1: 0.28, cz: 0.012 };
     const BOX = { w: 0.3, h: 0.36, d: 0.3, y0: -0.095, cz: 0.012 };
     const CONE = { r0: 0.2, r1: 0.024, y0: -0.1, y1: 0.75, cz: 0.012 };
+    // The 12 added helmets (explicit request). Round ones: bottom radius r0
+    // (at the neck, y0) to top radius r1 (y1); boxes: width, depth, height.
+    const TRASH = { r0: 0.19, r1: 0.176, y0: -0.1, y1: 0.38, cz: 0.012 };
+    const PAINT = { r: 0.172, y0: -0.1, y1: 0.28, cz: 0.012 };
+    const POT = { r: 0.186, y0: -0.1, y1: 0.27, cz: 0.012 };
+    const MAILBOX = { w: 0.3, straight: 0.26, y0: -0.1, front: 0.2, back: -0.28, cz: 0.012 };
+    const FLOWERPOT = { r0: 0.165, r1: 0.205, y0: -0.1, y1: 0.26, cz: 0.012 };
+    const BARREL = { r: 0.215, y0: -0.1, y1: 0.37, cz: 0.012 };
+    const COOLER = { w: 0.38, h: 0.4, d: 0.3, lid: 0.06, y0: -0.1, cz: 0.012 };
+    const TOOLBOX = { w: 0.4, h: 0.34, d: 0.28, y0: -0.1, cz: 0.012 };
+    const WELDER = { r: 0.195, y0: -0.1, y1: 0.27, cz: 0.012 };
+    const GOALIE = { r: 0.18, y0: -0.1, y1: 0.27, cz: 0.012 };
+    const KNIGHT = { r: 0.19, y0: -0.1, y1: 0.3, cz: 0.012 };
+    const MOTO = { r: 0.19, y0: -0.09, y1: 0.29, cz: 0.012 };
+    // Face spot on a round (possibly tapered) helmet, centered at height cy.
+    const roundFace = (r0, r1, y0, y1, cz, cy, lift = 0.004) => ({
+      w: FACE_W, h: FACE_H, cy, z: cz + taperedRadius(r0, r1, y0, y1, cy), lift,
+      tilt: Math.atan((r0 - r1) / (y1 - y0)), curve: taperedRadius(r0, r1, y0, y1, cy),
+    });
+    // ...and on a flat front at z.
+    const flatFace = (z, cy, lift = 0.003) => ({ w: FACE_W, h: FACE_H, cy, z, lift, tilt: 0, curve: 0 });
+    // Ring lying flat around the helmet (a rim or rib) at height y.
+    const flatRing = (group, r, tube, y, material, cz = 0.012) =>
+      helmetPart(group, new THREE.TorusGeometry(r, tube, 6, 28), material, 0, y, cz, Math.PI / 2);
+    // Arc of a ring around the front only (halfAngle either side of +Z).
+    const frontArc = (group, r, tube, y, halfAngle, material, cz = 0.012) => {
+      const g = new THREE.TorusGeometry(r, tube, 5, 14, 2 * halfAngle).rotateX(Math.PI / 2).rotateY(-(Math.PI / 2 - halfAngle));
+      return helmetPart(group, g, material, 0, y, cz);
+    };
+    // Open-bottomed box (the head goes in from below): BoxGeometry face
+    // order +x -x +y -y +z -z.
+    const openBox = (group, w, h, d, material, x, y, z, topMaterial = material) =>
+      helmetPart(group, new THREE.BoxGeometry(w, h, d), [material, material, topMaterial, hiddenMaterial, material, material], x, y, z);
 
     const HELMETS = {
       // Brown kraft grocery bag, crumpled a little (the original look).
@@ -714,12 +814,398 @@
           return group;
         },
       },
+
+      // ---- The 12 added helmets. Each is sized around the same face
+      // picture, pasted on its front (see `face`) the way the originals are.
+
+      // A galvanized trash can upside down: its bottom on top, the rolled
+      // opening at the neck, two pressed ribs and the side handles.
+      trashCan: {
+        name: "Trash Can",
+        face: roundFace(TRASH.r0, TRASH.r1, TRASH.y0, TRASH.y1, TRASH.cz, 0.12, 0.008),
+        build() {
+          const group = new THREE.Group();
+          const metal = helmetMaterial(0x8d9399, 0.45, 0.55);
+          const dark = helmetMaterial(0x6f757b, 0.5, 0.55);
+          const { r0, r1, y0, y1, cz } = TRASH;
+          helmetPart(group, new THREE.CylinderGeometry(r1, r0, y1 - y0, 28, 1, true), metal, 0, (y0 + y1) / 2, cz);
+          helmetPart(group, new THREE.CircleGeometry(r1, 28), dark, 0, y1, cz, -Math.PI / 2);
+          flatRing(group, r0 + 0.004, 0.011, y0, dark);
+          flatRing(group, r1 + 0.003, 0.008, y1 - 0.004, dark);
+          for (const y of [0.02, 0.21]) flatRing(group, taperedRadius(r0, r1, y0, y1, y) + 0.001, 0.005, y, dark);
+          for (const side of [1, -1]) {
+            const r = taperedRadius(r0, r1, y0, y1, 0.3);
+            helmetPart(group, new THREE.BoxGeometry(0.022, 0.018, 0.1), dark, side * (r + 0.018), 0.3, cz);
+            for (const dz of [-0.04, 0.04]) helmetPart(group, new THREE.BoxGeometry(0.02, 0.012, 0.012), dark, side * (r + 0.008), 0.3, cz + dz);
+          }
+          return group;
+        },
+      },
+      // A gallon paint can upside down, a label band round it, bright
+      // paint spilled over the top and running down the sides, and the
+      // wire bail handle.
+      paintBucket: {
+        name: "Paint Bucket",
+        face: roundFace(PAINT.r, PAINT.r, PAINT.y0, PAINT.y1, PAINT.cz, 0.1, 0.006),
+        build() {
+          const group = new THREE.Group();
+          const can = helmetMaterial(0xe9e8e2, 0.4, 0.35);
+          const label = helmetMaterial(0x2f6fc2, 0.6);
+          const paint = helmetMaterial(0x2a8fe0, 0.25);
+          const wire = helmetMaterial(0x6d7176, 0.4, 0.6);
+          const { r, y0, y1, cz } = PAINT;
+          helmetPart(group, new THREE.CylinderGeometry(r, r, y1 - y0, 28, 1, true), can, 0, (y0 + y1) / 2, cz);
+          helmetPart(group, new THREE.CylinderGeometry(r + 0.002, r + 0.002, 0.15, 28, 1, true), label, 0, 0.1, cz); // label band
+          flatRing(group, r + 0.003, 0.008, y0, can);
+          flatRing(group, r + 0.002, 0.007, y1, can);
+          // spilled paint: a puddle over the top, drips down the back and sides
+          helmetPart(group, new THREE.CylinderGeometry(r + 0.008, r + 0.008, 0.02, 28), paint, 0, y1 + 0.004, cz);
+          [[2.2, 0.09], [2.7, 0.14], [3.3, 0.07], [3.9, 0.12], [4.4, 0.1], [1.7, 0.06], [1.2, 0.05], [5.0, 0.08]].forEach(([a, len]) => {
+            const drip = new THREE.CylinderGeometry(0.011, 0.011, len, 6);
+            helmetPart(group, drip, paint, Math.sin(a) * (r + 0.004), y1 - len / 2, cz + Math.cos(a) * (r + 0.004));
+            helmetPart(group, new THREE.SphereGeometry(0.013, 6, 4), paint, Math.sin(a) * (r + 0.004), y1 - len, cz + Math.cos(a) * (r + 0.004));
+          });
+          for (const side of [1, -1]) helmetPart(group, new THREE.CylinderGeometry(0.013, 0.013, 0.012, 8), wire, side * (r + 0.004), 0.2, cz, 0, 0, Math.PI / 2);
+          helmetPart(group, new THREE.TorusGeometry(r + 0.012, 0.003, 4, 20, Math.PI), wire, 0, 0.2, cz - 0.01, 1.25, 0, Math.PI);
+          return group;
+        },
+      },
+      // A stainless stock pot upside down: its bottom on top, the rolled
+      // rim at the neck, two riveted loop handles low on the sides.
+      cookingPot: {
+        name: "Cooking Pot",
+        face: roundFace(POT.r, POT.r, POT.y0, POT.y1, POT.cz, 0.085, 0.004),
+        build() {
+          const group = new THREE.Group();
+          // (moderately metallic: with no environment to reflect, very
+          // metallic materials render nearly black)
+          const steel = helmetMaterial(0xd3d7db, 0.3, 0.45);
+          const dark = helmetMaterial(0x9aa0a6, 0.35, 0.45);
+          const handle = helmetMaterial(0x2b2b2d, 0.6);
+          const { r, y0, y1, cz } = POT;
+          helmetPart(group, new THREE.CylinderGeometry(r, r, y1 - y0, 28, 1, true), steel, 0, (y0 + y1) / 2, cz);
+          helmetPart(group, new THREE.CylinderGeometry(r - 0.004, r, 0.012, 28), dark, 0, y1 + 0.006, cz); // thick base
+          flatRing(group, r + 0.004, 0.009, y0, steel);
+          for (const side of [1, -1]) {
+            // loop handle standing out from the side, and its rivets
+            helmetPart(group, new THREE.TorusGeometry(0.035, 0.009, 6, 12, Math.PI), handle, side * (r + 0.004), 0.0, cz, 0, side * Math.PI / 2, -Math.PI / 2);
+            for (const dz of [-0.035, 0.035]) helmetPart(group, new THREE.SphereGeometry(0.006, 6, 4), dark, side * (r + 0.002), 0.0, cz + dz);
+          }
+          return group;
+        },
+      },
+      // A curbside mailbox worn door-first: the rounded top, the long body
+      // running back past the head, a latch over the door, the red flag up.
+      mailbox: {
+        name: "Mailbox",
+        face: flatFace(MAILBOX.cz + MAILBOX.front + 0.006, 0.08),
+        build() {
+          const group = new THREE.Group();
+          const body = helmetMaterial(0x8e949a, 0.45, 0.55);
+          const door = helmetMaterial(0x7b8187, 0.45, 0.55);
+          const red = helmetMaterial(0xc8221f, 0.5);
+          const { w, straight, y0, front, back, cz } = MAILBOX;
+          const len = front - back, r = w / 2, zMid = cz + (front + back) / 2;
+          helmetPart(group, new THREE.BoxGeometry(w, straight, len), [body, body, hiddenMaterial, hiddenMaterial, body, body], 0, y0 + straight / 2, zMid);
+          // rounded top: the upper half of a cylinder lying along z, ends capped
+          helmetPart(group, new THREE.CylinderGeometry(r, r, len, 20, 1, false, Math.PI / 2, Math.PI), body, 0, y0 + straight, zMid, Math.PI / 2);
+          // door: a panel standing just proud of the front, arched on top
+          helmetPart(group, new THREE.BoxGeometry(w - 0.016, straight - 0.012, 0.006), door, 0, y0 + straight / 2 + 0.006, cz + front + 0.003);
+          helmetPart(group, new THREE.CircleGeometry(r - 0.008, 16, 0, Math.PI), door, 0, y0 + straight, cz + front + 0.0035);
+          helmetPart(group, new THREE.BoxGeometry(0.03, 0.02, 0.02), door, 0, y0 + straight + r - 0.02, cz + front + 0.012); // latch
+          // the flag, up, on the right side
+          helmetPart(group, new THREE.BoxGeometry(0.01, 0.2, 0.014), red, -(r + 0.008), y0 + 0.19, cz - 0.05);
+          helmetPart(group, new THREE.BoxGeometry(0.006, 0.07, 0.11), red, -(r + 0.008), y0 + 0.26, cz - 0.1);
+          return group;
+        },
+      },
+      // A terracotta flower pot, flowers still growing out of the top.
+      flowerPot: {
+        name: "Flower Pot",
+        face: roundFace(FLOWERPOT.r0, FLOWERPOT.r1, FLOWERPOT.y0, FLOWERPOT.y1, FLOWERPOT.cz, 0.085, 0.004),
+        build() {
+          const group = new THREE.Group();
+          const clay = helmetMaterial(0xb95a32, 0.9);
+          const clayDark = helmetMaterial(0xa24c29, 0.9);
+          const soil = helmetMaterial(0x4a3222, 1);
+          const stem = helmetMaterial(0x3f7a2e, 0.8);
+          const leaf = helmetMaterial(0x4f9a3a, 0.7);
+          const { r0, r1, y0, y1, cz } = FLOWERPOT;
+          helmetPart(group, new THREE.CylinderGeometry(r1, r0, y1 - y0, 28, 1, true), clay, 0, (y0 + y1) / 2, cz);
+          helmetPart(group, new THREE.CylinderGeometry(r1 + 0.018, r1 + 0.014, 0.07, 28), clayDark, 0, y1 + 0.035, cz); // rim
+          helmetPart(group, new THREE.CircleGeometry(r1 + 0.006, 28), soil, 0, y1 + 0.072, cz, -Math.PI / 2);
+          flatRing(group, r0 + 0.002, 0.006, y0, clayDark);
+          // a few flowers: stem, two leaves, a bloom (petals round a center)
+          const blooms = [[0.06, 0.05, 0.2, 0xe8434f], [-0.07, -0.02, 0.16, 0xf5c518], [0.0, -0.08, 0.22, 0xf08ac0], [-0.02, 0.08, 0.13, 0xf6f6f2]];
+          for (const [x, z, h, color] of blooms) {
+            const top = y1 + 0.072 + h;
+            helmetPart(group, new THREE.CylinderGeometry(0.004, 0.005, h, 5), stem, x, top - h / 2, cz + z);
+            for (const side of [1, -1]) {
+              const l = helmetPart(group, new THREE.SphereGeometry(0.03, 6, 4), leaf, x + side * 0.02, top - h * 0.6, cz + z, 0, 0, side * 0.7);
+              l.scale.set(1, 0.3, 0.55);
+            }
+            for (let k = 0; k < 6; k++) {
+              const a = (k / 6) * Math.PI * 2;
+              const petal = helmetPart(group, new THREE.SphereGeometry(0.02, 6, 4), helmetMaterial(color, 0.6), x + Math.cos(a) * 0.022, top, cz + z + Math.sin(a) * 0.022);
+              petal.scale.set(1, 0.35, 1);
+            }
+            helmetPart(group, new THREE.SphereGeometry(0.012, 6, 4), helmetMaterial(0xf2b71c, 0.6), x, top + 0.004, cz + z);
+          }
+          return group;
+        },
+      },
+      // An orange-and-white striped traffic barrel with the black rubber
+      // ballast ring round the neck.
+      trafficBarrel: {
+        name: "Traffic Barrel",
+        face: roundFace(BARREL.r, BARREL.r, BARREL.y0, BARREL.y1, BARREL.cz, 0.13, 0.005),
+        build() {
+          const group = new THREE.Group();
+          const orange = helmetMaterial(0xf26a1b, 0.55);
+          const white = helmetMaterial(0xf2f2ee, 0.35);
+          const black = helmetMaterial(0x1c1c1e, 0.85);
+          const { r, y0, y1, cz } = BARREL;
+          const bands = 5, bh = (y1 - y0) / bands;
+          for (let i = 0; i < bands; i++) {
+            const white_ = i % 2 === 1;
+            helmetPart(group, new THREE.CylinderGeometry(r + (white_ ? 0.001 : 0), r + (white_ ? 0.001 : 0), bh, 28, 1, true), white_ ? white : orange, 0, y0 + bh * (i + 0.5), cz);
+          }
+          helmetPart(group, new THREE.CylinderGeometry(r * 0.55, r, 0.05, 28), orange, 0, y1 + 0.025, cz); // domed top
+          helmetPart(group, new THREE.CylinderGeometry(0.03, 0.03, 0.03, 10), orange, 0, y1 + 0.06, cz);   // lifting knob
+          flatRing(group, r + 0.012, 0.022, y0 + 0.01, black);
+          return group;
+        },
+      },
+      // A picnic cooler: red body, white lid with its carry handle, grips
+      // molded into the sides.
+      cooler: {
+        name: "Cooler",
+        face: flatFace(COOLER.cz + COOLER.d / 2, COOLER.y0 + (COOLER.h - COOLER.lid) / 2 + 0.005),
+        build() {
+          const group = new THREE.Group();
+          const red = helmetMaterial(0xc8322f, 0.55);
+          const white = helmetMaterial(0xf1f0ec, 0.45);
+          const gray = helmetMaterial(0x55585d, 0.6);
+          const { w, h, d, lid, y0, cz } = COOLER;
+          const bodyH = h - lid;
+          openBox(group, w, bodyH, d, red, 0, y0 + bodyH / 2, cz);
+          helmetPart(group, new THREE.BoxGeometry(w + 0.012, lid, d + 0.012), white, 0, y0 + bodyH + lid / 2, cz);
+          // carry handle across the lid, on two posts
+          helmetPart(group, new THREE.BoxGeometry(w * 0.55, 0.018, 0.035), white, 0, y0 + h + 0.05, cz);
+          for (const side of [1, -1]) helmetPart(group, new THREE.BoxGeometry(0.02, 0.05, 0.03), white, side * w * 0.27, y0 + h + 0.025, cz);
+          for (const side of [1, -1]) helmetPart(group, new THREE.BoxGeometry(0.012, 0.035, 0.14), gray, side * (w / 2 + 0.005), y0 + bodyH * 0.72, cz); // side grips
+          helmetPart(group, new THREE.BoxGeometry(w - 0.02, 0.008, 0.006), white, 0, y0 + bodyH - 0.004, cz + d / 2 + 0.004); // lid seam
+          return group;
+        },
+      },
+      // A red steel toolbox: the tray lid, the black carry handle on top,
+      // two chrome latches at the front corners.
+      toolbox: {
+        name: "Toolbox",
+        face: flatFace(TOOLBOX.cz + TOOLBOX.d / 2, TOOLBOX.y0 + TOOLBOX.h / 2 - 0.005),
+        build() {
+          const group = new THREE.Group();
+          const red = helmetMaterial(0xb8231f, 0.45, 0.35);
+          const redDark = helmetMaterial(0x961b18, 0.45, 0.35);
+          const chrome = helmetMaterial(0xd6d9dc, 0.2, 0.9);
+          const black = helmetMaterial(0x1c1c1e, 0.7);
+          const { w, h, d, y0, cz } = TOOLBOX;
+          openBox(group, w, h, d, red, 0, y0 + h / 2, cz);
+          helmetPart(group, new THREE.BoxGeometry(w + 0.008, 0.05, d + 0.008), redDark, 0, y0 + h + 0.025, cz); // lid
+          helmetPart(group, new THREE.CylinderGeometry(0.014, 0.014, w * 0.6, 10), black, 0, y0 + h + 0.12, cz, 0, 0, Math.PI / 2);
+          for (const side of [1, -1]) helmetPart(group, new THREE.BoxGeometry(0.02, 0.07, 0.02), chrome, side * w * 0.3, y0 + h + 0.085, cz);
+          for (const side of [1, -1]) {
+            helmetPart(group, new THREE.BoxGeometry(0.035, 0.045, 0.012), chrome, side * (w / 2 - 0.035), y0 + h - 0.01, cz + d / 2 + 0.006); // latches
+          }
+          return group;
+        },
+      },
+      // A welding helmet: dark shell round the front, the pivot knobs on
+      // the sides, the harness round the back of the head.
+      weldingHelmet: {
+        name: "Welding Helmet",
+        face: roundFace(WELDER.r, WELDER.r, WELDER.y0, WELDER.y1, WELDER.cz, 0.085, 0.004),
+        build() {
+          const group = new THREE.Group();
+          const shell = helmetMaterial(0x2a2c2f, 0.55, 0.1);
+          const harness = helmetMaterial(0x151516, 0.8);
+          const knob = helmetMaterial(0x6b6e72, 0.4, 0.6);
+          const { r, y0, y1, cz } = WELDER;
+          helmetPart(group, new THREE.CylinderGeometry(r, r, y1 - y0, 24, 1, true, -1.45, 2.9), shell, 0, (y0 + y1) / 2, cz); // the front shell
+          helmetPart(group, new THREE.CylinderGeometry(r - 0.02, r - 0.02, y1 - y0 - 0.02, 20, 1, true), harness, 0, (y0 + y1) / 2, cz); // head under the harness
+          const dome = helmetPart(group, new THREE.SphereGeometry(r, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2), shell, 0, y1, cz);
+          dome.scale.set(1, 0.45, 1);
+          frontArc(group, r + 0.004, 0.008, y0 + 0.005, 1.45, shell); // rolled bottom edge
+          // the lens frame: a raised border round the picture (the visor)
+          const frame = helmetMaterial(0x46494d, 0.45, 0.2);
+          const half = (FACE_W / 2 + 0.012) / r, faceY = 0.085;
+          frontArc(group, r + 0.008, 0.008, faceY + FACE_H / 2 + 0.012, half, frame);
+          frontArc(group, r + 0.008, 0.008, faceY - FACE_H / 2 - 0.012, half, frame);
+          for (const side of [1, -1]) {
+            helmetPart(group, new THREE.CylinderGeometry(0.008, 0.008, FACE_H + 0.024, 6), frame,
+              Math.sin(side * half) * (r + 0.008), faceY, cz + Math.cos(side * half) * (r + 0.008));
+          }
+          for (const side of [1, -1]) {
+            helmetPart(group, new THREE.CylinderGeometry(0.03, 0.03, 0.02, 12), knob, side * (r + 0.005), 0.13, cz, 0, 0, Math.PI / 2);
+            helmetPart(group, new THREE.BoxGeometry(0.012, 0.03, 0.18), harness, side * (r - 0.012), 0.13, cz - 0.07);
+          }
+          return group;
+        },
+      },
+      // A goalie helmet: white shell, a colored stripe, and the wire cage
+      // across the face.
+      goalieMask: {
+        name: "Hockey Goalie Mask",
+        face: roundFace(GOALIE.r, GOALIE.r, GOALIE.y0, GOALIE.y1, GOALIE.cz, 0.085, 0.004),
+        build() {
+          const group = new THREE.Group();
+          const shell = helmetMaterial(0xf3f3f0, 0.35);
+          const stripe = helmetMaterial(0xc52a2a, 0.4);
+          const cage = helmetMaterial(0x2a2a2c, 0.4, 0.6);
+          const { r, y0, y1, cz } = GOALIE;
+          helmetPart(group, new THREE.CylinderGeometry(r, r, y1 - y0, 28, 1, true), shell, 0, (y0 + y1) / 2, cz);
+          const dome = helmetPart(group, new THREE.SphereGeometry(r, 24, 8, 0, Math.PI * 2, 0, Math.PI / 2), shell, 0, y1, cz);
+          dome.scale.set(1, 0.55, 1);
+          flatRing(group, r + 0.003, 0.01, y0 + 0.005, stripe);
+          // a stripe over the top, front to back
+          const band = helmetPart(group, new THREE.TorusGeometry(r + 0.002, 0.014, 4, 20, Math.PI), stripe, 0, y1, cz, 0, Math.PI / 2, 0);
+          band.scale.set(1, 0.55, 1);
+          // the cage: bars standing clear of the face
+          const R = r + 0.035;
+          for (const a of [-0.75, -0.25, 0.25, 0.75]) {
+            helmetPart(group, new THREE.CylinderGeometry(0.004, 0.004, 0.3, 5), cage, Math.sin(a) * R, 0.09, cz + Math.cos(a) * R);
+          }
+          for (const y of [-0.04, 0.06, 0.16, 0.24]) frontArc(group, R, 0.004, y, 0.95, cage);
+          for (const side of [1, -1]) helmetPart(group, new THREE.CylinderGeometry(0.012, 0.012, 0.03, 8), cage, side * Math.sin(0.95) * R, 0.24, cz + Math.cos(0.95) * R - 0.01, 0, 0, Math.PI / 2);
+          return group;
+        },
+      },
+      // A great helm: a steel bucket with a reinforcing band, rivets, a
+      // pointed crown -- and a red plume.
+      knightHelmet: {
+        name: "Medieval Knight Helmet",
+        face: roundFace(KNIGHT.r, KNIGHT.r, KNIGHT.y0, KNIGHT.y1, KNIGHT.cz, 0.085, 0.006),
+        build() {
+          const group = new THREE.Group();
+          const steel = helmetMaterial(0xb9c0c6, 0.32, 0.45); // (see the pot's metalness note)
+          const dark = helmetMaterial(0x858c92, 0.38, 0.45);
+          const plume = helmetMaterial(0xb3202a, 0.8);
+          const { r, y0, y1, cz } = KNIGHT;
+          helmetPart(group, new THREE.CylinderGeometry(r, r, y1 - y0, 28, 1, true), steel, 0, (y0 + y1) / 2, cz);
+          helmetPart(group, new THREE.CylinderGeometry(0.03, r, 0.08, 28), steel, 0, y1 + 0.04, cz); // crown
+          flatRing(group, r + 0.004, 0.01, y0 + 0.006, dark);
+          flatRing(group, r + 0.004, 0.009, y1 - 0.006, dark);
+          // a reinforcing strip down the front over the brow, rivets round the band
+          helmetPart(group, new THREE.BoxGeometry(0.03, 0.05, 0.01), dark, 0, y1 - 0.022, cz + r + 0.004);
+          for (let k = 0; k < 16; k++) {
+            const a = (k / 16) * Math.PI * 2;
+            if (Math.abs(Math.sin(a)) < 0.45 && Math.cos(a) > 0) continue; // not over the face
+            helmetPart(group, new THREE.SphereGeometry(0.007, 5, 3), dark, Math.sin(a) * (r + 0.008), y1 - 0.006, cz + Math.cos(a) * (r + 0.008));
+          }
+          // breathing holes low on each cheek
+          for (const side of [1, -1]) for (let k = 0; k < 3; k++) {
+            const a = side * (0.95 + k * 0.12);
+            helmetPart(group, new THREE.CircleGeometry(0.008, 6), helmetMaterial(0x1a1a1c, 0.9), Math.sin(a) * (r + 0.001), 0.0, cz + Math.cos(a) * (r + 0.001), 0, a, 0);
+          }
+          const p = helmetPart(group, new THREE.ConeGeometry(0.05, 0.22, 8), plume, 0, y1 + 0.18, cz - 0.02, -0.25, 0, 0);
+          p.scale.set(0.7, 1, 1.2);
+          return group;
+        },
+      },
+      // A full-face motorcycle helmet: glossy shell, dark chin bar and
+      // visor trim, visor pivot screws.
+      motorcycleHelmet: {
+        name: "Motorcycle Helmet",
+        face: roundFace(MOTO.r, MOTO.r, MOTO.y0, MOTO.y1, MOTO.cz, 0.085, 0.005),
+        build() {
+          const group = new THREE.Group();
+          const shell = helmetMaterial(0xc21d25, 0.22, 0.15);
+          const trim = helmetMaterial(0x1a1a1c, 0.5);
+          const vent = helmetMaterial(0x3a3c40, 0.5);
+          const { r, y0, y1, cz } = MOTO;
+          helmetPart(group, new THREE.CylinderGeometry(r, r, y1 - y0, 28, 1, true), shell, 0, (y0 + y1) / 2, cz);
+          const dome = helmetPart(group, new THREE.SphereGeometry(r, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2), shell, 0, y1, cz);
+          dome.scale.set(1, 0.6, 1);
+          flatRing(group, r + 0.002, 0.012, y0, trim);
+          // visor trim above and below the picture, the chin bar's vent
+          frontArc(group, r + 0.006, 0.007, 0.26, 1.05, trim);
+          frontArc(group, r + 0.006, 0.007, -0.086, 1.05, trim);
+          helmetPart(group, new THREE.BoxGeometry(0.07, 0.012, 0.012), vent, 0, y0 + 0.012, cz + r + 0.004);
+          for (const side of [1, -1]) {
+            helmetPart(group, new THREE.CylinderGeometry(0.022, 0.022, 0.012, 12), trim, side * (r + 0.004), 0.17, cz + 0.02, 0, 0, Math.PI / 2);
+          }
+          // spoiler at the back
+          helmetPart(group, new THREE.BoxGeometry(0.12, 0.012, 0.05), shell, 0, y1 + 0.06, cz - r * 0.75, -0.5, 0, 0);
+          return group;
+        },
+      },
     };
     const HELMET_KEYS = Object.keys(HELMETS);
     const DEFAULT_HELMET = "bag";
 
     // Clothing/skin: moderately rough (fabric and skin aren't mirror-like).
     const bodyMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, skinning: true });
+    // CLOTH PATTERNS (see PATTERN): drawn per pixel from the body's rest
+    // (bind) position, so they move with the cloth. Worked on top of the
+    // vertex color: plaid, camo, hi-vis reflective stripes, a zipper line,
+    // a button-up placket with chest pockets, knee patches, a front crease.
+    bodyMaterial.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nattribute float clothPattern;\nvarying float vClothPattern;\nvarying vec3 vClothPos;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvClothPattern = clothPattern;\nvClothPos = position;");
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", [
+          "#include <common>",
+          "varying float vClothPattern;",
+          "varying vec3 vClothPos;",
+          "float clothHash(vec3 p) { return fract(sin(dot(p, vec3(17.1, 31.7, 11.3))) * 43758.5453); }",
+          "float clothNoise(vec3 p) {",
+          "  vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);",
+          "  return mix(mix(mix(clothHash(i), clothHash(i + vec3(1, 0, 0)), f.x), mix(clothHash(i + vec3(0, 1, 0)), clothHash(i + vec3(1, 1, 0)), f.x), f.y),",
+          "    mix(mix(clothHash(i + vec3(0, 0, 1)), clothHash(i + vec3(1, 0, 1)), f.x), mix(clothHash(i + vec3(0, 1, 1)), clothHash(i + vec3(1, 1, 1)), f.x), f.y), f.z);",
+          "}",
+        ].join("\n"))
+        .replace("#include <color_fragment>", [
+          "#include <color_fragment>",
+          "{",
+          "  float cp = floor(vClothPattern + 0.5);",
+          "  vec3 q = vClothPos;",
+          "  float front = step(0.0, q.z);",
+          "  if (cp > 0.5 && cp < 1.5) {", // plaid
+          "    float u = (q.x + q.z) * 11.0, v = q.y * 11.0;",
+          "    float a = step(0.5, fract(u)), b = step(0.5, fract(v));",
+          "    float thin = max(step(0.93, fract(u * 2.0 + 0.3)), step(0.93, fract(v * 2.0 + 0.3)));",
+          "    diffuseColor.rgb *= 1.0 - 0.26 * a - 0.26 * b;",
+          "    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.82, 0.72), thin * 0.4);",
+          "  } else if (cp > 1.5 && cp < 2.5) {", // camo
+          "    float n1 = clothNoise(q * 7.0), n2 = clothNoise(q * 14.0 + 3.1);",
+          "    float dark = step(0.56, n1 * 0.7 + n2 * 0.3);",
+          "    vec3 c = diffuseColor.rgb;",
+          "    c = mix(c, c * vec3(0.52, 0.56, 0.48), dark);",
+          "    c = mix(c, c * vec3(1.18, 0.98, 0.72), step(0.68, n2) * (1.0 - dark));",
+          "    diffuseColor.rgb = c;",
+          "  } else if (cp > 2.5 && cp < 3.5) {", // hi-vis vest: two bands and braces over the shoulders
+          "    float band = max(step(abs(q.y - 1.09), 0.022), step(abs(q.y - 1.25), 0.022));",
+          "    float braces = step(abs(abs(q.x) - 0.085), 0.02) * step(1.25, q.y);",
+          "    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.78, 0.8, 0.82), max(band, braces));",
+          "  } else if (cp > 3.5 && cp < 4.5) {", // zipper down the front
+          "    diffuseColor.rgb *= 1.0 - 0.5 * step(abs(q.x), 0.007) * front;",
+          "  } else if (cp > 4.5 && cp < 5.5) {", // button-up: placket, buttons, two chest pockets
+          "    float placket = step(abs(q.x), 0.014) * front;",
+          "    float button = placket * step(fract(q.y * 12.5), 0.12);",
+          "    vec2 pk = vec2(abs(q.x) - 0.085, q.y - 1.33);",
+          "    float pocket = front * step(abs(pk.x), 0.045) * step(abs(pk.y), 0.05);",
+          "    float inner = step(abs(pk.x), 0.038) * step(abs(pk.y), 0.043);",
+          "    diffuseColor.rgb *= 1.0 - 0.12 * placket - 0.2 * pocket * (1.0 - inner);",
+          "    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.9, 0.88, 0.84), button * 0.8);",
+          "  } else if (cp > 5.5 && cp < 6.5) {", // work pants: knee patches
+          "    diffuseColor.rgb *= 1.0 - 0.3 * step(abs(q.y - 0.5), 0.075) * step(0.02, q.z);",
+          "  } else if (cp > 6.5) {", // suit pants: a pressed crease down each leg
+          "    diffuseColor.rgb *= 1.0 + 0.14 * step(abs(abs(q.x) - 0.095), 0.004) * step(0.02, q.z);",
+          "  }",
+          "}",
+        ].join("\n"));
+    };
 
     // ------------------------------------------------------------------
     // THIRD-PERSON WEAPONS: simple shared low-poly shapes, true-to-size.
@@ -839,6 +1325,10 @@
         character.rig.remove(mesh);
         mesh.geometry.dispose();
       }
+      if (character.clothing) {
+        for (const geometries of character.clothing.values()) geometries.forEach((geometry) => geometry.dispose());
+        character.clothing.clear();
+      }
       character.meshes = LOD_SPECS.map((lod, i) => {
         const mesh = new THREE.SkinnedMesh(buildBodyGeometry(ap, lod), bodyMaterial);
         mesh.bind(character.skeleton, new THREE.Matrix4());
@@ -850,6 +1340,32 @@
         return mesh;
       });
       character.anim.legLength = (J[B.thighL].y - J[B.footL].y);
+    }
+
+    // Changes what the character wears (one of SHIRT_KEYS / PANTS_KEYS),
+    // swapping only the body geometry -- the skeleton, face, helmet and
+    // weapon stay as they are. Each outfit's geometry is kept (a few per
+    // character) so flipping back and forth on the setup screen is instant.
+    const CLOTHING_CACHE_SIZE = 6;
+    function setClothing(character, shirtKey, pantsKey) {
+      const current = character.appearance;
+      const ap = dressAppearance(current, shirtKey, pantsKey);
+      if (current.shirtStyle === ap.shirtStyle && current.pantsStyle === ap.pantsStyle) return;
+      const cache = character.clothing || (character.clothing = new Map());
+      const keyOf = (a) => (a.shirtStyle || "?") + "|" + (a.pantsStyle || "?") + "|" + (a.shirtKind + a.pantsKind);
+      if (!cache.has(keyOf(current))) cache.set(keyOf(current), character.meshes.map((m) => m.geometry));
+      const key = keyOf(ap);
+      let geometries = cache.get(key);
+      if (geometries) cache.delete(key); // (re-inserted below: most recent last)
+      else geometries = LOD_SPECS.map((lod) => buildBodyGeometry(ap, lod));
+      cache.set(key, geometries);
+      character.appearance = ap;
+      character.meshes.forEach((mesh, i) => { mesh.geometry = geometries[i]; });
+      while (cache.size > CLOTHING_CACHE_SIZE) {
+        const [oldKey, old] = cache.entries().next().value;
+        cache.delete(oldKey);
+        old.forEach((geometry) => geometry.dispose());
+      }
     }
 
     function setFace(character, key) {
@@ -1413,8 +1929,14 @@
       randomAppearance,
       setFace,
       setHelmet,
+      setClothing,
+      dressAppearance,
       helmetKeys: HELMET_KEYS,
       helmetName: (key) => (HELMETS[key] || HELMETS[DEFAULT_HELMET]).name,
+      shirtKeys: SHIRT_KEYS,
+      shirtName: (key) => (SHIRTS[key] || SHIRTS.tee).name,
+      pantsKeys: PANTS_KEYS,
+      pantsName: (key) => (PANTS[key] || PANTS.jeans).name,
       setWeapon,
       registerWeapon,
       update,

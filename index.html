@@ -2472,52 +2472,81 @@
     width: 324px; /* SETUP_MODEL_BASE_WIDTH -- actual size set in JS (updateCoopSetupModelScale), this is just its scale-1 fallback */
     height: 459px; /* SETUP_MODEL_BASE_HEIGHT */
   }
-  /* Arrows are positioned independently of the canvas now (explicit
-     follow-up), not a centered flex sibling of it -- .coop-setup-model-row
-     being position: absolute already makes it their own containing
-     block, so this is relative to the row (== the canvas, the row's only
-     in-flow content and thus its auto width/height, which tracks the
-     canvas's own JS-driven size for free). `top` is a fixed percentage
-     of that height standing in for "the face's own vertical position" --
-     deliberately NOT read from getHeadFaceAssets' real per-face position/
-     height (those vary slightly with each face's own source aspect
-     ratio), so the arrows never shift between faces. */
-  .coop-setup-face-arrow {
+  /* CHARACTER CUSTOMIZATION list (explicit request): FACE / HEADGEAR /
+     SHIRT / PANTS stacked under each player's preview, the category their
+     right stick is on highlighted in the same gold every other "selected"
+     thing in the menus uses, the others dimmed. Only the selected row
+     shows its left/right arrows. On the co-op screen it hangs below the
+     canvas (absolute, so it never moves the row's own centering), scaled
+     with the model in JS (updateCoopSetupModelScale). */
+  .customize-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 250px;
+    pointer-events: auto;
+  }
+  .coop-setup-model-row .customize-list {
     position: absolute;
-    top: 27%; /* head center of the humanoid preview model (see createSetupModelPreview's camera framing) */
-    padding: 10px 14px;
-    font-size: 22px;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    transform-origin: top center;
+    margin-top: 4px;
+  }
+  .customize-row {
+    display: grid;
+    grid-template-columns: 28px 1fr 28px;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 4px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.5);
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  .customize-row.selected {
+    color: #fff;
+    background: rgba(255, 220, 100, 0.18);
+    border-color: #ffdc64;
+    box-shadow: 0 0 8px rgba(255, 220, 100, 0.35);
+  }
+  .customize-label {
+    display: block;
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+  }
+  .customize-value {
+    display: block;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .customize-arrow {
+    visibility: hidden; /* only the selected category's arrows show */
+    padding: 3px 0;
+    font-size: 13px;
     font-family: inherit;
     color: #fff;
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.5);
-    border-radius: 5px;
+    border-radius: 4px;
     cursor: pointer;
-    pointer-events: auto;
   }
-  /* Explicit follow-up: sitting outside the canvas at all (even with a
-     small gap) let the outer arrow (P1's left, P2's right) leak off the
-     actual screen edge, since the model itself already sits close to it.
-     Overlapping a little onto the canvas near its edge instead keeps
-     both arrows structurally within the canvas's own on-screen footprint
-     no matter how close to the edge the model itself ever sits. left/
-     right (the overlap amount) and the translateY/scale transform are
-     both set in JS (updateCoopSetupModelScale) so the arrows scale
-     together with the model instead of just its canvas. */
-  .coop-setup-face-arrow-left {
-    left: 3px; /* sane fallback -- see updateCoopSetupModelScale */
+  .customize-row.selected .customize-arrow {
+    visibility: visible;
   }
-  .coop-setup-face-arrow-right {
-    right: 3px;
-  }
-  .coop-setup-face-arrow:hover {
+  .customize-arrow:hover {
     background: rgba(255, 255, 255, 0.25);
   }
-  /* Brief "registered" flash (explicit request, a seventh of a second --
-     see the setTimeout in cycleSetupFace) -- same gold .difficulty-option
-     .active already uses, for the same "this is the selected/confirmed
-     one" reading. */
-  .coop-setup-face-arrow.flash {
+  /* Brief "registered" flash when the option steps (a seventh of a
+     second -- see flashFaceArrow), the same gold as the selection. */
+  .customize-arrow.flash {
     background: rgba(255, 220, 100, 0.35);
     border-color: #ffdc64;
     box-shadow: 0 0 8px rgba(255, 220, 100, 0.6);
@@ -2583,7 +2612,7 @@
      connected yet, so all four boxes stay lined up. */
   .quad-setup-model {
     position: relative;
-    height: 46vh;
+    height: 33vh; /* (was 46vh -- room for the customization list under it) */
     aspect-ratio: 240 / 340;
   }
   .quad-setup-model.hidden {
@@ -2594,33 +2623,28 @@
     width: 100%;
     height: 100%;
   }
-  .quad-setup-face-arrow {
-    position: absolute;
-    top: 27%; /* head height, same as .coop-setup-face-arrow */
-    transform: translateY(-50%);
-    padding: 0.8vh 1.1vh;
-    font-size: 1.8vh;
-    font-family: inherit;
-    color: #fff;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    border-radius: 5px;
-    cursor: pointer;
-    pointer-events: auto;
+  /* The customization list, sized to the column (vh, like the rest). */
+  .quad-setup-side .customize-list {
+    width: 100%;
+    max-width: 30vh;
+    gap: 0.35vh;
   }
-  .quad-setup-face-arrow-left {
-    left: -1.5vh;
+  .quad-setup-side .customize-list.hidden {
+    visibility: hidden;
   }
-  .quad-setup-face-arrow-right {
-    right: -1.5vh;
+  .quad-setup-side .customize-row {
+    grid-template-columns: 3vh 1fr 3vh;
+    padding: 0.25vh 0.4vh;
   }
-  .quad-setup-face-arrow:hover {
-    background: rgba(255, 255, 255, 0.25);
+  .quad-setup-side .customize-label {
+    font-size: 1.15vh;
   }
-  .quad-setup-face-arrow.flash {
-    background: rgba(255, 220, 100, 0.35);
-    border-color: #ffdc64;
-    box-shadow: 0 0 8px rgba(255, 220, 100, 0.6);
+  .quad-setup-side .customize-value {
+    font-size: 1.6vh;
+  }
+  .quad-setup-side .customize-arrow {
+    font-size: 1.3vh;
+    padding: 0.3vh 0;
   }
   .quad-setup-box {
     min-height: 0;
@@ -2743,13 +2767,11 @@
     <button id="coop-setup-back-button" class="corner-back-button">&larr; Back</button>
     <div id="coop-setup-p1-model-row" class="coop-setup-model-row">
       <canvas id="coop-setup-p1-model-canvas" class="coop-setup-model-canvas"></canvas>
-      <button type="button" class="coop-setup-face-arrow coop-setup-face-arrow-left" data-side="p1" data-dir="-1" aria-label="Previous face">&#9664;</button>
-      <button type="button" class="coop-setup-face-arrow coop-setup-face-arrow-right" data-side="p1" data-dir="1" aria-label="Next face">&#9654;</button>
+      <div class="customize-list" data-side="p1"></div>
     </div>
     <div id="coop-setup-p2-model-row" class="coop-setup-model-row hidden">
       <canvas id="coop-setup-p2-model-canvas" class="coop-setup-model-canvas"></canvas>
-      <button type="button" class="coop-setup-face-arrow coop-setup-face-arrow-left" data-side="p2" data-dir="-1" aria-label="Previous face">&#9664;</button>
-      <button type="button" class="coop-setup-face-arrow coop-setup-face-arrow-right" data-side="p2" data-dir="1" aria-label="Next face">&#9654;</button>
+      <div class="customize-list" data-side="p2"></div>
     </div>
     <div class="title-panel-content">
       <h2>Co-op Setup</h2>
@@ -2812,9 +2834,8 @@
         <div class="quad-setup-side" data-slot="0">
           <div class="quad-setup-model">
             <canvas class="quad-setup-model-canvas"></canvas>
-            <button type="button" class="quad-setup-face-arrow quad-setup-face-arrow-left" data-slot="0" data-dir="-1" aria-label="Previous face">&#9664;</button>
-            <button type="button" class="quad-setup-face-arrow quad-setup-face-arrow-right" data-slot="0" data-dir="1" aria-label="Next face">&#9654;</button>
           </div>
+          <div class="customize-list" data-slot="0"></div>
           <div class="coop-setup-label">Player 1</div>
           <div class="coop-setup-box quad-setup-box">
             <div class="coop-setup-scheme">
@@ -2828,9 +2849,8 @@
         <div class="quad-setup-side" data-slot="1">
           <div class="quad-setup-model">
             <canvas class="quad-setup-model-canvas"></canvas>
-            <button type="button" class="quad-setup-face-arrow quad-setup-face-arrow-left" data-slot="1" data-dir="-1" aria-label="Previous face">&#9664;</button>
-            <button type="button" class="quad-setup-face-arrow quad-setup-face-arrow-right" data-slot="1" data-dir="1" aria-label="Next face">&#9654;</button>
           </div>
+          <div class="customize-list" data-slot="1"></div>
           <div class="coop-setup-label">Player 2</div>
           <div class="coop-setup-box quad-setup-box">
             <div class="coop-setup-scheme spacer" aria-hidden="true">
@@ -2844,9 +2864,8 @@
         <div class="quad-setup-side" data-slot="2">
           <div class="quad-setup-model">
             <canvas class="quad-setup-model-canvas"></canvas>
-            <button type="button" class="quad-setup-face-arrow quad-setup-face-arrow-left" data-slot="2" data-dir="-1" aria-label="Previous face">&#9664;</button>
-            <button type="button" class="quad-setup-face-arrow quad-setup-face-arrow-right" data-slot="2" data-dir="1" aria-label="Next face">&#9654;</button>
           </div>
+          <div class="customize-list" data-slot="2"></div>
           <div class="coop-setup-label">Player 3</div>
           <div class="coop-setup-box quad-setup-box">
             <div class="coop-setup-scheme spacer" aria-hidden="true">
@@ -2860,9 +2879,8 @@
         <div class="quad-setup-side" data-slot="3">
           <div class="quad-setup-model">
             <canvas class="quad-setup-model-canvas"></canvas>
-            <button type="button" class="quad-setup-face-arrow quad-setup-face-arrow-left" data-slot="3" data-dir="-1" aria-label="Previous face">&#9664;</button>
-            <button type="button" class="quad-setup-face-arrow quad-setup-face-arrow-right" data-slot="3" data-dir="1" aria-label="Next face">&#9654;</button>
           </div>
+          <div class="customize-list" data-slot="3"></div>
           <div class="coop-setup-label">Player 4</div>
           <div class="coop-setup-box quad-setup-box">
             <div class="coop-setup-scheme spacer" aria-hidden="true">
@@ -3271,8 +3289,8 @@
   const JUMP_SPEED = 7.0;          // initial upward velocity on jump
   // Fall damage (see updateMovement's gravity block): a jump peaks at
   // ~1.4 m, so only real drops (e.g. off the top of the bleachers) hurt.
-  const FALL_DAMAGE_SAFE_HEIGHT = 3.0;  // meters fallen before any damage
-  const FALL_DAMAGE_PER_METER = 15;     // HP per meter past the safe height (4 m bleacher top -> 15)
+  const FALL_DAMAGE_SAFE_HEIGHT = 3.5;  // meters fallen before any damage
+  const FALL_DAMAGE_PER_METER = 5;      // HP per meter past the safe height (4 m bleacher top -> 3, 10 m -> 33)
 
   // Physics-based horizontal movement (Quake-style accelerate/friction
   // model): input steers a velocity vector instead of setting position
@@ -4122,10 +4140,74 @@
     stencilBuffer: true, // the ground layers paint with the stencil (see campus-world.js)
   });
   sceneTarget.texture.generateMipmaps = false;
+  // The scene's depth as a texture (WebGL2), so the sun-ray pass can tell
+  // open sky from anything standing in front of it. Same depth-stencil
+  // buffer as before, just readable.
+  const sunRaysSupported = renderer.capabilities.isWebGL2;
+  if (sunRaysSupported) {
+    sceneTarget.depthTexture = new THREE.DepthTexture(1, 1);
+    sceneTarget.depthTexture.format = THREE.DepthStencilFormat;
+    sceneTarget.depthTexture.type = THREE.UnsignedInt248Type;
+  }
+  // SUN RAYS (visual polish pass): light shafts when the sun is low --
+  // through trees, between buildings, past roof edges. The classic
+  // screen-space version, kept cheap: at a third of the resolution, the
+  // open sky (depth at the far plane, weighted by how bright it is, so
+  // clouds block it) is smeared from each pixel toward the sun's spot on
+  // screen and the result added in the FXAA pass. Skipped entirely (no
+  // pass at all) whenever the rays are off: night, overcast, sun behind
+  // the camera, split screen. Strength comes from ENVIRONMENT STATE.
+  const SUN_RAY_SCALE = 1 / 3;
+  const SUN_RAY_SAMPLES = 28;
+  const shaftTarget = new THREE.WebGLRenderTarget(1, 1, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false });
+  shaftTarget.texture.generateMipmaps = false;
+  const shaftMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      tColor: { value: sceneTarget.texture },
+      tDepth: { value: sunRaysSupported ? sceneTarget.depthTexture : null },
+      sunUv: { value: new THREE.Vector2(0.5, 0.5) },
+      aspect: { value: 1 },
+    },
+    vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+    fragmentShader: [
+      "uniform sampler2D tColor; uniform sampler2D tDepth; uniform vec2 sunUv; uniform float aspect; varying vec2 vUv;",
+      "float skyAt(vec2 uv) {",
+      "  if (texture2D(tDepth, uv).r < 0.999995) return 0.0;",
+      "  return smoothstep(0.35, 1.05, dot(texture2D(tColor, uv).rgb, vec3(0.3, 0.5, 0.2)));",
+      "}",
+      "void main() {",
+      "  vec2 delta = (sunUv - vUv) * (0.92 / " + SUN_RAY_SAMPLES.toFixed(1) + ");",
+      "  float j = fract(sin(dot(vUv, vec2(12.9898, 78.233))) * 43758.5453);", // dither the start: no banding
+      "  vec2 uv = vUv + delta * j;",
+      "  float illum = 1.0, sum = 0.0;",
+      "  for (int i = 0; i < " + SUN_RAY_SAMPLES + "; i++) {",
+      "    sum += skyAt(clamp(uv, 0.001, 0.999)) * illum;",
+      "    illum *= 0.955;",
+      "    uv += delta;",
+      "  }",
+      "  float dist = length((sunUv - vUv) * vec2(aspect, 1.0));",
+      "  gl_FragColor = vec4(vec3(sum / " + SUN_RAY_SAMPLES.toFixed(1) + " * exp(-dist * 2.0)), 1.0);",
+      "}",
+    ].join("\n"),
+    depthTest: false,
+    depthWrite: false,
+  });
+  const shaftScene = new THREE.Scene();
+  const shaftQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), shaftMaterial);
+  shaftQuad.frustumCulled = false;
+  shaftScene.add(shaftQuad);
   const fxaaMaterial = new THREE.ShaderMaterial({
     uniforms: {
       tDiffuse: { value: sceneTarget.texture },
       texel: { value: new THREE.Vector2(1, 1) },
+      // Sun rays (see above) and color grading (see ENVIRONMENT STATE's
+      // updatePostLook): identity / off until the environment sets them.
+      tShafts: { value: shaftTarget.texture },
+      shaftColor: { value: new THREE.Color(0, 0, 0) },
+      shaftOn: { value: 0 },
+      gradeGain: { value: new THREE.Vector3(1, 1, 1) },
+      gradeSat: { value: 1 },
+      gradeContrast: { value: 1 },
     },
     vertexShader: [
       "varying vec2 vUv;",
@@ -4139,7 +4221,18 @@
     fragmentShader: [
       "uniform sampler2D tDiffuse;",
       "uniform vec2 texel;",
+      "uniform sampler2D tShafts; uniform vec3 shaftColor; uniform float shaftOn;",
+      "uniform vec3 gradeGain; uniform float gradeSat; uniform float gradeContrast;",
       "varying vec2 vUv;",
+      // Subtle environmental grading: saturation, a gentle contrast around
+      // mid-gray and a warm/cool gain. Identity at (1, 1, 1).
+      "vec3 grade(vec3 c) {",
+      "  if (shaftOn > 0.5) c += texture2D(tShafts, vUv).rgb * shaftColor;",
+      "  float l = dot(c, vec3(0.299, 0.587, 0.114));",
+      "  c = mix(vec3(l), c, gradeSat);",
+      "  c = (c - 0.45) * gradeContrast + 0.45;",
+      "  return max(c * gradeGain, 0.0);",
+      "}",
       "void main() {",
       "  vec3 rgbNW = texture2D(tDiffuse, vUv + vec2(-1.0, -1.0) * texel).rgb;",
       "  vec3 rgbNE = texture2D(tDiffuse, vUv + vec2(1.0, -1.0) * texel).rgb;",
@@ -4161,7 +4254,7 @@
       "  vec3 rgbA = 0.5 * (texture2D(tDiffuse, vUv + dir * (1.0 / 3.0 - 0.5)).rgb + texture2D(tDiffuse, vUv + dir * (2.0 / 3.0 - 0.5)).rgb);",
       "  vec3 rgbB = rgbA * 0.5 + 0.25 * (texture2D(tDiffuse, vUv - dir * 0.5).rgb + texture2D(tDiffuse, vUv + dir * 0.5).rgb);",
       "  float lumaB = dot(rgbB, luma);",
-      "  gl_FragColor = vec4((lumaB < lumaMin || lumaB > lumaMax) ? rgbA : rgbB, 1.0);",
+      "  gl_FragColor = vec4(grade((lumaB < lumaMin || lumaB > lumaMax) ? rgbA : rgbB), 1.0);",
       "}",
     ].join("\n"),
     depthTest: false,
@@ -4181,6 +4274,9 @@
     const h = Math.max(1, Math.round(drawingBufferScratch.y * currentRenderScale));
     if (sceneTarget.width !== w || sceneTarget.height !== h) sceneTarget.setSize(w, h);
     fxaaMaterial.uniforms.texel.value.set(1 / w, 1 / h);
+    const sw = Math.max(1, Math.round(w * SUN_RAY_SCALE)), sh = Math.max(1, Math.round(h * SUN_RAY_SCALE));
+    if (shaftTarget.width !== sw || shaftTarget.height !== sh) shaftTarget.setSize(sw, sh);
+    shaftMaterial.uniforms.aspect.value = w / h;
   }
   syncSceneTargetSize();
   // Height in pixels the 3D view is drawn at (point-sprite sizes use it).
@@ -4932,6 +5028,10 @@
     const muzzleTip = new THREE.Object3D();
     muzzleTip.position.copy(PISTOL_MUZZLE_TIP_POSITION);
     group.add(muzzleTip);
+    // Where spent cases leave the gun (shell ejection -- visual only).
+    const ejectPort = new THREE.Object3D();
+    ejectPort.position.set(PISTOL_SLIDE_SIZE.width / 2 + 0.006, 0.02, -0.1);
+    group.add(ejectPort);
 
     // Slide (moves on its own -- locked back when empty, released after
     // a reload): slide + its narrower top strip (the stepped/rounded top),
@@ -4972,7 +5072,7 @@
     addReloadPart(reloadRig, "magB", group, PISTOL_RELOAD_FRAMES.magB, buildPistolMagazine(true), true);
     reloadRig.slideLockOffset = PISTOL_SLIDE_LOCK_TRAVEL;
 
-    return { group, muzzleTip, reloadRig };
+    return { group, muzzleTip, ejectPort, reloadRig };
   }
 
   // Glock view model (visual remodel, explicit request -- nothing
@@ -5149,6 +5249,10 @@
     const muzzleTip = new THREE.Object3D();
     muzzleTip.position.copy(GLOCK_MUZZLE_TIP_POSITION);
     group.add(muzzleTip);
+    // Where spent cases leave the gun (shell ejection -- visual only).
+    const ejectPort = new THREE.Object3D();
+    ejectPort.position.set(GLOCK_SLIDE_SIZE.width / 2 + 0.006, 0.05, -0.12);
+    group.add(ejectPort);
 
     // Slide (moves on its own): slide + narrower top strip (the bevelled
     // top edge), rear serrations, ejection port, sights and the recessed
@@ -5190,7 +5294,7 @@
     addReloadPart(reloadRig, "magB", group, GLOCK_RELOAD_FRAMES.magB, buildGlockMagazine(true), true);
     reloadRig.slideLockOffset = GLOCK_SLIDE_LOCK_TRAVEL;
 
-    return { group, muzzleTip, reloadRig };
+    return { group, muzzleTip, ejectPort, reloadRig };
   }
 
   // Baseball bat (in progress -- see WEAPON_DEFS.bat/BAT_MELEE_* above):
@@ -5697,6 +5801,10 @@
     const muzzleTip = new THREE.Object3D();
     muzzleTip.position.copy(SHOTGUN_MUZZLE_TIP_POSITION);
     group.add(muzzleTip);
+    // Where spent cases leave the gun (shell ejection -- visual only).
+    const ejectPort = new THREE.Object3D();
+    ejectPort.position.set(SHOTGUN_RECEIVER_SIZE.width / 2 + 0.008, 0.012, -0.05);
+    group.add(ejectPort);
 
     // Primitives -> one draw call per material, except the pump, which
     // racks back and forth on its own (see updateFireCooldown).
@@ -5705,7 +5813,7 @@
     const reloadRig = createReloadRig(group, SHOTGUN_RELOAD_HAND_SCALE);
     addReloadPart(reloadRig, "shell", group, SHOTGUN_RELOAD_FRAMES.shell, buildShotgunShell(), true);
 
-    return { group, muzzleTip, pump, reloadRig };
+    return { group, muzzleTip, ejectPort, pump, reloadRig };
   }
 
   // SMG view model: same primitive-shapes style -- a boxy receiver, a
@@ -5912,6 +6020,10 @@
     const muzzleTip = new THREE.Object3D();
     muzzleTip.position.copy(SMG_MUZZLE_TIP_POSITION);
     group.add(muzzleTip);
+    // Where spent cases leave the gun (shell ejection -- visual only).
+    const ejectPort = new THREE.Object3D();
+    ejectPort.position.set(SMG_RECEIVER_SIZE.width / 2 + 0.006, 0.018, -0.12);
+    group.add(ejectPort);
 
     // Primitives -> one draw call per material (the sight glass is
     // transparent, so it stays its own mesh -- see mergeMeshesByMaterial).
@@ -5926,7 +6038,7 @@
     addReloadPart(reloadRig, "charge", group, SMG_RELOAD_FRAMES.charge, chargeHandle);
 
     group.scale.setScalar(SMG_MODEL_SCALE);
-    return { group, muzzleTip, reloadRig };
+    return { group, muzzleTip, ejectPort, reloadRig };
   }
 
   // AK-47 view model (explicit request): block-style, same primitives
@@ -6130,6 +6242,10 @@
     const muzzleTip = new THREE.Object3D();
     muzzleTip.position.copy(AK_MUZZLE_TIP_POSITION);
     body.add(muzzleTip); // body units, like the barrel it sits on
+    // Where spent cases leave the gun (shell ejection -- visual only).
+    const ejectPort = new THREE.Object3D();
+    ejectPort.position.set(AK_RECEIVER_SIZE.width / 2 + 0.005, 0.02, AK_RECEIVER_REAR_Z - 0.17);
+    body.add(ejectPort);
 
     const reloadRig = createReloadRig(body, AK_RELOAD_HAND_SCALE);
     addReloadPart(reloadRig, "magA", body, AK_RELOAD_FRAMES.magA, buildAkMagazine(false));
@@ -6140,7 +6256,7 @@
     mergeMeshesByMaterial(chargeHandle);
     addReloadPart(reloadRig, "charge", body, AK_RELOAD_FRAMES.charge, chargeHandle);
 
-    return { group, muzzleTip, reloadRig };
+    return { group, muzzleTip, ejectPort, reloadRig };
   }
 
   // Bolt-action sniper rifle view model (explicit request -- a heavy,
@@ -9863,6 +9979,7 @@
     wetness: 0, puddles: 0,
     fogDensity: 0, atmosphereStrength: 0, heatHaze: 0,
     nightLights: 0,         // 0..1 -- windows / exterior lights coming on
+    streetLights: 0,        // 0..1 -- how far into "streetlights on" the evening is
     indoor: [0, 0, 0, 0],   // per player, eased 0 outdoors .. 1 under a roof
     exposure: [1, 1, 1, 1], // per player (eye adaptation)
     weatherState: "CLEAR",
@@ -9876,6 +9993,8 @@
   let envSlowTimer = 0;
   let envRippleTime = 0;
   let envParticleTime = 0;
+  let envTreeNearSmooth = 0;
+  let envTreeNear = 0; // 0..1 -- how wooded it is around player 1 (falling leaves)
   // Ambient particles fade out per view indoors.
   const ambientParticles = createAmbientParticles(THREE, scene, (cam) => {
     const i = players.findIndex((p) => p.camera === cam);
@@ -9914,10 +10033,10 @@
     // cloudy, flattening into overcast (where WEATHER already dims the
     // sun); faint by moonlight, gone in fog.
     const coverBump = smoothstep01(cloud / 0.18) * (1 - 0.6 * smoothstep01((cloud - 0.5) / 0.45));
-    s.cloudShadowStrength = cfg.CLOUD_SHADOW_STRENGTH * cfg.CLOUD_SHADOW_OPACITY * coverBump *
+    s.cloudShadowStrength = (cfg.CLOUD_SHADOWS_ENABLED === false ? 0 : 1) * cfg.CLOUD_SHADOW_STRENGTH * cfg.CLOUD_SHADOW_OPACITY * coverBump *
       (1 - 0.85 * n) * (1 - 0.8 * weather.fogAmount);
     // (threshold: the share of ground under cloud roughly follows the cover)
-    envU.envCloud.value.set(1 / cfg.CLOUD_SHADOW_SCALE, s.cloudShadowStrength, 0.76 - 0.55 * cloud, 0.05 + 0.05 * cloud);
+    envU.envCloud.value.set(1 / cfg.CLOUD_SHADOW_SCALE, s.cloudShadowStrength, 0.76 - 0.55 * cloud, (0.05 + 0.05 * cloud) * (cfg.CLOUD_SHADOW_SOFTNESS ?? 1));
     // Drift downwind (a storm's wind while raining), a bit faster in wind.
     const drift = cfg.CLOUD_SHADOW_SPEED * (0.7 + 1.1 * wind.strength) / cfg.CLOUD_SHADOW_SCALE * deltaSeconds;
     const stormWind = Math.hypot(weather.windX, weather.windZ);
@@ -9953,6 +10072,7 @@
       players.forEach((p, i) => {
         if (i < 4) envIndoorTargets[i] = isWeatherSheltered(p.camera.position.x, p.camera.position.z) ? 1 : 0;
       });
+      envTreeNear = isCampusMap && campusWorld ? campusWorld.treeDensityNear(players[0].camera.position.x, players[0].camera.position.z, 18) : 0;
     }
     for (let i = 0; i < Math.min(4, players.length); i++) {
       s.indoor[i] += (envIndoorTargets[i] - s.indoor[i]) * Math.min(1, deltaSeconds * 3);
@@ -9971,14 +10091,63 @@
       (1 - 0.5 * weather.rainAmount) * (1 - weather.fogAmount);
     const dustAmount = cfg.ENVIRONMENT_PARTICLE_DENSITY * Math.pow(1 - n, 2) * (1 - cloud) * (1 - Math.min(1, weather.wetness * 2)) *
       (1 - weather.fogAmount) * (1 - smoothstep01((gustyWind - 0.3) / 0.3));
+    // Plus a few leaves drifting down near trees on a calm day (the wind-
+    // blown debris above takes over when it's gusty).
+    // Density follows how many trees are close by: the full amount (the old
+    // maximum) only among the densest trees, none in open ground. Smoothed
+    // so crossing between wooded and open areas fades rather than pops.
+    envTreeNearSmooth += (envTreeNear - envTreeNearSmooth) * Math.min(1, deltaSeconds * 1.5);
+    const calmLeaves = 0.32 * (1 - 0.6 * weather.rainAmount) * (1 - weather.fogAmount);
+    const leafAmountAll = cfg.LEAF_FALL_DENSITY * envTreeNearSmooth * Math.max(leafAmount / Math.max(cfg.WIND_DEBRIS_DENSITY, 0.001), calmLeaves);
     const windSpeed = 1.2 + 5.5 * gustyWind;
     envLightScratch.copy(ambientLight.color).multiplyScalar(ambientLight.intensity)
       .add(envSkyScratch.copy(sunLight.color).multiplyScalar(sunLight.intensity * 0.7));
     envLightScratch.r = Math.min(1.2, envLightScratch.r); envLightScratch.g = Math.min(1.2, envLightScratch.g); envLightScratch.b = Math.min(1.2, envLightScratch.b);
     const fovScale = sceneRenderHeight() * 0.5 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
-    ambientParticles.update(envParticleTime, isCampusMap ? leafAmount : 0, isCampusMap ? dustAmount : 0,
+    ambientParticles.update(envParticleTime, isCampusMap ? leafAmountAll : 0, isCampusMap ? dustAmount : 0,
       Math.cos(wind.angle) * windSpeed + weather.windX, Math.sin(wind.angle) * windSpeed + weather.windZ,
       envLightScratch, s.sunDirection, fovScale, players[0].campusGroundY || 0);
+
+    // Streetlights: on through dusk (a little sooner under a dark storm),
+    // off through the sunrise -- each lamp at its own point along this.
+    s.streetLights = smoothstep01((n + 0.25 * weather.rainAmount * cloud * (1 - n) - 0.12) / 0.5);
+    if (isCampusMap && campusWorld) {
+      campusWorld.updateStreetLights(s.streetLights, envParticleTime, Math.max(weather.fogAmount, weather.rainAmount), fovScale);
+    }
+    updatePostLook(n, cloud);
+  }
+
+  // Sun rays and color grading (both applied in the FXAA pass): worked
+  // out once per frame from the same state as everything else.
+  let sunRayStrength = 0;
+  const sunRayColor = new THREE.Color();
+  const gradeGainScratch = new THREE.Vector3();
+  function updatePostLook(n, cloud) {
+    const cfg = ENVIRONMENT_CONFIG;
+    // Rays: strongest with a low sun, more in haze/fog, fading as it sets,
+    // cut by heavy cloud (partly cloudy still has its gaps), softer indoors.
+    const sunY = skyUniforms.sunDirection.value.y;
+    const low = 1 - smoothstep01((sunY - 0.12) / 0.45);
+    const daylight = 1 - smoothstep01((n - 0.3) / 0.42);
+    const clouds = 1 - 0.9 * smoothstep01((cloud - 0.3) / 0.55);
+    const haze = 1 + 0.7 * weather.fogAmount + 0.25 * environmentState.atmosphereStrength / Math.max(0.01, cfg.ATMOSPHERE_HAZE_STRENGTH);
+    sunRayStrength = isCampusMap ? cfg.SUN_RAYS_STRENGTH * (0.2 + 0.8 * low) * daylight * clouds * haze * (1 - 0.5 * environmentState.indoor[0]) * (1 - 0.8 * weather.rainAmount) : 0;
+    sunRayColor.copy(sunLight.color).lerp(skyUniforms.glowColor.value, 0.4);
+    // Grading: slightly warm by day, warmer at sunset/sunrise, cooler at
+    // night, a little flatter and less saturated under overcast and rain.
+    const g = cfg.COLOR_GRADING_STRENGTH;
+    const twilight = 1 - Math.abs(2 * n - 1);
+    const day = 1 - n;
+    gradeGainScratch.set(
+      1 + 0.012 * day + 0.035 * twilight - 0.035 * n,
+      1 + 0.004 * twilight - 0.01 * n,
+      1 - 0.018 * day - 0.045 * twilight + 0.04 * n
+    );
+    const muted = 0.12 * cloud + 0.08 * weather.rainAmount + 0.05 * weather.fogAmount;
+    const u = fxaaMaterial.uniforms;
+    u.gradeGain.value.set(1, 1, 1).lerp(gradeGainScratch, g);
+    u.gradeSat.value = 1 + (0.03 * day * (1 - cloud) - muted - 0.1 * n) * g;
+    u.gradeContrast.value = 1 + (0.035 * day * (1 - cloud) - 0.05 * weather.fogAmount - 0.03 * weather.rainAmount) * g;
   }
 
   // Contact shadows: a soft disc under every body near a camera (players,
@@ -13561,6 +13730,252 @@
   }
 
   // ------------------------------------------------------------------
+  // SURFACE EFFECTS (visual polish pass): what the world does when it's
+  // shot or walked on -- material-specific bullet impacts (dust, chips,
+  // sparks, glass, splashes, blood), bullet holes and other decals, spent
+  // casings, footstep puffs and splashes, and grass bending around bodies.
+  // All cosmetic: nothing here feeds back into hits, damage, movement or AI
+  // -- the shot code has already decided everything before these run.
+  // Pools and looks live in environment-fx.js (one draw each: effect
+  // particles, sparks, decals, two for casings); ENVIRONMENT_CONFIG has
+  // the caps and switches.
+  // ------------------------------------------------------------------
+  const FX_CFG = ENVIRONMENT_CONFIG;
+  const fxParticles = createEffectParticles(THREE, scene, FX_CFG.MAX_EFFECT_PARTICLES, false);
+  const fxSparks = createEffectParticles(THREE, scene, FX_CFG.MAX_SPARK_PARTICLES, true);
+  const fxDecals = createDecals(THREE, scene, FX_CFG.MAX_DECALS);
+  const shellCasings = createShellCasings(THREE, scene, FX_CFG.MAX_SHELL_CASINGS);
+  const surfaceFX = createSurfaceEffects(fxParticles, fxSparks, fxDecals);
+  // Per weapon: how hard its round hits (effect size) and its case.
+  // (The sniper's case comes out with its bolt animation already.)
+  const FX_WEAPON = {
+    pistol: { power: 0.9, casing: "pistol" },
+    glock: { power: 0.9, casing: "pistol" },
+    smg: { power: 0.8, casing: "smg" },
+    ak47: { power: 1.25, casing: "rifle" },
+    sniper: { power: 2, casing: null },
+    shotgun: { power: 0.6, casing: "shotgun" },
+  };
+  let fxImpactsThisFrame = 0;
+  const fxRaycaster = new THREE.Raycaster();
+  const fxLightScratch = new THREE.Color();
+  const fxSunScratch = new THREE.Color();
+  const fxNormalScratch = new THREE.Vector3();
+
+  function fxDistanceToViewers(x, z) {
+    let d2 = Infinity;
+    for (const c of getWeatherViewerCameras()) d2 = Math.min(d2, (c.position.x - x) ** 2 + (c.position.z - z) ** 2);
+    return Math.sqrt(d2);
+  }
+  // 1 up close, easing to 0 at `far` (fewer particles further out).
+  function fxLod(distance, far) {
+    if (distance >= far) return 0;
+    return distance < far * 0.35 ? 1 : 1 - (distance - far * 0.35) / (far * 0.65);
+  }
+  // Floor under a point (for debris to land on): the campus's support
+  // height (floors indoors, roofs, pits), else the flat ground.
+  function fxFloorAt(x, z, y) {
+    if (isCampusMap && campusWorld) return campusWorld.supportHeightAt(x, z, 0.05, y + 0.05);
+    return 0;
+  }
+
+  // First visible surface along a shot, for its effects only: the campus's
+  // buildings/props/cars/ground (campusWorld.raycast), the old map's ground,
+  // and barricade boards (wood).
+  function fxRaycastWorld(origin, dir, maxDistance) {
+    let hit = null;
+    if (isCampusMap && campusWorld) {
+      hit = campusWorld.raycast(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z, maxDistance);
+    } else if (dir.y < -1e-4) {
+      const t = origin.y / -dir.y;
+      if (t < maxDistance) {
+        const x = origin.x + dir.x * t, z = origin.z + dir.z * t;
+        hit = { distance: t, x, y: 0, z, nx: 0, ny: 1, nz: 0, ground: true, material: isInsideBuilding(x, z) ? "concrete" : "grass" };
+      }
+    }
+    if (barricadePlankMeshes.length) {
+      fxRaycaster.set(origin, dir);
+      fxRaycaster.far = hit ? hit.distance : maxDistance;
+      const wood = fxRaycaster.intersectObjects(barricadePlankMeshes, false);
+      if (wood.length && wood[0].face) {
+        const w = wood[0];
+        fxNormalScratch.copy(w.face.normal).transformDirection(w.object.matrixWorld);
+        if (fxNormalScratch.dot(dir) > 0) fxNormalScratch.negate();
+        hit = { distance: w.distance, x: w.point.x, y: w.point.y, z: w.point.z,
+          nx: fxNormalScratch.x, ny: fxNormalScratch.y, nz: fxNormalScratch.z, material: "wood", plank: true };
+      }
+    }
+    return hit;
+  }
+
+  // A round that hit the world (no zombie): its effect where it landed.
+  function spawnWorldImpact(origin, dir, power, maxDistance = 160) {
+    if (!FX_CFG.IMPACT_EFFECTS_ENABLED || fxImpactsThisFrame >= FX_CFG.MAX_IMPACTS_PER_FRAME) return;
+    const hit = fxRaycastWorld(origin, dir, maxDistance);
+    if (!hit) return;
+    fxImpactsThisFrame++;
+    const wet = isWeatherSheltered(hit.x, hit.z) ? 0 : weather.wetness;
+    let material = hit.material;
+    // Standing water: into the puddle you can see there.
+    if (hit.ground && wet > 0.05 && (material === "asphalt" || material === "concrete" || material === "dirt") &&
+      envFX.puddleAt(hit.x, hit.z, envU.envWet.value.y) > 0.5) material = "water";
+    const lod = fxLod(fxDistanceToViewers(hit.x, hit.z), FX_CFG.IMPACT_EFFECT_DISTANCE);
+    const normal = { x: hit.nx, y: hit.ny, z: hit.nz };
+    surfaceFX.impact(material, hit, normal, dir, power, lod, hit.ground ? hit.y : fxFloorAt(hit.x, hit.z, hit.y), wet);
+  }
+
+  // A round into a zombie: blood out of the wound (sized by the weapon)
+  // and, with the gore setting on, blood on whatever's close behind it and
+  // sometimes on the ground under it.
+  function spawnFleshImpact(point, dir, power) {
+    if (!FX_CFG.IMPACT_EFFECTS_ENABLED || fxImpactsThisFrame >= FX_CFG.MAX_IMPACTS_PER_FRAME) return;
+    fxImpactsThisFrame++;
+    const lod = fxLod(fxDistanceToViewers(point.x, point.z), FX_CFG.IMPACT_EFFECT_DISTANCE);
+    surfaceFX.flesh(point, dir, power, lod);
+    if (!goreEnabled) return;
+    fxNormalScratch.copy(dir).multiplyScalar(0.35).add(point);
+    const behind = fxRaycastWorld(fxNormalScratch, dir, 1.8 + power);
+    if (behind && !behind.plank) {
+      const size = (0.35 + 0.25 * Math.min(2, power)) * (1 - behind.distance / (3 + power) * 0.5);
+      fxDecals.add(Math.random() < 0.5 ? "spatter" : "blood", behind, { x: behind.nx, y: behind.ny, z: behind.nz }, size, 0x5c0909, FX_CFG.BLOOD_DECAL_LIFETIME, 0.85);
+    }
+    if (Math.random() < 0.3 + 0.2 * power) {
+      const floor = fxFloorAt(point.x, point.z, point.y);
+      fxDecals.add("blood", { x: point.x + (Math.random() - 0.5) * 0.4, y: floor, z: point.z + (Math.random() - 0.5) * 0.4 }, { x: 0, y: 1, z: 0 },
+        0.2 + Math.random() * 0.2 * power, 0x4e0808, FX_CFG.BLOOD_DECAL_LIFETIME, 0.8);
+    }
+  }
+
+  // A spent case out of the gun's ejection port: to the right, up and a
+  // little back (the gun's own axes), plus the shooter's own motion.
+  const ejectWorldScratch = new THREE.Vector3();
+  const ejectQuatScratch = new THREE.Quaternion();
+  const ejectVelScratch = new THREE.Vector3();
+  function ejectShellCasing(player, weaponId) {
+    if (!FX_CFG.SHELL_EJECTION_ENABLED) return;
+    const spec = FX_WEAPON[weaponId];
+    const viewModel = player.weaponViewModels[weaponId];
+    if (!spec || !spec.casing || !viewModel || !viewModel.ejectPort) return;
+    const port = viewModel.ejectPort;
+    port.updateWorldMatrix(true, false);
+    port.getWorldPosition(ejectWorldScratch);
+    port.getWorldQuaternion(ejectQuatScratch);
+    const heavy = spec.casing === "shotgun";
+    ejectVelScratch.set(
+      (heavy ? 1.3 : 1.7) + Math.random() * 0.9,
+      (heavy ? 0.9 : 1.4) + Math.random() * 0.8,
+      0.25 + Math.random() * 0.45
+    ).applyQuaternion(ejectQuatScratch);
+    if (player.velocity) ejectVelScratch.add(player.velocity);
+    const floor = isCampusMap ? player.campusGroundY || 0 : 0;
+    shellCasings.eject(spec.casing, ejectWorldScratch, ejectVelScratch, floor, FX_CFG.SHELL_CASING_LIFETIME);
+  }
+
+  // A foot landing at (x, z) with its sole at feetY. strength ~0.4 (crouch)
+  // .. 1.3 (sprint, heavy bodies).
+  const footFxPoint = { x: 0, y: 0, z: 0 };
+  function spawnFootstepFx(x, z, feetY, strength) {
+    if (!FX_CFG.FOOTSTEP_PARTICLES_ENABLED) return;
+    const distance = fxDistanceToViewers(x, z);
+    if (distance > FX_CFG.FOOTSTEP_PARTICLE_DISTANCE) return;
+    const surface = isCampusMap && campusWorld ? campusWorld.groundMaterialAt(x, z, feetY) : (isInsideBuilding(x, z) ? "floor" : "grass");
+    if (surface === "floor") return;
+    const wet = isWeatherSheltered(x, z) ? 0 : weather.wetness;
+    const puddle = wet > 0.05 && surface !== "grass" && surface !== "gravel" ? envFX.puddleAt(x, z, envU.envWet.value.y) : 0;
+    footFxPoint.x = x; footFxPoint.y = feetY + 0.03; footFxPoint.z = z;
+    surfaceFX.footstep(surface, footFxPoint, strength * (distance < 10 ? 1 : 0.7), wet, puddle, feetY);
+  }
+  function spawnEnemyFootstepFx(enemyState) {
+    const pos = enemyState.mesh.position;
+    const heavy = enemyState.boss ? 1.6 : enemyState.isBrute ? 1.3 : 1;
+    spawnFootstepFx(pos.x, pos.z, isCampusMap ? enemyState.campusGroundY || 0 : 0, 0.8 * heavy);
+  }
+
+  // Grass bending (grass-system.js's grassPushers): every grounded player
+  // and nearby zombie pushes the grass at its feet, and leaves a mark that
+  // stands back up over 1 / GRASS_INTERACTION_RECOVERY_SPEED seconds. The 8
+  // strongest near a camera go to the shader.
+  const grassTrail = [];                 // { x, z, r, s } -- fading marks
+  const grassBodyLast = new WeakMap();   // body -> where it last left a mark
+  const grassCandidates = [];
+  function updateGrassPushers(deltaSeconds) {
+    const env = campusWorld && campusWorld.environment;
+    if (!env || !env.grassPushers) return;
+    const cfg = FX_CFG;
+    grassCandidates.length = 0;
+    const viewers = getWeatherViewerCameras();
+    const nearest2 = (x, z) => {
+      let d2 = Infinity;
+      for (const c of viewers) d2 = Math.min(d2, (c.position.x - x) ** 2 + (c.position.z - z) ** 2);
+      return d2;
+    };
+    const range2 = cfg.GRASS_INTERACTION_RANGE * cfg.GRASS_INTERACTION_RANGE;
+    if (cfg.GRASS_INTERACTION_ENABLED && isCampusMap) {
+      const body = (key, x, z, air, scale) => {
+        const d2 = nearest2(x, z);
+        if (d2 > range2) return;
+        const r = cfg.GRASS_INTERACTION_RADIUS * scale;
+        if (air < 0.25) grassCandidates.push({ x, z, r, s: cfg.GRASS_INTERACTION_STRENGTH, d2 });
+        const last = grassBodyLast.get(key);
+        if (!last) grassBodyLast.set(key, { x, z });
+        else if ((last.x - x) ** 2 + (last.z - z) ** 2 > (r * 0.8) ** 2) {
+          if (air < 0.25) grassTrail.push({ x: last.x, z: last.z, r, s: 0.8 * cfg.GRASS_INTERACTION_STRENGTH });
+          last.x = x; last.z = z;
+        }
+      };
+      for (const p of isCoopMatchActive ? players : [players[0]]) {
+        if (!p.isDead) body(p, p.camera.position.x, p.camera.position.z, p.jumpOffset || 0, 1);
+      }
+      for (const enemyState of enemies) {
+        if (enemyState.dormant || enemyState.isRemoved || !enemyState.mesh.visible) continue;
+        const pos = enemyState.mesh.position;
+        body(enemyState, pos.x, pos.z, 0, enemyState.boss ? 1.8 : enemyState.isBrute ? 1.4 : 1);
+      }
+    }
+    for (let i = grassTrail.length - 1; i >= 0; i--) {
+      const t = grassTrail[i];
+      t.s -= deltaSeconds * cfg.GRASS_INTERACTION_RECOVERY_SPEED;
+      if (t.s <= 0) { grassTrail.splice(i, 1); continue; }
+      const d2 = nearest2(t.x, t.z);
+      if (d2 < range2) grassCandidates.push({ x: t.x, z: t.z, r: t.r, s: t.s, d2: d2 + (1 - t.s) * 40 });
+    }
+    if (grassTrail.length > 40) grassTrail.splice(0, grassTrail.length - 40);
+    if (grassCandidates.length > 8) grassCandidates.sort((a, b) => a.d2 - b.d2);
+    const slots = env.grassPushers.value, box = env.grassPushBox.value;
+    box.set(1e6, 1e6, -1e6, -1e6);
+    for (let i = 0; i < 8; i++) {
+      const c = grassCandidates[i];
+      if (!c) { slots[i].w = 0; continue; }
+      slots[i].set(c.x, c.z, c.r, c.s);
+      box.x = Math.min(box.x, c.x - c.r); box.y = Math.min(box.y, c.z - c.r);
+      box.z = Math.max(box.z, c.x + c.r); box.w = Math.max(box.w, c.z + c.r);
+    }
+  }
+
+  // Once per world update (pauses with the world).
+  function updateSurfaceEffects(deltaSeconds) {
+    fxImpactsThisFrame = 0;
+    // How lit the particles look: the ambient fill plus some of the sun/moon.
+    fxLightScratch.copy(ambientLight.color).multiplyScalar(ambientLight.intensity * 1.1)
+      .add(fxSunScratch.copy(sunLight.color).multiplyScalar(sunLight.intensity * 0.6));
+    fxLightScratch.r = Math.min(1.15, fxLightScratch.r); fxLightScratch.g = Math.min(1.15, fxLightScratch.g); fxLightScratch.b = Math.min(1.15, fxLightScratch.b);
+    const pixelScale = sceneRenderHeight() * 0.5 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    fxParticles.update(deltaSeconds, fxLightScratch, pixelScale);
+    fxSparks.update(deltaSeconds, null, pixelScale);
+    fxDecals.update(deltaSeconds);
+    shellCasings.update(deltaSeconds);
+    updateGrassPushers(deltaSeconds);
+  }
+
+  function clearSurfaceEffects() {
+    fxParticles.clear();
+    fxSparks.clear();
+    fxDecals.clear();
+    shellCasings.clear();
+    grassTrail.length = 0;
+  }
+
+  // ------------------------------------------------------------------
   // AMMO PICKUPS: small floating cubes textured with the ammo box image,
   // dropped by damageEnemy() on a AMMO_DROP_CHANCE roll. Walking within
   // AMMO_PICKUP_COLLECT_DISTANCE of one collects it (refills reserve ammo
@@ -15778,7 +16193,7 @@
 
   // Tab buttons themselves (explicit request: mouse-clickable too, not
   // just Tab/the controller bumpers) -- data-side/data-tab mirror the
-  // coop-setup face-arrows' own data-side/data-dir convention. Real
+  // setup screens' own data-side/data-dir convention. Real
   // mouse only, same split every other click handler in this panel
   // follows -- a controller player's own click on these comes from
   // updateInventoryCursorForController's generalized el.click() instead.
@@ -16988,6 +17403,7 @@
       releaseBloodDecal(entry.decal);
     }
     activeBloodDecals.length = 0;
+    clearSurfaceEffects(); // impacts, decals, casings, grass marks
 
     resetDayNightCycle();
     waveNumber = 0;
@@ -18125,6 +18541,128 @@
   const COOP_READY_BUTTON_INDEX = 3; // Triangle (north face button, Standard Mapping)
   const GAMEPAD_INPUT_DETECT_DEADZONE = 0.25; // any axis beyond this, or any button pressed, counts as "detected input" for assignment purposes
 
+  // ------------------------------------------------------------------
+  // CHARACTER CUSTOMIZATION (explicit request): what each player on a
+  // multiplayer setup screen has picked -- face, headgear, shirt and
+  // pants, four separate selections (faceKey / helmetKey / shirtKey /
+  // pantsKey) -- plus `category`, which of those their right stick is on.
+  // Shared by the co-op (2-player) and 3/4-player screens:
+  //   - right stick up/down (W/S for a keyboard+mouse P1) moves between
+  //     the categories, one step per push -- the stick has to come back
+  //     toward the middle before the next -- stopping at FACE and PANTS;
+  //   - right stick left/right (A/D, or the arrows) cycles the selected
+  //     category's options exactly as it cycled faces before (hold to
+  //     repeat, looping at either end);
+  //   - clicking a category (keyboard+mouse) selects it.
+  // Every category starts on FACE. The list under each preview shows all
+  // four, the selected one highlighted with its arrows. The preview (and
+  // later the in-game body) only swaps the part that changed: setFace,
+  // setHelmet, setClothing (player-model.js).
+  // ------------------------------------------------------------------
+  const CUSTOMIZE_CATEGORIES = ["face", "headgear", "shirt", "pants"];
+  const CUSTOMIZE_LABELS = { face: "Face", headgear: "Headgear", shirt: "Shirt", pants: "Pants" };
+  const CUSTOMIZE_CATEGORY_RELEASE = 0.35; // stick back under this before the next category step
+
+  function createCustomization() {
+    return { faceKey: null, helmetKey: "bag", shirtKey: null, pantsKey: null, category: 0 };
+  }
+  function pickCustomizeKey(keys, avoid) {
+    let key;
+    do { key = keys[Math.floor(Math.random() * keys.length)]; } while (keys.length > 1 && key === avoid);
+    return key;
+  }
+  // A fresh visit: face picked when the model first shows, the paper bag,
+  // a random shirt and pants (different from `other`'s, if given), FACE.
+  function resetCustomization(c, other) {
+    c.faceKey = null;
+    c.helmetKey = "bag";
+    c.shirtKey = pickCustomizeKey(humanSystem.shirtKeys, other && other.shirtKey);
+    c.pantsKey = pickCustomizeKey(humanSystem.pantsKeys, other && other.pantsKey);
+    c.category = 0;
+  }
+  function customizationValue(c, category) {
+    if (category === "face") return c.faceKey ? `${SORTED_FACE_KEYS.indexOf(c.faceKey) + 1} / ${SORTED_FACE_KEYS.length}` : "";
+    if (category === "headgear") return humanSystem.helmetName(c.helmetKey);
+    if (category === "shirt") return c.shirtKey ? humanSystem.shirtName(c.shirtKey) : "";
+    return c.pantsKey ? humanSystem.pantsName(c.pantsKey) : "";
+  }
+  const stepKey = (keys, key, direction) => keys[(keys.indexOf(key) + direction + keys.length) % keys.length];
+  // Steps the selected category's option; false if there's nothing to
+  // step yet (the model isn't showing).
+  function cycleCustomization(c, direction) {
+    if (!c.faceKey) return false;
+    const category = CUSTOMIZE_CATEGORIES[c.category];
+    if (category === "face") c.faceKey = cyclePlayerFaceKey(c.faceKey, direction);
+    else if (category === "headgear") c.helmetKey = stepKey(humanSystem.helmetKeys, c.helmetKey, direction);
+    else if (category === "shirt") c.shirtKey = stepKey(humanSystem.shirtKeys, c.shirtKey, direction);
+    else c.pantsKey = stepKey(humanSystem.pantsKeys, c.pantsKey, direction);
+    playClip("menu_click_01", { volume: 0.5 }); // the face picker's click
+    return true;
+  }
+  // Selected category up (-1) or down (1), no wrap; false if it didn't move.
+  function stepCustomizeCategory(c, direction) {
+    const next = Math.max(0, Math.min(CUSTOMIZE_CATEGORIES.length - 1, c.category + direction));
+    if (next === c.category || !c.faceKey) return false;
+    c.category = next;
+    playClip("menu_click_01", { volume: 0.35 });
+    return true;
+  }
+  function selectCustomizeCategory(c, index) {
+    if (index === c.category || !c.faceKey) return false;
+    c.category = index;
+    playClip("menu_click_01", { volume: 0.35 });
+    return true;
+  }
+  // Headgear and clothes onto a character (the face goes on through
+  // applyFaceToSetupPreview / setPlayerFace, which track it themselves).
+  function applyCustomizationToCharacter(character, c) {
+    humanSystem.setHelmet(character, c.helmetKey);
+    if (c.shirtKey && c.pantsKey) humanSystem.setClothing(character, c.shirtKey, c.pantsKey);
+  }
+  // Right stick up/down: one category step per push.
+  function stepCategoryStick(state, value, step) {
+    if (!state.armed) {
+      if (Math.abs(value) < CUSTOMIZE_CATEGORY_RELEASE) state.armed = true;
+      return;
+    }
+    if (Math.abs(value) > GAMEPAD_STICK_DEADZONE) {
+      state.armed = false;
+      step(value > 0 ? 1 : -1); // down = the next category down the list
+    }
+  }
+  // The list's rows, built once per .customize-list: select(index) on a
+  // row click, cycle(direction) on an arrow click (both real mouse only
+  // -- the caller decides whether that player uses one).
+  function buildCustomizeList(listEl, select, cycle) {
+    listEl.innerHTML = "";
+    CUSTOMIZE_CATEGORIES.forEach((category, index) => {
+      const row = document.createElement("div");
+      row.className = "customize-row";
+      row.dataset.category = category;
+      row.innerHTML = `<button type="button" class="customize-arrow" data-dir="-1" aria-label="Previous ${CUSTOMIZE_LABELS[category]}">&#9664;</button>` +
+        `<span><span class="customize-label">${CUSTOMIZE_LABELS[category]}</span><span class="customize-value"></span></span>` +
+        `<button type="button" class="customize-arrow" data-dir="1" aria-label="Next ${CUSTOMIZE_LABELS[category]}">&#9654;</button>`;
+      row.addEventListener("click", () => select(index));
+      row.querySelectorAll(".customize-arrow").forEach((arrow) => {
+        arrow.addEventListener("click", (event) => {
+          event.stopPropagation();
+          select(index);
+          cycle(Number(arrow.dataset.dir));
+        });
+      });
+      listEl.appendChild(row);
+    });
+  }
+  function renderCustomizeList(listEl, c) {
+    listEl.querySelectorAll(".customize-row").forEach((row, index) => {
+      row.classList.toggle("selected", index === c.category);
+      row.querySelector(".customize-value").textContent = customizationValue(c, CUSTOMIZE_CATEGORIES[index]);
+    });
+  }
+  function flashCustomizeArrow(listEl, direction) {
+    flashFaceArrow(listEl.querySelector(`.customize-row.selected .customize-arrow[data-dir="${direction}"]`));
+  }
+
   const coopSetup = {
     p1Scheme: "keyboard", // "keyboard" | "controller"
     p1Ready: false,
@@ -18132,16 +18670,12 @@
     p1GamepadIndex: null, // assigned once p1Scheme is "controller" and a not-yet-claimed gamepad sends input
     p2GamepadIndex: null, // assigned the same way, always
     countdownRemaining: null, // null = no countdown running; otherwise seconds left
-    // Face picker (explicit request) -- null until that side's model
-    // first reveals itself (see updateCoopSetupUI), at which point it
-    // gets a random default; stays set across a controller disconnect so
-    // reconnecting shows the same face rather than re-randomizing.
-    p1FaceKey: null,
-    p2FaceKey: null,
-    // Helmet picker (explicit request) -- right stick up/down (W/S on
-    // keyboard+mouse); everyone starts in the paper bag.
-    p1HelmetKey: "bag",
-    p2HelmetKey: "bag",
+    // Each side's customization (see CHARACTER CUSTOMIZATION). The face is
+    // null until that side's model first reveals itself (see
+    // updateCoopSetupUI), at which point it gets a random default; it stays
+    // set across a controller disconnect so reconnecting shows the same
+    // face rather than re-randomizing. Everyone starts in the paper bag.
+    custom: { p1: createCustomization(), p2: createCustomization() },
   };
   const coopReadyButtonWasPressed = { p1: false, p2: false }; // for edge-detecting COOP_READY_BUTTON_INDEX per side
   const coopDifficultyStickWasPastDeadzone = { p1: false, p2: false }; // for edge-detecting the left stick's X axis per side, same idea as coopReadyButtonWasPressed above
@@ -18157,11 +18691,9 @@
     p1: { isPastDeadzone: false, direction: 0, timeUntilNextStep: 0 },
     p2: { isPastDeadzone: false, direction: 0, timeUntilNextStep: 0 },
   };
-  // Same hold-to-repeat for the helmet picker on the right stick's Y axis.
-  const coopHelmetStepState = {
-    p1: { isPastDeadzone: false, direction: 0, timeUntilNextStep: 0 },
-    p2: { isPastDeadzone: false, direction: 0, timeUntilNextStep: 0 },
-  };
+  // The right stick's Y axis steps the customization category (one step
+  // per push -- see stepCategoryStick).
+  const coopCategoryStickState = { p1: { armed: true }, p2: { armed: true } };
   const FACE_STEP_REPEAT_INITIAL_DELAY = 0.45; // seconds held before repeating kicks in, matching a typical UI key-repeat feel
   const FACE_STEP_REPEAT_INTERVAL = 0.15; // seconds between each repeat step once repeating
 
@@ -18176,6 +18708,8 @@
     p2ReadyPrompt: document.getElementById("coop-setup-p2-ready-prompt"),
     p2ModelRow: document.getElementById("coop-setup-p2-model-row"),
     p2ModelCanvas: document.getElementById("coop-setup-p2-model-canvas"),
+    p1CustomizeList: document.querySelector('.customize-list[data-side="p1"]'),
+    p2CustomizeList: document.querySelector('.customize-list[data-side="p2"]'),
     countdown: document.getElementById("coop-setup-countdown"),
   };
 
@@ -18191,10 +18725,8 @@
     coopSetup.p1GamepadIndex = null;
     coopSetup.p2GamepadIndex = null;
     coopSetup.countdownRemaining = null;
-    coopSetup.p1FaceKey = null;
-    coopSetup.p2FaceKey = null;
-    coopSetup.p1HelmetKey = "bag";
-    coopSetup.p2HelmetKey = "bag";
+    resetCustomization(coopSetup.custom.p1);
+    resetCustomization(coopSetup.custom.p2, coopSetup.custom.p1);
     coopReadyButtonWasPressed.p1 = false;
     coopReadyButtonWasPressed.p2 = false;
     document.querySelectorAll("#coop-setup-p1 .coop-scheme-button").forEach((el) => {
@@ -18258,12 +18790,13 @@
     const p2ModelVisible = coopSetup.p2GamepadIndex !== null;
     coopEls.p1ModelRow.classList.toggle("hidden", !p1ModelVisible);
     coopEls.p2ModelRow.classList.toggle("hidden", !p2ModelVisible);
-    if (p1ModelVisible && !coopSetup.p1FaceKey) coopSetup.p1FaceKey = pickRandomPlayerFaceKey();
-    if (p2ModelVisible && !coopSetup.p2FaceKey) coopSetup.p2FaceKey = pickRandomPlayerFaceKey();
-    if (coopSetup.p1FaceKey) applyFaceToSetupPreview(p1ModelPreview, coopSetup.p1FaceKey);
-    if (coopSetup.p2FaceKey) applyFaceToSetupPreview(p2ModelPreview, coopSetup.p2FaceKey);
-    humanSystem.setHelmet(p1ModelPreview.character, coopSetup.p1HelmetKey);
-    humanSystem.setHelmet(p2ModelPreview.character, coopSetup.p2HelmetKey);
+    for (const [side, visible, preview] of [["p1", p1ModelVisible, p1ModelPreview], ["p2", p2ModelVisible, p2ModelPreview]]) {
+      const c = coopSetup.custom[side];
+      if (visible && !c.faceKey) c.faceKey = pickRandomPlayerFaceKey();
+      if (c.faceKey) applyFaceToSetupPreview(preview, c.faceKey);
+      applyCustomizationToCharacter(preview.character, c);
+      renderCustomizeList(coopEls[side + "CustomizeList"], c);
+    }
 
     if (coopSetup.countdownRemaining === null) {
       coopEls.countdown.textContent = "";
@@ -18316,22 +18849,18 @@
     if (coopSetup.p1Scheme === "keyboard") toggleCoopReady("p1");
   });
 
-  // Face picker arrows (explicit request) -- left-click only actually
-  // cycles for whichever side is on keyboard+mouse (P2 is always
-  // controller, no mouse to click with; a keyboard+mouse P1 switching to
-  // Controller hands this over to their own stick instead -- see
-  // checkCoopFaceStep). Still wired up on both sides regardless of
-  // scheme, same as P2's ready prompt always existing whether or not a
-  // click on it would currently do anything.
-  document.querySelectorAll(".coop-setup-face-arrow").forEach((el) => {
-    el.addEventListener("click", function (event) {
-      event.stopPropagation();
-      const side = el.dataset.side;
-      const scheme = side === "p1" ? coopSetup.p1Scheme : "controller";
-      if (scheme !== "keyboard") return;
-      cycleSetupFace(side, Number(el.dataset.dir));
-    });
-  });
+  // Customization lists (explicit request) -- a click only does anything
+  // for whichever side is on keyboard+mouse (P2 is always controller, no
+  // mouse to click with; a keyboard+mouse P1 switching to Controller hands
+  // this over to their own stick instead -- see checkCoopFaceStep).
+  for (const side of ["p1", "p2"]) {
+    const usesMouse = () => (side === "p1" ? coopSetup.p1Scheme : "controller") === "keyboard";
+    buildCustomizeList(
+      coopEls[side + "CustomizeList"],
+      (index) => { if (usesMouse() && selectCustomizeCategory(coopSetup.custom[side], index)) updateCoopSetupUI(); },
+      (direction) => { if (usesMouse()) cycleSetupCustomization(side, direction); }
+    );
+  }
 
   document.addEventListener("keydown", function (event) {
     if (event.code !== "Enter") return;
@@ -18340,24 +18869,24 @@
     toggleCoopReady("p1");
   });
 
-  // Keyboard equivalent of the face-arrow clicks above (explicit
-  // request), A/D matching this same keyboard+mouse P1's moveLeft/
-  // moveRight binds -- A steps left (-1), D steps right (1). Same
+  // Keyboard equivalent of the arrow clicks above (explicit request), A/D
+  // matching this same keyboard+mouse P1's moveLeft/moveRight binds -- A
+  // steps the selected category's option left (-1), D right (1). Same
   // keyboard-only gating as the click handler: once P1 switches to
   // Controller, their own stick (checkCoopFaceStep) takes over instead.
   document.addEventListener("keydown", function (event) {
     if (event.code !== "KeyA" && event.code !== "KeyD") return;
     if (!titlePanels["coop-setup"].classList.contains("active")) return;
     if (coopSetup.p1Scheme !== "keyboard") return;
-    cycleSetupFace("p1", event.code === "KeyA" ? -1 : 1);
+    cycleSetupCustomization("p1", event.code === "KeyA" ? -1 : 1);
   });
 
-  // ...and W/S step the helmet (up = previous, down = next, same as the stick).
+  // ...and W/S move between the categories (up / down, like the stick).
   document.addEventListener("keydown", function (event) {
     if (event.code !== "KeyW" && event.code !== "KeyS") return;
     if (!titlePanels["coop-setup"].classList.contains("active")) return;
-    if (coopSetup.p1Scheme !== "keyboard") return;
-    cycleSetupHelmet("p1", event.code === "KeyW" ? -1 : 1);
+    if (coopSetup.p1Scheme !== "keyboard" || event.repeat) return;
+    if (stepCustomizeCategory(coopSetup.custom.p1, event.code === "KeyW" ? -1 : 1)) updateCoopSetupUI();
   });
 
   // Enter confirms the co-op solo-death "Full Screen" prompt for a
@@ -18519,7 +19048,7 @@
   // click handler and checkCoopFaceStep below, same "one function either
   // caller reaches the same way" pattern as stepDifficulty. No-ops if
   // that side has no face key yet (model not actually revealed).
-  // Per-button pending flash timeout (see cycleSetupFace/flashFaceArrow)
+  // Per-button pending flash timeout (see cycleSetupCustomization/flashFaceArrow)
   // -- a WeakMap rather than a plain object since it's keyed by DOM
   // elements, and lets a rapid repeat reset/extend the flash instead of
   // an earlier timeout cutting a newer one off early.
@@ -18538,39 +19067,21 @@
     );
   }
 
-  function cycleSetupFace(side, direction) {
-    const key = side === "p1" ? coopSetup.p1FaceKey : coopSetup.p2FaceKey;
-    if (!key) return;
-    const nextKey = cyclePlayerFaceKey(key, direction);
-    if (side === "p1") coopSetup.p1FaceKey = nextKey;
-    else coopSetup.p2FaceKey = nextKey;
-    // Half the volume stepDifficulty's own use of this same clip plays at
-    // (explicit request, scoped to just this one caller -- every other
-    // menu_click_01 call site, including stepDifficulty's, is untouched).
-    playClip("menu_click_01", { volume: 0.5 });
-    flashFaceArrow(
-      document.querySelector(`.coop-setup-face-arrow[data-side="${side}"][data-dir="${direction}"]`)
-    );
+  // Steps the given side's selected customization category (face,
+  // headgear, shirt or pants -- see CHARACTER CUSTOMIZATION), looping at
+  // either end, and flashes that arrow. Shared by the arrow clicks, A/D
+  // and checkCoopFaceStep below.
+  function cycleSetupCustomization(side, direction) {
+    const list = coopEls[side + "CustomizeList"];
+    if (!cycleCustomization(coopSetup.custom[side], direction)) return;
     updateCoopSetupUI();
-  }
-
-  // Steps the given side's helmet (explicit request: paper bag, bucket,
-  // cardboard box, traffic cone -- see HELMETS in player-model.js), looping
-  // at either end. Only once that side's model is showing.
-  function cycleSetupHelmet(side, direction) {
-    if (!(side === "p1" ? coopSetup.p1FaceKey : coopSetup.p2FaceKey)) return;
-    const keys = humanSystem.helmetKeys;
-    const current = side === "p1" ? coopSetup.p1HelmetKey : coopSetup.p2HelmetKey;
-    const next = keys[(keys.indexOf(current) + direction + keys.length) % keys.length];
-    if (side === "p1") coopSetup.p1HelmetKey = next;
-    else coopSetup.p2HelmetKey = next;
-    playClip("menu_click_01", { volume: 0.5 }); // same click as the face picker
-    updateCoopSetupUI();
+    flashCustomizeArrow(list, direction);
   }
 
   // Right-stick (LOOK, not move -- explicit request: "the joystick that
   // currently moves the camera angle") left/right cycles that side's
-  // face selection, mirroring checkCoopDifficultyStep's own left-stick
+  // selected customization category (it cycled the face before the
+  // categories existed -- same feel), mirroring checkCoopDifficultyStep's own left-stick
   // handling for the initial push, just on the other stick/axis so it
   // doesn't fight with difficulty-stepping. Explicit request/bug fix:
   // this used to be purely edge-triggered (one step per push, requiring
@@ -18586,7 +19097,7 @@
     const state = coopFaceStepState[side];
     if (!usesController || gamepadIndex === null) {
       state.isPastDeadzone = false;
-      coopHelmetStepState[side].isPastDeadzone = false;
+      coopCategoryStickState[side].armed = false; // re-arms once the stick's seen centered
       return;
     }
 
@@ -18594,23 +19105,25 @@
     const pad = pads[gamepadIndex];
     if (!pad) {
       state.isPastDeadzone = false;
-      coopHelmetStepState[side].isPastDeadzone = false;
+      coopCategoryStickState[side].armed = false;
       return;
     }
 
-    // Up/down on the same stick steps the helmet (explicit request). Only
-    // the axis it's pushed further along counts, so a diagonal push never
-    // steps both at once.
+    // Up/down on the same stick moves between the categories (explicit
+    // request), one step per push. Only the axis it's pushed further along
+    // counts, so a diagonal push never does both at once.
     const stickX = pad.axes[GAMEPAD_AXIS_LOOK_X] || 0;
     const stickY = pad.axes[GAMEPAD_AXIS_LOOK_Y] || 0;
     const horizontal = Math.abs(stickX) >= Math.abs(stickY);
-    stepHeldStickAxis(coopHelmetStepState[side], horizontal ? 0 : stickY, deltaSeconds, (dir) => cycleSetupHelmet(side, dir)); // down = next
-    stepHeldStickAxis(state, horizontal ? stickX : 0, deltaSeconds, (dir) => cycleSetupFace(side, dir));
+    stepCategoryStick(coopCategoryStickState[side], horizontal ? 0 : stickY, (dir) => {
+      if (stepCustomizeCategory(coopSetup.custom[side], dir)) updateCoopSetupUI();
+    });
+    stepHeldStickAxis(state, horizontal ? stickX : 0, deltaSeconds, (dir) => cycleSetupCustomization(side, dir));
   }
 
   // One stick axis driving a list picker: steps once on the initial push,
   // then auto-repeats while held (FACE_STEP_REPEAT_*); `state` is one side's
-  // entry in coopFaceStepState / coopHelmetStepState.
+  // entry in coopFaceStepState (or a 3/4-player slot's).
   function stepHeldStickAxis(state, value, deltaSeconds, step) {
     const isPastDeadzone = Math.abs(value) > GAMEPAD_STICK_DEADZONE;
     const direction = value > 0 ? 1 : -1;
@@ -18730,10 +19243,10 @@
     // either was somehow never assigned one (e.g. P2 readying up via a
     // controller so fast their model's own reveal-triggered random pick,
     // in updateCoopSetupUI, never got a render tick to run).
-    setPlayerFace(players[0], coopSetup.p1FaceKey || pickRandomPlayerFaceKey());
-    setPlayerFace(players[1], coopSetup.p2FaceKey || pickRandomPlayerFaceKey());
-    humanSystem.setHelmet(players[0].human, coopSetup.p1HelmetKey); // and helmet, the same way
-    humanSystem.setHelmet(players[1].human, coopSetup.p2HelmetKey);
+    setPlayerFace(players[0], coopSetup.custom.p1.faceKey || pickRandomPlayerFaceKey());
+    setPlayerFace(players[1], coopSetup.custom.p2.faceKey || pickRandomPlayerFaceKey());
+    applyCustomizationToCharacter(players[0].human, coopSetup.custom.p1); // and headgear/shirt/pants, the same way
+    applyCustomizationToCharacter(players[1].human, coopSetup.custom.p2);
 
     // Spawn offsets are an arbitrary, reasonable default -- not spec'd,
     // just enough that the two players aren't standing exactly on top of
@@ -19254,8 +19767,8 @@
   // up near face height. Expressed as a fraction of total enemy height off
   // the ground, matching the same fixed-fraction approach (rather than
   // reading each face texture's own real height/position) already used for
-  // face placement elsewhere -- see the .coop-setup-face-arrow CSS comment
-  // near the top of this file for the same reasoning.
+  // face placement elsewhere (the setup screens' old head-height face arrows
+  // used the same reasoning).
   // Derived from the humanoid model's head center (see ENEMY_BODY), so it
   // follows any future proportion change automatically.
   const AIM_ASSIST_FACE_HEIGHT_FRACTION = (ENEMY_BODY.head.y + ENEMY_SIZE.height / 2) / ENEMY_SIZE.height;
@@ -19758,7 +20271,6 @@
 
   const SETUP_MODEL_BASE_WIDTH = 324; // canvas size (and arrow scale/offset) at SETUP_MODEL_SCALE_REFERENCE_HEIGHT -- 1.35x the old 240x340 (explicit request: bigger)
   const SETUP_MODEL_BASE_HEIGHT = 459;
-  const SETUP_MODEL_ARROW_EDGE_OFFSET = 3; // px, at scale 1 -- how far the arrows overlap into the canvas (see their own CSS comment) -- explicit follow-up: nudged toward the true edge (was 8), further from the model itself
   // Explicit request: the model's SIZE (not just position) should scale
   // with the window -- this window height is the one the current
   // 240x340/8px look was tuned against (a real 1080-tall fullscreen
@@ -19779,7 +20291,6 @@
     const scale = window.innerHeight / SETUP_MODEL_SCALE_REFERENCE_HEIGHT;
     const width = SETUP_MODEL_BASE_WIDTH * scale;
     const height = SETUP_MODEL_BASE_HEIGHT * scale;
-    const arrowOffset = SETUP_MODEL_ARROW_EDGE_OFFSET * scale;
 
     for (const preview of [
       { canvasEl: coopEls.p1ModelCanvas, model: p1ModelPreview },
@@ -19790,15 +20301,10 @@
       preview.model.renderer.setSize(width, height, false);
     }
 
-    document.querySelectorAll(".coop-setup-face-arrow").forEach((el) => {
-      el.style.transform = `translateY(-50%) scale(${scale})`;
-    });
-    document.querySelectorAll(".coop-setup-face-arrow-left").forEach((el) => {
-      el.style.left = arrowOffset + "px";
-    });
-    document.querySelectorAll(".coop-setup-face-arrow-right").forEach((el) => {
-      el.style.right = arrowOffset + "px";
-    });
+    // The customization list under each model scales right along with it.
+    for (const list of [coopEls.p1CustomizeList, coopEls.p2CustomizeList]) {
+      list.style.transform = `translateX(-50%) scale(${Math.max(0.75, scale)})`;
+    }
   }
 
   // Called once per animate() frame alongside pollCoopSetupGamepads/
@@ -19828,16 +20334,19 @@
   // 3, see resetQuadSetup). Same rules as the co-op setup screen above,
   // generalized to more slots: Player 1 picks Keyboard + Mouse or
   // Controller, everyone else is always
-  // controller, and every player gets the face (right stick left/right)
-  // and helmet (right stick up/down) pickers plus ready-up. Gamepads are
+  // controller, and every player gets the customization list (right stick
+  // up/down picks FACE / HEADGEAR / SHIRT / PANTS, left/right its option)
+  // plus ready-up. Gamepads are
   // claimed the same way -- first pad to send input takes the first slot
   // still waiting (P1 first if they're on controller). Everyone ready
   // starts the same 5-second countdown as co-op, then startQuadMatch.
   // ------------------------------------------------------------------
   const QUAD_PLAYER_COUNT = 4; // most slots the screen has (quadEls/quadSetupInput); quadSetup.slots.length is this visit's player count
 
+  // (the customization fields -- faceKey, helmetKey, shirtKey, pantsKey,
+  // category -- see CHARACTER CUSTOMIZATION)
   function createQuadSlotState() {
-    return { gamepadIndex: null, ready: false, faceKey: null, helmetKey: "bag" };
+    return { gamepadIndex: null, ready: false, ...createCustomization() };
   }
   function createQuadStickState() {
     return { isPastDeadzone: false, direction: 0, timeUntilNextStep: 0 };
@@ -19851,8 +20360,8 @@
   const quadSetupInput = Array.from({ length: QUAD_PLAYER_COUNT }, () => ({
     readyWasPressed: false,
     difficultyStickWasPastDeadzone: false,
-    face: createQuadStickState(),
-    helmet: createQuadStickState(),
+    face: createQuadStickState(),        // right stick left/right: the selected category's option
+    category: { armed: true },           // right stick up/down: the category
   }));
 
   const quadEls = Array.from(document.querySelectorAll(".quad-setup-side")).map((sideEl) => ({
@@ -19861,6 +20370,7 @@
     readyPrompt: sideEl.querySelector(".quad-setup-ready-prompt"),
     model: sideEl.querySelector(".quad-setup-model"),
     modelCanvas: sideEl.querySelector(".quad-setup-model-canvas"),
+    customizeList: sideEl.querySelector(".customize-list"),
   }));
   const quadStatusEl = document.getElementById("quad-setup-status");
   const quadSideEls = Array.from(document.querySelectorAll(".quad-setup-side"));
@@ -19892,6 +20402,7 @@
     ensureQuadModelPreviews();
     quadSetup.p1Scheme = "keyboard";
     quadSetup.slots = Array.from({ length: playerCount }, createQuadSlotState);
+    quadSetup.slots.forEach((state, slot) => resetCustomization(state, slot > 0 ? quadSetup.slots[slot - 1] : undefined));
     quadSideEls.forEach((el, slot) => el.classList.toggle("hidden", slot >= playerCount));
     quadHeadingEl.textContent = `${playerCount} Player Setup`;
     quadSetup.countdownRemaining = null;
@@ -19923,11 +20434,13 @@
       els.readyPrompt.classList.toggle("clickable", !usesController);
 
       els.model.classList.toggle("hidden", !connected);
+      els.customizeList.classList.toggle("hidden", !connected);
       if (connected && !state.faceKey) state.faceKey = pickRandomPlayerFaceKey();
       if (quadModelPreviews) {
         if (state.faceKey) applyFaceToSetupPreview(quadModelPreviews[slot], state.faceKey);
-        humanSystem.setHelmet(quadModelPreviews[slot].character, state.helmetKey);
+        applyCustomizationToCharacter(quadModelPreviews[slot].character, state);
       }
+      renderCustomizeList(els.customizeList, state);
     });
 
     quadStatusEl.textContent = quadSetup.countdownRemaining === null ? "" : `Starting in ${Math.ceil(quadSetup.countdownRemaining)}...`;
@@ -19995,7 +20508,7 @@
     players.forEach((player, i) => {
       const slot = quadSetup.slots[i];
       setPlayerFace(player, slot.faceKey || pickRandomPlayerFaceKey());
-      humanSystem.setHelmet(player.human, slot.helmetKey);
+      applyCustomizationToCharacter(player.human, slot); // headgear, shirt, pants
       player.spectateIndex = null;
       player.camera.position.set((i - (players.length - 1) / 2) * 2, EYE_HEIGHT, 0); // side by side, same spacing as co-op's +/-1
       applyCameraRotation(player);
@@ -20012,22 +20525,16 @@
     if (matchP1Scheme === "keyboard") canvas.requestPointerLock(); // same gesture-window reliance/fallback as startCoopMatch
   }
 
-  function cycleQuadFace(slot, direction) {
-    const state = quadSetup.slots[slot];
-    if (!state.faceKey) return;
-    state.faceKey = cyclePlayerFaceKey(state.faceKey, direction);
-    playClip("menu_click_01", { volume: 0.5 }); // same as co-op's face picker
-    flashFaceArrow(document.querySelector(`.quad-setup-face-arrow[data-slot="${slot}"][data-dir="${direction}"]`));
+  // The selected category's option (see CHARACTER CUSTOMIZATION), and
+  // the category itself -- same as the co-op screen's.
+  function cycleQuadCustomization(slot, direction) {
+    if (!cycleCustomization(quadSetup.slots[slot], direction)) return;
     updateQuadSetupUI();
+    flashCustomizeArrow(quadEls[slot].customizeList, direction);
   }
 
-  function cycleQuadHelmet(slot, direction) {
-    const state = quadSetup.slots[slot];
-    if (!state.faceKey) return; // only once that player's model is showing
-    const keys = humanSystem.helmetKeys;
-    state.helmetKey = keys[(keys.indexOf(state.helmetKey) + direction + keys.length) % keys.length];
-    playClip("menu_click_01", { volume: 0.5 });
-    updateQuadSetupUI();
+  function stepQuadCategory(slot, direction) {
+    if (stepCustomizeCategory(quadSetup.slots[slot], direction)) updateQuadSetupUI();
   }
 
   // Switching P1's scheme un-readies them and forces a fresh controller
@@ -20054,24 +20561,27 @@
     if (quadSetup.p1Scheme === "keyboard") toggleQuadReady(0);
   });
 
-  // Mouse clicks on the face arrows only ever come from a keyboard+mouse
-  // P1 -- controller players use their right stick instead.
-  document.querySelectorAll(".quad-setup-face-arrow").forEach((el) => {
-    el.addEventListener("click", function (event) {
-      event.stopPropagation();
-      const slot = Number(el.dataset.slot);
-      if (quadSlotUsesController(slot)) return;
-      cycleQuadFace(slot, Number(el.dataset.dir));
-    });
+  // Mouse clicks on the customization lists only ever come from a
+  // keyboard+mouse P1 -- controller players use their right stick instead.
+  quadEls.forEach((els, slot) => {
+    buildCustomizeList(
+      els.customizeList,
+      (index) => {
+        if (!quadSetup.slots[slot] || quadSlotUsesController(slot)) return;
+        if (selectCustomizeCategory(quadSetup.slots[slot], index)) updateQuadSetupUI();
+      },
+      (direction) => { if (quadSetup.slots[slot] && !quadSlotUsesController(slot)) cycleQuadCustomization(slot, direction); }
+    );
   });
 
-  // Keyboard+mouse P1: Enter readies up, A/D cycle the face, W/S the helmet.
+  // Keyboard+mouse P1: Enter readies up, A/D cycle the selected
+  // customization category's option, W/S move between the categories.
   document.addEventListener("keydown", function (event) {
     if (!titlePanels["quad-setup"].classList.contains("active")) return;
     if (quadSetup.p1Scheme !== "keyboard") return;
     if (event.code === "Enter") toggleQuadReady(0);
-    else if (event.code === "KeyA" || event.code === "KeyD") cycleQuadFace(0, event.code === "KeyA" ? -1 : 1);
-    else if (event.code === "KeyW" || event.code === "KeyS") cycleQuadHelmet(0, event.code === "KeyW" ? -1 : 1);
+    else if (event.code === "KeyA" || event.code === "KeyD") cycleQuadCustomization(0, event.code === "KeyA" ? -1 : 1);
+    else if ((event.code === "KeyW" || event.code === "KeyS") && !event.repeat) stepQuadCategory(0, event.code === "KeyW" ? -1 : 1);
   });
 
   document.getElementById("quad-setup-back-button").addEventListener("click", function () {
@@ -20125,14 +20635,15 @@
   }
 
   // One claimed controller's own inputs: Triangle readies up, left stick
-  // left/right steps the shared difficulty, right stick picks face/helmet.
+  // left/right steps the shared difficulty, right stick customizes (up/down
+  // the category, left/right its option -- see CHARACTER CUSTOMIZATION).
   function pollQuadSlotPad(slot, pads, deltaSeconds) {
     const input = quadSetupInput[slot];
     const gamepadIndex = quadSetup.slots[slot].gamepadIndex;
     const pad = quadSlotUsesController(slot) && gamepadIndex !== null ? pads[gamepadIndex] : null;
     if (!pad) {
       input.face.isPastDeadzone = false;
-      input.helmet.isPastDeadzone = false;
+      input.category.armed = false; // re-arms once the stick's seen centered
       return;
     }
 
@@ -20149,8 +20660,8 @@
     const lookX = pad.axes[GAMEPAD_AXIS_LOOK_X] || 0;
     const lookY = pad.axes[GAMEPAD_AXIS_LOOK_Y] || 0;
     const horizontal = Math.abs(lookX) >= Math.abs(lookY);
-    stepHeldStickAxis(input.helmet, horizontal ? 0 : lookY, deltaSeconds, (dir) => cycleQuadHelmet(slot, dir));
-    stepHeldStickAxis(input.face, horizontal ? lookX : 0, deltaSeconds, (dir) => cycleQuadFace(slot, dir));
+    stepCategoryStick(input.category, horizontal ? 0 : lookY, (dir) => stepQuadCategory(slot, dir));
+    stepHeldStickAxis(input.face, horizontal ? lookX : 0, deltaSeconds, (dir) => cycleQuadCustomization(slot, dir));
   }
 
   // Canvas size comes from CSS (vh-based), so the renderer just follows
@@ -20991,6 +21502,9 @@
     // even for the shotgun's 12 pellets (one blast, not 12 shots).
     applyRecoil(player, def.gun.recoil);
     spawnMuzzleFlash(getActiveMuzzleTip(player), def.gun.muzzleFlashOptions);
+    // Spent case out of the port (the shotgun's comes out on the pump --
+    // see updateFireCooldown; the sniper's with its bolt). Visual only.
+    if (!def.gun.pellets) ejectShellCasing(player, slot.weaponId);
     playWeaponSound(def, "shot", { detuneRange: 40, volume: 0.97 }); // explicit request: reverted the earlier 15% cut, now just 3% quieter than its un-boosted default of 1
 
     if (def.gun.pellets) {
@@ -21007,9 +21521,15 @@
     let hits = raycastEnemies(raycaster);
     if (isCampusMap) hits = hits.filter((h) => !worldBlocksShot(player.camera.position, h.point));
     hits = filterHitsByBarricades(raycaster, hits);
+    // Impact effects (visual only -- the hit itself is already decided).
+    const fxPower = (FX_WEAPON[slot.weaponId] || { power: 1 }).power;
+    if (hits.length === 0) spawnWorldImpact(raycaster.ray.origin, raycaster.ray.direction, fxPower);
     if (hits.length > 0) {
       const hitEnemy = hits[0].object.userData.enemyRef;
+      spawnFleshImpact(hits[0].point, raycaster.ray.direction, fxPower);
       if (def.gun.penetrationDamageFractions) {
+        // the round carries on through: whatever it finally hits behind them
+        if (hits.length < def.gun.penetrationDamageFractions.length) spawnWorldImpact(hits[hits.length - 1].point, raycaster.ray.direction, fxPower);
         fireSniperPenetratingShot(player, def, hits, raycaster.ray.direction);
         return;
       }
@@ -21115,8 +21635,10 @@
         distance = hits[0].distance;
         point = hits[0].point;
       } else {
+        spawnWorldImpact(raycaster.ray.origin, raycaster.ray.direction, 0.6); // (effects only)
         continue;
       }
+      if (i < 3) spawnFleshImpact(point, raycaster.ray.direction, 0.6);
 
       const pelletDamage = getShotgunPelletDamage(pellets, distance);
       const entry = damageByEnemy.get(enemyState);
@@ -21269,6 +21791,7 @@
     if (slot.pumpSoundPending && progress >= rackStart) {
       slot.pumpSoundPending = false;
       playWeaponSound(def, "pump");
+      ejectShellCasing(player, def.id); // the spent hull flies out as it racks (visual only)
     }
     const rackProgress = Math.min(1, Math.max(0, (progress - rackStart) / (PUMP_RACK_END - rackStart)));
     // Back then forward: a 0 -> 1 -> 0 pulse.
@@ -22517,6 +23040,8 @@
   const FOOTSTEP_VOLUME_WALK = { grass: 0.05, concrete: 0.2 };
   const FOOTSTEP_VOLUME_SPRINT = { grass: 0.08, concrete: 0.25 };
   const FOOTSTEP_VOLUME_CROUCH = { grass: 0.03, concrete: 0.1 };
+  const PLAYER_WALK_FOOTSTEP_VOLUME_SCALE = 0.9; // the player's own walking steps only (enemy steps scale off FOOTSTEP_VOLUME_WALK)
+  const WALK_STEP_EXTRA_M = 0.2; // walking steps land this much farther apart (fades out toward a full sprint)
 
   // Plays whichever foot is currently due, for the current surface, at
   // the crouch/walk/sprint volume for whichever of those is currently
@@ -22538,7 +23063,15 @@
       : player.isSprinting
       ? FOOTSTEP_VOLUME_SPRINT
       : FOOTSTEP_VOLUME_WALK;
-    playClip(FOOTSTEP_CLIPS[surface][player.steppingFoot], { volume: volumeMap[surface] });
+    const walking = !isCrouching && !player.isSprinting;
+    playClip(FOOTSTEP_CLIPS[surface][player.steppingFoot], { volume: volumeMap[surface] * (walking ? PLAYER_WALK_FOOTSTEP_VOLUME_SCALE : 1) });
+    // A puff / splash where that foot lands (a little ahead, to its side).
+    {
+      const side = player.steppingFoot === "right" ? 0.13 : -0.13;
+      const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+      spawnFootstepFx(player.camera.position.x + fx * 0.25 - fz * side, player.camera.position.z + fz * 0.25 + fx * side,
+        (player.campusGroundY || 0) + player.jumpOffset, isCrouching ? 0.4 : player.isSprinting ? 1.25 : 0.85);
+    }
     player.steppingFoot = player.steppingFoot === "left" ? "right" : "left";
   }
 
@@ -22547,14 +23080,20 @@
   function gaitCadence(speed, isLow) {
     if (isLow) return Math.min(2.1, 1.3 + 0.3 * speed);
     const table = GAIT_CADENCE;
-    if (speed >= table[table.length - 1][0]) return table[table.length - 1][1];
-    for (let i = 1; i < table.length; i++) {
+    let cadence = table[0][1];
+    if (speed >= table[table.length - 1][0]) cadence = table[table.length - 1][1];
+    else for (let i = 1; i < table.length; i++) {
       if (speed <= table[i][0]) {
         const t = (speed - table[i - 1][0]) / (table[i][0] - table[i - 1][0]);
-        return table[i - 1][1] + (table[i][1] - table[i - 1][1]) * t;
+        cadence = table[i - 1][1] + (table[i][1] - table[i - 1][1]) * t;
+        break;
       }
     }
-    return table[0][1];
+    // Walking: lengthen each step by WALK_STEP_EXTRA_M (step length = speed / cadence).
+    // (the normal move speed, WALK_SPEED, is the walk; it fades out toward a full sprint)
+    const walkShare = Math.max(0, Math.min(1, 1 - (speed - WALK_SPEED) / (WALK_SPEED * (SPRINT_MULTIPLIER - 1))));
+    if (walkShare > 0 && speed > 0.05) cadence = speed / (speed / cadence + WALK_STEP_EXTRA_M * walkShare);
+    return cadence;
   }
 
   // 0 at the normal running pace, 1 at a full sprint (a little more for
@@ -22739,6 +23278,7 @@
   }
 
   function playRegularEnemyFootstep(enemyState) {
+    spawnEnemyFootstepFx(enemyState); // (visual; before the audio's range/budget checks)
     const steppingFoot = enemyState.steppingFoot;
     enemyState.steppingFoot = steppingFoot === "left" ? "right" : "left";
     const pos = enemyState.mesh.position;
@@ -22762,6 +23302,7 @@
   }
 
   function playEnemyFootstepSound(enemyState) {
+    spawnEnemyFootstepFx(enemyState);
     const distance = camera.position.distanceTo(enemyState.mesh.position);
     // Keeps alternating (rather than freezing on whichever foot was next)
     // even while out of audible range, so a green enemy that's been
@@ -24414,6 +24955,7 @@
     shiftCamerasByBob(1);
     try {
       renderViews();
+      renderSunRays();
     } finally {
       shiftCamerasByBob(-1);
       renderer.setRenderTarget(null);
@@ -24421,12 +24963,48 @@
     renderer.render(fxaaScene, fxaaCamera);
   }
 
+  // The sun-ray pass (see SUN RAYS): one full view only, and only while the
+  // environment gives the rays any strength and the sun is ahead.
+  const sunRayScratch = new THREE.Vector3();
+  const sunRayForward = new THREE.Vector3();
+  function renderSunRays() {
+    const u = fxaaMaterial.uniforms;
+    u.shaftOn.value = 0;
+    if (!sunRaysSupported || !ENVIRONMENT_CONFIG.SUN_RAYS_ENABLED || sunRayStrength <= 0.002) return;
+    let viewCamera = camera;
+    if (isCoopMatchActive) {
+      if (coopFullscreenSurvivorIndex === null) return; // split screen: skipped
+      viewCamera = players[coopFullscreenSurvivorIndex].camera;
+    }
+    const sunDir = skyUniforms.sunDirection.value;
+    viewCamera.getWorldDirection(sunRayForward);
+    const facing = sunRayForward.dot(sunDir);
+    if (facing <= 0.05) return;
+    sunRayScratch.copy(viewCamera.position).addScaledVector(sunDir, 300).project(viewCamera);
+    const sx = sunRayScratch.x * 0.5 + 0.5, sy = sunRayScratch.y * 0.5 + 0.5;
+    // fades as the sun leaves the screen (still a little from just off its edge)
+    const off = Math.max(0, Math.max(Math.abs(sx - 0.5), Math.abs(sy - 0.5)) - 0.5);
+    const k = Math.min(1, (facing - 0.05) / 0.25) * Math.max(0, 1 - off / 0.35);
+    if (k <= 0.01) return;
+    shaftMaterial.uniforms.sunUv.value.set(sx, sy);
+    u.shaftColor.value.copy(sunRayColor).multiplyScalar(sunRayStrength * k);
+    u.shaftOn.value = 1;
+    renderer.setRenderTarget(shaftTarget);
+    renderer.render(shaftScene, fxaaCamera);
+  }
+
   function renderViews() {
     // Eye adaptation: each view draws at its own player's exposure.
     const exposureOf = (index) => (isCampusMap ? environmentState.exposure[index] || 1 : 1);
     renderer.shadowMap.autoUpdate = shadowFrameParity === 1;
+    // Streetlights: the lit lamps nearest this view's camera light the world.
+    const prepareLightsFor = (cam) => {
+      if (isCampusMap && campusWorld) campusWorld.prepareLights(cam.position.x, cam.position.z);
+      else envFX.setLocalLights(null, 0);
+    };
     if (!isCoopMatchActive) {
       if (sunLight.shadow.camera.right !== SUN_SHADOW_HALF_M) centerSunShadow(camera.position.x, camera.position.z, SUN_SHADOW_HALF_M);
+      prepareLightsFor(camera);
       renderer.toneMappingExposure = exposureOf(0);
       renderer.render(scene, camera);
       return;
@@ -24435,6 +25013,7 @@
     if (coopFullscreenSurvivorIndex !== null) {
       const survivorPos = players[coopFullscreenSurvivorIndex].camera.position;
       centerSunShadow(survivorPos.x, survivorPos.z, SUN_SHADOW_HALF_M);
+      prepareLightsFor(players[coopFullscreenSurvivorIndex].camera);
       renderer.toneMappingExposure = exposureOf(coopFullscreenSurvivorIndex);
       // Scissor test/viewport were already restored to full-canvas at
       // the end of the last dual-viewport frame that ran before this
@@ -24501,6 +25080,7 @@
       // Zombies (and grass) at this view's own distance.
       const vx = viewCamera.position.x, vz = viewCamera.position.z;
       if (isCampusMap && campusWorld) campusWorld.prepareView(vx, vz, lodScale);
+      prepareLightsFor(viewCamera);
       for (const enemyState of enemies) {
         if (!enemyState.zombie || enemyState.dormant) continue;
         const pos = enemyState.mesh.position;
@@ -24867,6 +25447,7 @@
       updateCampusFrame(deltaSeconds);
       updateParticleBursts(deltaSeconds);
       updateBloodDecals(deltaSeconds);
+      updateSurfaceEffects(deltaSeconds);
       updateAmmoPickups(deltaSeconds);
       updateDroppedItems(deltaSeconds);
       updateDayNightCycle(deltaSeconds);
@@ -25277,7 +25858,15 @@
       scene.add(object);
     }
 
+    // Effects that stay hidden until they're first needed (surface
+    // effects, streetlight halos) and the sun-ray pass: compiled now too.
+    const hiddenUntilNeeded = [fxParticles.points, fxSparks.points, fxDecals.mesh, ...shellCasings.meshes,
+      ...(isCampusMap && campusWorld ? campusWorld.prewarmObjects() : [])];
+    const wasVisible = hiddenUntilNeeded.map((o) => o.visible);
+    hiddenUntilNeeded.forEach((o) => { o.visible = true; });
     renderer.compile(scene, cam);
+    renderer.compile(shaftScene, fxaaCamera);
+    hiddenUntilNeeded.forEach((o, i) => { o.visible = wasVisible[i]; });
     scene.traverse(uploadObjectTextures);
     renderer.setRenderTarget(sceneTarget); // where the scene really draws (see RENDER TARGET / FXAA)
     renderer.render(scene, cam);
@@ -25483,6 +26072,7 @@
         updateCampusFrame(deltaSeconds);
         updateParticleBursts(deltaSeconds);
         updateBloodDecals(deltaSeconds);
+        updateSurfaceEffects(deltaSeconds);
         updateAmmoPickups(deltaSeconds);
         updateDroppedItems(deltaSeconds);
         updateDayNightCycle(deltaSeconds);
@@ -25588,6 +26178,12 @@
       get dayNightTime() { return dayNightTime; },
       set dayNightTime(t) { dayNightTime = t; },
       weather, wind, WEATHER_STATES, enterWeatherState,
+      // Visual polish pass: the surface effects, by hand.
+      fireWeapon, spawnWorldImpact, spawnFleshImpact, spawnFootstepFx, ejectShellCasing,
+      updateSurfaceEffects, environmentState, fxDecals, shellCasings, fxaaMaterial,
+      get sunRayStrength() { return sunRayStrength; },
+      // Customization (setup screens), for checking the previews by hand.
+      humanSystem, p1ModelPreview, coopSetup, updateCoopSetupUI,
       haltLoop: false, // true stops animate() so only the benchmark renders
     };
     if (!/envtest/.test(window.location.hash)) {

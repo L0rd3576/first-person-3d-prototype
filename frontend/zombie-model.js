@@ -405,7 +405,11 @@
     // [width, height] centered at faceY. `hit` is the Head hitbox's
     // [size xyz, center xyz].
     // ------------------------------------------------------------------
-    const HEADWEAR_KINDS = ["paperBag", "bucket", "cardboardBox", "trashCan", "trafficCone"];
+    // (weldingHelmet, paintBucket and flowerPot added with the player
+    // headgear expansion -- same shapes as the players' versions, at the
+    // zombies' head scale. Their Head hitboxes stay within the sizes the
+    // original five already use.)
+    const HEADWEAR_KINDS = ["paperBag", "bucket", "cardboardBox", "trashCan", "trafficCone", "weldingHelmet", "paintBucket", "flowerPot"];
     const HEADWEAR = {
       paperBag: {
         parts: () => [
@@ -460,6 +464,56 @@
         ],
         radiusAt: (y) => 0.3 - 0.265 * (y + 0.04) / 0.85, cz: 0.02, faceY: 0.19, faceMax: [0.34, 0.34],
         hit: [[0.6, 0.88, 0.6], [0, 0.38, 0.02]],
+      },
+      weldingHelmet: {
+        // Dark shell round the front, a flattened dome, pivot knobs, and the
+        // black harness round the back of the head.
+        parts: () => [
+          [new THREE.CylinderGeometry(0.25, 0.25, 0.48, 20, 1, true, -1.45, 2.9).translate(0, 0.18, 0.02), 0x2a2c2f],
+          [new THREE.CylinderGeometry(0.225, 0.225, 0.46, 16, 1, true).translate(0, 0.18, 0.02), 0x151516],
+          [new THREE.SphereGeometry(0.25, 16, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.4, 1).translate(0, 0.42, 0.02), 0x2a2c2f],
+          [new THREE.CylinderGeometry(0.04, 0.04, 0.03, 10).rotateZ(Math.PI / 2).translate(0.26, 0.2, 0.02), 0x6b6e72],
+          [new THREE.CylinderGeometry(0.04, 0.04, 0.03, 10).rotateZ(Math.PI / 2).translate(-0.26, 0.2, 0.02), 0x6b6e72],
+        ],
+        radiusAt: () => 0.25, cz: 0.02, faceY: 0.17, faceMax: [0.38, 0.4],
+        hit: [[0.54, 0.56, 0.54], [0, 0.2, 0.02]],
+      },
+      paintBucket: {
+        // A white paint can upside down, a blue label band, blue paint
+        // spilled over the top and running down the sides.
+        parts: () => {
+          const r = 0.225, parts = [
+            [new THREE.CylinderGeometry(r, r, 0.46, 20).translate(0, 0.19, 0.02), 0xe9e8e2],
+            [new THREE.CylinderGeometry(r + 0.003, r + 0.003, 0.2, 20, 1, true).translate(0, 0.17, 0.02), 0x2f6fc2],
+            [new THREE.CylinderGeometry(r + 0.01, r + 0.01, 0.025, 20).translate(0, 0.43, 0.02), 0x2a8fe0],
+            [new THREE.TorusGeometry(r + 0.004, 0.01, 5, 20).rotateX(Math.PI / 2).translate(0, -0.04, 0.02), 0xcfcfc8],
+          ];
+          for (const [a, len] of [[2.2, 0.12], [2.8, 0.18], [3.5, 0.1], [4.1, 0.15], [1.6, 0.08], [4.7, 0.09]]) {
+            parts.push([new THREE.CylinderGeometry(0.014, 0.014, len, 5).translate(Math.sin(a) * (r + 0.006), 0.42 - len / 2, 0.02 + Math.cos(a) * (r + 0.006)), 0x2a8fe0]);
+          }
+          return parts;
+        },
+        radiusAt: () => 0.228, cz: 0.02, faceY: 0.18, faceMax: [0.36, 0.36],
+        hit: [[0.54, 0.52, 0.54], [0, 0.19, 0.02]],
+      },
+      flowerPot: {
+        // Terracotta, wider at the top, a rim, soil, and a few flowers
+        // growing out of it.
+        parts: () => {
+          const parts = [
+            [new THREE.CylinderGeometry(0.265, 0.215, 0.44, 20).translate(0, 0.18, 0.02), 0xb95a32],
+            [new THREE.CylinderGeometry(0.29, 0.285, 0.08, 20).translate(0, 0.44, 0.02), 0xa24c29],
+            [new THREE.CylinderGeometry(0.27, 0.27, 0.02, 20).translate(0, 0.475, 0.02), 0x4a3222],
+          ];
+          for (const [x, z, h, color] of [[0.08, 0.06, 0.24, 0xe8434f], [-0.09, -0.03, 0.2, 0xf5c518], [0, -0.1, 0.27, 0xf08ac0]]) {
+            parts.push([new THREE.CylinderGeometry(0.006, 0.007, h, 5).translate(x, 0.48 + h / 2, 0.02 + z), 0x3f7a2e]);
+            parts.push([new THREE.SphereGeometry(0.04, 6, 4).scale(1, 0.4, 1).translate(x, 0.48 + h, 0.02 + z), color]);
+            parts.push([new THREE.SphereGeometry(0.035, 6, 4).scale(1, 0.3, 0.5).translate(x + 0.03, 0.48 + h * 0.5, 0.02 + z), 0x4f9a3a]);
+          }
+          return parts;
+        },
+        radiusAt: (y) => 0.215 + (0.265 - 0.215) * (y + 0.04) / 0.44, cz: 0.02, faceY: 0.17, faceMax: [0.36, 0.36],
+        hit: [[0.58, 0.6, 0.58], [0, 0.22, 0.02]],
       },
     };
 
@@ -686,6 +740,8 @@
         shapeKey: null,
         appearance: null,
         lod: 0,
+        shownLod: 0,
+        shadowCaster: true, // the game limits sun shadows to the nearest few (setShadowCaster)
         anim: createAnimState(modelSerial++),
       };
       return model;
@@ -922,13 +978,51 @@
       setLod(model, 0);
     }
 
+    // model.lod: the LOD from the nearest viewer -- it sets the animation
+    // rate. What's drawn (model.shownLod) is normally the same, but split
+    // screen draws each view at its own distance (showLodForView).
     function setLod(model, lod) {
       model.lod = lod;
+      showLod(model, lod);
+    }
+    function showLod(model, lod) {
+      if (model.shownLod === lod) return;
+      model.shownLod = lod;
       model.lodMeshes.forEach((mesh, i) => {
-        if (i === lod) { if (!mesh.parent) model.rig.add(mesh); }
-        else if (mesh.parent) model.rig.remove(mesh);
+        if (i === lod) {
+          if (!mesh.parent) {
+            model.rig.add(mesh);
+            // (split screen draws views without a scene-graph update in
+            // between; the mesh sits at the rig's origin)
+            mesh.matrixWorld.copy(model.rig.matrixWorld);
+          }
+        } else if (mesh.parent) model.rig.remove(mesh);
       });
-      model.headwear.castShadow = lod < 2; // same as the body: no shadow at the far LOD
+      applyShadowCasting(model);
+    }
+    // The LOD one view should draw, from its own camera distance (no
+    // hysteresis: nothing animates on it). Never finer than model.lod.
+    function showLodForView(model, distance) {
+      const lod = distance > LOD_DISTANCES[1] ? 2 : distance > LOD_DISTANCES[0] ? 1 : 0;
+      showLod(model, Math.max(lod, model.lod));
+    }
+    function restoreLod(model) {
+      showLod(model, model.lod);
+    }
+
+    // Sun shadow: never at the far LOD, and only while the game allows it
+    // for this zombie (it keeps the nearest few; the rest still get the
+    // contact shadow disc under their feet).
+    function applyShadowCasting(model) {
+      const lod = model.shownLod;
+      const on = model.shadowCaster && lod < 2;
+      model.lodMeshes[lod].castShadow = on;
+      model.headwear.castShadow = on;
+    }
+    function setShadowCaster(model, on) {
+      if (model.shadowCaster === on) return;
+      model.shadowCaster = on;
+      applyShadowCasting(model);
     }
 
     // ------------------------------------------------------------------
@@ -1601,6 +1695,9 @@
       applyAppearance,
       syncHitboxes,
       update,
+      setShadowCaster,
+      showLodForView,
+      restoreLod,
       triggerAttack,
       setWindup,
       flinch,
