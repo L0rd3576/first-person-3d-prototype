@@ -78,7 +78,7 @@
     // east edge is the railway fence past 20th St (RAIL_FENCE_X_PX below) --
     // the tracks themselves are walkable.
     const MAP_BOUNDS = [-58, -48, 1923.5, 736];
-    const ROAD_WIDTH_PX = 14;
+    const ROAD_WIDTH_PX = 17; // curb to curb: the sidewalks start right at the curb
 
     // Street stretches that are torn up (screenshot6.png, orange box): the
     // asphalt is gone and the roadbed is sunk PIT_STEPS steps below the ground,
@@ -105,8 +105,8 @@
       [-58, 8, 1790, 8],      // 5th Avenue South (ends in a cul-de-sac past 19th St -- see DRIVE_ARCS)
       // 6th Avenue South, split around the torn-up stretch (CONSTRUCTION_ROADS);
       // the pieces stop half a road width short so their ends meet the pit edge.
-      [-58, 175, 267, 175],
-      [584.5, 175, 1885, 175],
+      [-58, 175, 265.5, 175],
+      [586, 175, 1885, 175],
       [-58, 343, 232, 343],   // 7th Avenue South (ends at 11th Street)
       [-58, 680, 1722, 680],  // 9th Avenue South (ends at 19th St -- Romkey Park is grass beyond)
       [-58, 512, 8, 512],     // 8th Avenue South, west of 10th St (newborders.png)
@@ -116,15 +116,15 @@
       [815, -48, 815, 736],   // 14th Street South
       [1297, 8, 1297, 736],   // 17th Street South
       [1715, 495, 1715, 736], // 19th Street South (only south of 8th Ave -- fields north of it)
-      [396, -48, 396, 161],   // 12th Street South (ends at the construction pit)
-      [566.5, -48, 566.5, 161], // 13th Street South (screenshot6.png)
+      [396, -48, 396, 158],   // 12th Street South (ends at the construction pit)
+      [566.5, -48, 566.5, 158], // 13th Street South (screenshot6.png), also ending at the pit
       [1160, -48, 1160, 175], // 16th Street South
-      [1885, -48, 1885, 736, 18], // 20th Street South -- the east border
+      [1885, -48, 1885, 736, 21], // 20th Street South -- the east border
       // Short stretches past the border rows (newborders.png), each closed by
       // a barricade (BARRICADES):
       [398, 680, 398, 736],   // 12th St, south of 9th Ave
       [558, 680, 558, 736],   // 13th St, south of 9th Ave
-      [695, -48, 695, 8, 8],  // alley north of 5th Ave, between 13th and 14th
+      [695, -48, 695, 8, 11],  // alley north of 5th Ave, between 13th and 14th
       [986, -48, 986, 8],     // 15th St, north of 5th Ave
       [1318, -48, 1318, 8],   // 17th St, north of 5th Ave (jogs east of the south part)
       [1520, -48, 1520, 8],   // 18th St, north of 5th Ave
@@ -136,6 +136,7 @@
     const LOTS = [
       [248, 30, 380, 160],    // north of 6th Ave, east of 11th St
       [30, 195, 215, 320, "z"], // Lot F (north) -- stall rows run north/south
+      [30, 360, 125, 430],    // lot south of 7th Ave, west of the Newman Center (newborders.png, circled in red)
       [30, 430, 95, 658],     // Lot F (south-west)
       [128, 505, 218, 658],   // lot south of Center for Business
       [604, 200, 665, 277, "z"], // Metered Parking M-5, between Lommen and Comstock (rows N-S)
@@ -248,7 +249,6 @@
     // Driveways and lot entrances: plain asphalt, no stall lines.
     const DRIVEWAYS = [
       // Z03
-      [30, 360, 125, 430],    // service yard south of 7th Ave (storage, not parking)
       [120, 349, 130, 360],
       // Lot entrances marked in blue on firstedits.png (second round)
       [15, 414, 30, 428], [15, 503, 30, 517],       // Lot F south-west, off 10th St
@@ -305,7 +305,6 @@
     // PATH_WIDTH_PX). Everything that isn't road, lot, path or building is grass.
     const PATH_WIDTH_PX = 5;
     const SIDEWALK_WIDTH_PX = 4;
-    const SIDEWALK_GAP_PX = 1.5; // grass strip between curb and sidewalk
     const PATHS = [
       // the mall: one long east/west walk across the whole campus
       [240, 405, 815, 405, 9],
@@ -594,23 +593,23 @@
     // street; "z" = runs north-south, across an avenue), road width px].
     const BARRICADES = [
       // north of 5th Ave
-      [8, -33, "x", 14], [232, -33, "x", 14], [396, -35, "x", 14], [566.5, -40, "x", 14], [695, -35, "x", 8],
-      [815, -31, "x", 14], [986, -31, "x", 14], [1160, -34, "x", 14], [1318, -31, "x", 14], [1520, -31, "x", 14],
-      [1688, -31, "x", 14],
-      [1719, 8, "z", 14],    // 5th Ave east of 19th St (toward the cul-de-sac)
-      [1885, 131, "x", 18],  // 20th St north of 6th Ave
+      [8, -33, "x", 17], [232, -33, "x", 17], [396, -35, "x", 17], [566.5, -40, "x", 17], [695, -35, "x", 11],
+      [815, -31, "x", 17], [986, -31, "x", 17], [1160, -34, "x", 17], [1318, -31, "x", 17], [1520, -31, "x", 17],
+      [1688, -31, "x", 17],
+      [1719, 8, "z", 17],    // 5th Ave east of 19th St (toward the cul-de-sac)
+      [1885, 131, "x", 21],  // 20th St north of 6th Ave
       // west of 10th St
-      [-38, 8, "z", 14], [-38, 175, "z", 14], [-38, 343, "z", 14], [-30, 512, "z", 14], [-38, 680, "z", 14],
+      [-38, 8, "z", 17], [-38, 175, "z", 17], [-38, 343, "z", 17], [-30, 512, "z", 17], [-38, 680, "z", 17],
       // south of 9th Ave
-      [8, 712, "x", 14], [232, 704, "x", 14], [398, 708, "x", 14], [558, 708, "x", 14], [815, 702, "x", 14],
-      [1297, 711, "x", 14], [1438, 715, "x", 14], [1715, 716, "x", 14], [1885, 700, "x", 18],
+      [8, 712, "x", 17], [232, 704, "x", 17], [398, 708, "x", 17], [558, 708, "x", 17], [815, 702, "x", 17],
+      [1297, 711, "x", 17], [1438, 715, "x", 17], [1715, 716, "x", 17], [1885, 700, "x", 21],
       // Around the 6th Ave construction pit (CONSTRUCTION_ROADS): decoration
       // only -- no invisible barrier, and they face away from the pit toward
       // whoever is approaching. Options: { face: [px, py], barrier: false }.
-      [264, 175, "z", 14, { face: [200, 175], barrier: false }],   // 6th Ave, from 11th St
-      [588, 175, "z", 14, { face: [650, 175], barrier: false }],   // 6th Ave, from 14th St
-      [396, 157, "x", 14, { face: [396, 100], barrier: false }],   // 12th St, from the north
-      [566.5, 157, "x", 14, { face: [566.5, 100], barrier: false }], // 13th St, from the north
+      [264, 175, "z", 17, { face: [200, 175], barrier: false }],   // 6th Ave, from 11th St
+      [588, 175, "z", 17, { face: [650, 175], barrier: false }],   // 6th Ave, from 14th St
+      [396, 157, "x", 17, { face: [396, 100], barrier: false }],   // 12th St, from the north
+      [566.5, 157, "x", 17, { face: [566.5, 100], barrier: false }], // 13th St, from the north
     ];
 
     // Buildings: [x1, y1, x2, y2, height in meters, color (optional)].
@@ -2116,17 +2115,13 @@
       },
       Z03: {
         treeRows: [
-          [40, 357, 115, 357, 15],   // 7th Ave, in front of the service yard
+          [40, 357, 115, 357, 15],   // 7th Ave, in front of the lot west of the Newman Center
           [135, 357, 220, 357, 15],  // 7th Ave, in front of the Newman Center
           [22, 445, 22, 655, 16],    // along 10th St
           [218, 390, 218, 500, 14],  // along 11th St
           [30, 663, 218, 663, 16],   // along 9th Ave
         ],
         trees: [[100, 452], [100, 478], [105, 545], [110, 585], [100, 612]],
-        props: [
-          [90, 383, 100, 393, 2.6, 0x5b7fa6], // storage containers in the service yard
-          [57, 413, 70, 420, 2.5, 0x8a8f96],
-        ],
       },
       Z04: {
         treeRows: [
@@ -2976,24 +2971,66 @@
           uvs.push(...ng.attributes.uv.array);
         }
       }
+      const lift = positions[1] || 0;
+      // (painted top-down below, where the first triangle over a pixel wins,
+      // not the last: reversed, so the same piece still ends up on top where
+      // pieces of one layer overlap -- a plaza over the walks)
+      const ordered = (a, n) => {
+        const out = new Float32Array(a.length);
+        if (lift < 0) { out.set(a); return out; }
+        const per = 3 * n, tris = a.length / per;
+        for (let t = 0; t < tris; t++) {
+          for (let k = 0; k < per; k++) out[(tris - 1 - t) * per + k] = a[t * per + k];
+        }
+        return out;
+      };
       const merged = new THREE.BufferGeometry();
-      merged.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-      merged.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
-      merged.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-      // Ground layers are painted bottom-up instead of depth-sorted: each is
-      // drawn before any building (negative renderOrder, ordered by its
-      // LIFT) without writing depth, so a higher layer always simply covers a
-      // lower one. Overlapping coplanar pieces (sidewalks crossing at a
-      // corner, walks meeting, streets meeting) can't z-fight at any distance.
+      merged.setAttribute("position", new THREE.BufferAttribute(ordered(positions, 3), 3));
+      merged.setAttribute("normal", new THREE.BufferAttribute(ordered(normals, 3), 3));
+      merged.setAttribute("uv", new THREE.BufferAttribute(ordered(uvs, 2), 2));
+      // Ground layers are layered by LIFT instead of depth-sorted: each is
+      // drawn before any building (negative renderOrder) without writing
+      // depth, so a higher layer always covers a lower one. Overlapping
+      // coplanar pieces (sidewalks crossing at a corner, walks meeting,
+      // streets meeting) can't z-fight at any distance.
       material.depthWrite = false;
-      // ...and skips pixels the street mask has claimed (see STREET LEVEL),
-      // so ground drawn flat across a street never covers the sunken road.
-      material.stencilWrite = true; // (enables the stencil test; the ops keep the buffer as is)
-      material.stencilFunc = THREE.NotEqualStencilFunc;
-      material.stencilRef = 1;
+      material.stencilWrite = true; // (enables the stencil test; see groundStencil for the state per mesh)
       const mesh = new THREE.Mesh(merged, material);
-      mesh.renderOrder = -1000 + Math.round((positions[1] || 0) * 1000);
+      if (lift >= 0) {
+        // At ground level and up they're painted top-down instead, each
+        // leaving its rank (its LIFT in mm) in the stencil buffer, and
+        // drawing only where nothing ranked at or above it has painted
+        // yet: the same picture, but a pixel is shaded once instead of once
+        // per layer stacked under it (grass under a walk under a lot...).
+        // The street mask's 255 outranks them all, so ground drawn flat
+        // across a street never covers the sunken road (see STREET LEVEL).
+        // (Only opaque or alpha-tested layers may do this -- a discarded
+        // pixel leaves no rank; blended ones use groundStencilOver.)
+        const rank = Math.min(250, 1 + Math.round(lift * 1000));
+        mesh.userData.groundStencil = { func: THREE.GreaterStencilFunc, ref: rank, zPass: THREE.ReplaceStencilOp };
+        mesh.renderOrder = -890 - rank;
+      } else {
+        // Street level (below the ground), drawn bottom-up before the
+        // street mask: nothing to skip yet.
+        mesh.userData.groundStencil = { func: THREE.NotEqualStencilFunc, ref: 255, zPass: THREE.KeepStencilOp };
+        mesh.renderOrder = -1000 + Math.round(lift * 1000);
+      }
+      // (materials are shared across layers, so the state is set per draw)
+      mesh.onBeforeRender = applyGroundStencil;
       return mesh;
+    }
+    function applyGroundStencil() {
+      const s = this.userData.groundStencil;
+      this.material.stencilFunc = s.func;
+      this.material.stencilRef = s.ref;
+      this.material.stencilZPass = s.zPass;
+    }
+    // A blended layer (decals) at `lift`: drawn after every ground layer,
+    // only where the top layer there ranks at or below it, leaving the
+    // stencil as it is.
+    function groundStencilOver(mesh, lift) {
+      mesh.userData.groundStencil = { func: THREE.GreaterEqualStencilFunc, ref: Math.min(250, 1 + Math.round(lift * 1000)), zPass: THREE.KeepStencilOp };
+      mesh.renderOrder = -880;
     }
 
     // Flat quad from four world-space {x, z} corners with explicit UVs,
@@ -3356,15 +3393,14 @@
     // The ground's own layers (grass, sidewalks, walks, driveways) still run
     // flat across the streets. The street-level layers paint first; then this
     // mask -- the streets' outline at ground level, never drawn in color --
-    // marks the stencil buffer, and every later ground layer skips marked
+    // marks the stencil buffer (255), and every later ground layer skips marked
     // pixels (see mergedMesh), leaving an open hole down to the street.
     const streetMask = mergedMesh([
       ...streetRectsPx.map((r) => rectGround(r, 0)),
       ...culDeSacs.map((c) => flatDiscWorld(c.x, c.z, c.r, 0)),
     ], new THREE.MeshBasicMaterial({ colorWrite: false }));
-    streetMask.material.stencilFunc = THREE.AlwaysStencilFunc;
-    streetMask.material.stencilZPass = THREE.ReplaceStencilOp;
-    streetMask.renderOrder = -1050; // after every street-level layer, before the ground (-1000 and up)
+    streetMask.userData.groundStencil = { func: THREE.AlwaysStencilFunc, ref: 255, zPass: THREE.ReplaceStencilOp };
+    streetMask.renderOrder = -1050; // after every street-level layer, before the ground (-1021 .. -891)
     root.add(streetMask);
 
     // Curbs: a concrete face from the street up to just above the ground
@@ -3409,8 +3445,10 @@
     // rect in px; `walkAxis`: the direction people walk ("x" or "z"); bars
     // are spaced along it and run across it. The part out on a street is
     // drawn again down at street level (the ground-level copy is masked there).
+    const crosswalkRectsPx = []; // (kept for the street parking -- see PARKED VEHICLES)
     const addCrosswalk = (r, walkAxis) => {
       if (r[2] - r[0] < 0.5 || r[3] - r[1] < 0.5) return;
+      crosswalkRectsPx.push(r);
       const w = rectToWorld(r);
       const across = walkAxis === "x" ? w.maxZ - w.minZ : w.maxX - w.minX;
       const tiling = { uAxis: walkAxis, uTileM: CROSSWALK_BAR_PERIOD_M, vTileM: across, origin: w };
@@ -3424,7 +3462,7 @@
     };
     const sidewalkBand = (r) => { // [near, far] offsets of the sidewalk band from the road's centerline, px
       const half = roadHalfWidth(r);
-      return [half + SIDEWALK_GAP_PX * 0.5, half + SIDEWALK_GAP_PX + SIDEWALK_WIDTH_PX];
+      return [half, half + SIDEWALK_WIDTH_PX];
     };
     for (const d of DRIVEWAYS) {
       for (const r of ROADS) {
@@ -3455,15 +3493,15 @@
       const [hNear, hFar] = sidewalkBand(h);
       const [vNear, vFar] = sidewalkBand(v);
       // north and south legs: people cross 14th St (walk along x) in line with the avenue's sidewalks
-      addCrosswalk([ix - vHalf - SIDEWALK_GAP_PX, iy - hFar, ix + vHalf + SIDEWALK_GAP_PX, iy - hNear], "x");
-      addCrosswalk([ix - vHalf - SIDEWALK_GAP_PX, iy + hNear, ix + vHalf + SIDEWALK_GAP_PX, iy + hFar], "x");
+      addCrosswalk([ix - vHalf, iy - hFar, ix + vHalf, iy - hNear], "x");
+      addCrosswalk([ix - vHalf, iy + hNear, ix + vHalf, iy + hFar], "x");
       // west and east legs: people cross the avenue (walk along z) in line with 14th St's sidewalks
-      addCrosswalk([ix - vFar, iy - hHalf - SIDEWALK_GAP_PX, ix - vNear, iy + hHalf + SIDEWALK_GAP_PX], "z");
-      addCrosswalk([ix + vNear, iy - hHalf - SIDEWALK_GAP_PX, ix + vFar, iy + hHalf + SIDEWALK_GAP_PX], "z");
+      addCrosswalk([ix - vFar, iy - hHalf, ix - vNear, iy + hHalf], "z");
+      addCrosswalk([ix + vNear, iy - hHalf, ix + vFar, iy + hHalf], "z");
     }
     // Mid-block crossings of a north-south street (pink marks on
-    // screenshot1.png): [street x, center y, width] in px, curb to curb
-    // plus the grass strips, lined up with the walk that meets them.
+    // screenshot1.png): [street x, center y, width] in px, curb to curb,
+    // lined up with the walk that meets them.
     const MIDBLOCK_CROSSWALKS = [
       [815, 405, 9],  // 14th St, on the central mall
       [1297, 302, 5], // 17th St, at the walk to Nemzek's west door
@@ -3474,7 +3512,7 @@
     for (const [ix, iy, width] of MIDBLOCK_CROSSWALKS) {
       const v = ROADS.find((r) => !isHorizontal(r) && r[0] === ix && Math.min(r[1], r[3]) <= iy && Math.max(r[1], r[3]) >= iy);
       const vHalf = roadHalfWidth(v);
-      addCrosswalk([ix - vHalf - SIDEWALK_GAP_PX, iy - width / 2, ix + vHalf + SIDEWALK_GAP_PX, iy + width / 2], "x");
+      addCrosswalk([ix - vHalf, iy - width / 2, ix + vHalf, iy + width / 2], "x");
       midblockPatches.push(rectGround([ix - vHalf, iy - width / 2 - 0.5, ix + vHalf, iy + width / 2 + 0.5], streetLift(LIFT.intersection)));
     }
     root.add(mergedMesh(midblockPatches, plainAsphaltMaterial));
@@ -3614,7 +3652,7 @@
     const walkGeometries = PATHS.map((p) =>
       stripQuad(p[0], p[1], p[2], p[3], p[4] || PATH_WIDTH_PX, LIFT.walk, SLAB_LENGTH_M));
     for (const r of [...ROADS, ...CONSTRUCTION_ROADS]) {
-      const offset = roadHalfWidth(r) + SIDEWALK_GAP_PX + SIDEWALK_WIDTH_PX / 2;
+      const offset = roadHalfWidth(r) + SIDEWALK_WIDTH_PX / 2;
       for (const side of [-1, 1]) {
         const ox = isHorizontal(r) ? 0 : side * offset;
         const oy = isHorizontal(r) ? side * offset : 0;
@@ -3733,6 +3771,36 @@
       edges.material.stencilWrite = false;
       edges.renderOrder = 0;
       root.add(edges);
+      // Depth cap: the ground layers round a sunken area (Kise's hallway
+      // floor, the walks outside the north doors...) don't write depth, so
+      // its edges, stair bases and the steps down showed through them from
+      // above like x-ray. A band of ground at y = 0 round every sunken rect,
+      // never drawn in color, writes depth once the ground is painted and
+      // before anything real, hiding whatever lies below it. (Streets, which
+      // are lower than the ground too, are left out of it.)
+      const CAP_BAND_M = 6;
+      let capRects = [];
+      for (const w of sunkenWorld) {
+        capRects.push(
+          { minX: w.minX - CAP_BAND_M, maxX: w.maxX + CAP_BAND_M, minZ: w.minZ - CAP_BAND_M, maxZ: w.minZ },
+          { minX: w.minX - CAP_BAND_M, maxX: w.maxX + CAP_BAND_M, minZ: w.maxZ, maxZ: w.maxZ + CAP_BAND_M },
+          { minX: w.minX - CAP_BAND_M, maxX: w.minX, minZ: w.minZ, maxZ: w.maxZ },
+          { minX: w.maxX, maxX: w.maxX + CAP_BAND_M, minZ: w.minZ, maxZ: w.maxZ },
+        );
+      }
+      capRects = subtractWorldRects(capRects, [...sunkenWorld, ...streetRects]);
+      const capPositions = [];
+      for (const r of capRects) {
+        capPositions.push(
+          r.minX, 0, r.minZ, r.minX, 0, r.maxZ, r.maxX, 0, r.maxZ,
+          r.minX, 0, r.minZ, r.maxX, 0, r.maxZ, r.maxX, 0, r.minZ,
+        );
+      }
+      const capGeometry = new THREE.BufferGeometry();
+      capGeometry.setAttribute("position", new THREE.Float32BufferAttribute(capPositions, 3));
+      const depthCap = new THREE.Mesh(capGeometry, new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide }));
+      depthCap.renderOrder = -10; // after every ground layer (-1021 .. -880), before the buildings (0)
+      root.add(depthCap);
     }
     // Walks across lots are their own mesh so they paint above the lots.
     root.add(mergedMesh(LOT_WALKS.map((w) =>
@@ -4048,7 +4116,7 @@
         const half = (r[4] || ROAD_WIDTH_PX) / 2;
         if (d < half + TREE_CLEARANCE_PX) return true;
         // the sidewalks running along both sides of it
-        if (Math.abs(d - (half + SIDEWALK_GAP_PX + SIDEWALK_WIDTH_PX / 2)) < SIDEWALK_WIDTH_PX / 2) return true;
+        if (Math.abs(d - (half + SIDEWALK_WIDTH_PX / 2)) < SIDEWALK_WIDTH_PX / 2) return true;
       }
       for (const p of PATHS) {
         if (distToSegment(px, py, p[0], p[1], p[2], p[3]) < (p[4] || PATH_WIDTH_PX) / 2 + TREE_CLEARANCE_PX) return true;
@@ -4414,12 +4482,12 @@
       });
       const swSignMaterials = [white, white, white, white, new THREE.MeshLambertMaterial({ map: swSignTexture }), white];
       const SW_PANEL_DEPTH_M = 0.09;
-      const swSidewalkOffsetPx = SIDEWALK_GAP_PX + SIDEWALK_WIDTH_PX / 2;
+      const swSidewalkOffsetPx = SIDEWALK_WIDTH_PX / 2;
       const mapCenter = mapToWorld((MAP_BOUNDS[0] + MAP_BOUNDS[2]) / 2, (MAP_BOUNDS[1] + MAP_BOUNDS[3]) / 2);
       // Invisible wall across the whole street (road + sidewalks) at every
       // barricade, tall enough that nobody jumps or flies over it.
       const BARRIER_HEIGHT_M = 200;
-      const barrierExtraPx = SIDEWALK_GAP_PX + SIDEWALK_WIDTH_PX + 2;
+      const barrierExtraPx = SIDEWALK_WIDTH_PX + 2;
       const unitMatrix = new THREE.Matrix4();
       const localMatrix = new THREE.Matrix4();
       const q = new THREE.Quaternion();
@@ -4608,7 +4676,7 @@
     // STOP SIGNS (explicit request). Standard US R1-1 signs: a 30 in
     // (0.76 m) red octagon with a white border and white STOP, flat-topped,
     // on a galvanized square steel post with its bottom edge 7 ft (2.1 m)
-    // up, standing on the grass strip at the right of the approaching lane,
+    // up, standing at the sidewalk's street edge at the right of the approaching lane,
     // just before the crosswalk / stop line, facing the drivers.
     //   - all-way stops at the three intersections circled in blue on
     //     newborders.png: 17th St & 6th Ave, 11th St & 9th Ave, 17th St &
@@ -4634,7 +4702,7 @@
       const SIGN_CENTER_M = 2.13 + SIGN_APOTHEM_M;          // bottom edge at 7 ft
       const POST_M = 0.051;                                 // 2 in square post
       const POST_TOP_M = SIGN_CENTER_M + SIGN_APOTHEM_M + 0.05;
-      const LATERAL_M = 0.55;  // from the curb, out onto the grass strip
+      const LATERAL_M = 0.55;  // from the curb, at the sidewalk's street edge
       const STOPLINE_M = 0.9;  // before the far edge of the crosswalk band
       const roadAt = (x, y, horizontal) => ROADS.find((r) => isHorizontal(r) === horizontal &&
         (horizontal ? Math.abs(r[1] - y) < 0.5 && Math.min(r[0], r[2]) <= x && Math.max(r[0], r[2]) >= x
@@ -4657,7 +4725,7 @@
           const d = DIRS[a];
           const cross = d.x === 0 ? h : v;     // the street being crossed
           const own = d.x === 0 ? v : h;       // the approaching street
-          const along = (roadHalfWidth(cross) + SIDEWALK_GAP_PX + SIDEWALK_WIDTH_PX) * MAP_SCALE + STOPLINE_M;
+          const along = (roadHalfWidth(cross) + SIDEWALK_WIDTH_PX) * MAP_SCALE + STOPLINE_M;
           place(c.x, c.z, d, along, roadHalfWidth(own) * MAP_SCALE + LATERAL_M);
         }
       }
@@ -5232,7 +5300,7 @@
       const walkStrips = [
         ...PATHS.map((p) => [p[0], p[1], p[2], p[3], p[4] || PATH_WIDTH_PX]),
         ...ROADS.flatMap((rd) => {
-          const offset = roadHalfWidth(rd) + SIDEWALK_GAP_PX + SIDEWALK_WIDTH_PX / 2;
+          const offset = roadHalfWidth(rd) + SIDEWALK_WIDTH_PX / 2;
           return [-1, 1].map((side) => isHorizontal(rd)
             ? [rd[0], rd[1] + side * offset, rd[2], rd[3] + side * offset, SIDEWALK_WIDTH_PX]
             : [rd[0] + side * offset, rd[1], rd[2] + side * offset, rd[3], SIDEWALK_WIDTH_PX]);
@@ -5255,6 +5323,8 @@
       }
       for (const group of groups.values()) {
         const mesh = mergedMesh(group.geometries, decalMaterial);
+        const lift = mesh.geometry.attributes.position.array[1];
+        if (lift >= 0) groundStencilOver(mesh, lift); // (blended: see groundStencilOver)
         mesh.name = "Decals";
         root.add(mesh);
         decalGroups.push({ mesh, cx: group.cx, cz: group.cz });
@@ -5283,27 +5353,26 @@
     // lot's u axis), so every car sits between the painted lines. A space
     // is dropped where anything else is on the lot: planted islands, walks
     // across it, driveways, plazas, paths, a street, or any collider (trees,
-    // buildings, fences, barricades, signs). Each lot has a busyness profile
-    // (LOT_PARKING_PROFILES; unlisted ones go by size). The cars are
-    // scenery only: no colliders, so movement and navigation are untouched.
+    // buildings, fences, barricades, signs). Each lot is filled to an exact
+    // share of its spaces (LOT_OCCUPANCY; every other lot is nearly empty).
+    // The cars are scenery only: no colliders, so movement and navigation
+    // are untouched.
     // ------------------------------------------------------------------
-    // [lot's x1, y1] -> profile (PARKED_VEHICLE_CONFIG.PARKING_OCCUPANCY)
-    const LOT_PARKING_PROFILES = {
-      "556,500": "busy",     // G-1, the big lot south of the mall
-      "604,200": "busy",     // M-5 metered parking by Comstock
-      "838,562": "busy",     // G-11
-      "30,195": "normal",    // Lot F (north)
-      "30,430": "normal",    // Lot F (south-west)
-      "248,30": "residential", // 11th-12th St lot among the houses
-      "1385,20": "normal",   // F-1 free parking
-      "290,628": "quiet",    // W-G
-      "256,512": "quiet",    // small lot between Bridges and Owens
-      "993,490": "quiet",    // small lot east of Murray
-      "1062,440": "quiet",   // G-10 (remote east lots)
-      "1140,500": "quiet",
-      "1164,420": "quiet",
-      "1252,420": "quiet",   // by the Maintenance Building
+    // [lot's x1, y1] -> [lot name, share of its spaces taken, bias, cars], or a
+    // function of the space's screenshot y giving that (a lot rect drawn as
+    // more than one box on the campus map). bias "west": the taken spaces
+    // lean toward the box's west side (still loosely, never a hard edge).
+    const LOT_OCCUPANCY = {
+      "920,198": ["G-6", 1.0],
+      "990,198": ["G-7 north-west", 0.7],  // G-7's top-left box, north of Holmquist
+      // G-7's east rect is two boxes on the map, split by the planted
+      // islands north of the Heating Plant (y ~333)
+      "1136,198": (py) => (py < 333 ? ["G-7 north-east", 0.07, "west"] : ["G-7 south-east", 0.11, "west"]),
+      "838,562": ["G-11", 0.75],
+      "604,200": ["M-5", 0.15, null, 4],   // metered parking between Lommen and Comstock: ~15% (4 of its 24 spaces)
+      "30,360": ["lot west of the Newman Center", 0, null, 1], // (4th value: exactly this many cars)
     };
+    const EMPTY_LOT_OCCUPANCY = 0.035; // everywhere else: under 4% of the spaces (rounded down)
     const parkingSpaces = [];
     {
       const STALL_ROW_OFFSETS = [[0, -1], [STALL_MODULE_M - STALL_DEPTH_M, 1]]; // row start within the module, and which way its head is (-1 toward the module start)
@@ -5330,9 +5399,7 @@
       LOTS.forEach((lot) => {
         const w = rectToWorld(lot);
         const uAxis = lot[4] || (w.maxX - w.minX >= w.maxZ - w.minZ ? "x" : "z");
-        const key = lot[0] + "," + lot[1];
-        const area = (w.maxX - w.minX) * (w.maxZ - w.minZ);
-        const profile = LOT_PARKING_PROFILES[key] || (area > 9000 ? "busy" : area < 2500 ? "quiet" : "normal");
+        const lotEntry = LOT_OCCUPANCY[lot[0] + "," + lot[1]] || [lot[0] + "," + lot[1], EMPTY_LOT_OCCUPANCY];
         const [u0, u1] = uAxis === "x" ? [w.minX, w.maxX] : [w.minZ, w.maxZ];
         const [v0, v1] = uAxis === "x" ? [w.minZ, w.maxZ] : [w.minX, w.maxX];
         for (let module = 0; v0 + module * STALL_MODULE_M < v1; module++) {
@@ -5352,8 +5419,50 @@
               if (pxRectHits(footPx, blockersPx, 0.3) || colliderHits(foot)) continue;
               // heading of a car parked nose-in: toward the head of its row
               const yaw = uAxis === "x" ? (headDir < 0 ? -Math.PI / 2 : Math.PI / 2) : (headDir < 0 ? Math.PI : 0);
-              parkingSpaces.push({ x, z, yaw, width: STALL_WIDTH_M, depth: STALL_DEPTH_M, lot: key, profile });
+              const [key, occupancy, bias, count] = typeof lotEntry === "function" ? lotEntry(z / MAP_SCALE + MAP_CENTER_Y) : lotEntry;
+              parkingSpaces.push({ x, z, yaw, width: STALL_WIDTH_M, depth: STALL_DEPTH_M, lot: key, occupancy, bias, count });
             }
+          }
+        }
+      });
+
+      // Street parking (explicit request): a few cars along the curb of every
+      // street but 10th, 11th, 14th and 20th (and the narrow alley), on
+      // either side, each facing the way traffic runs on its side (drivers
+      // keep right: east side northbound, south side eastbound...). Spaces
+      // are parallel-parking lengths along each curb, skipping the
+      // intersections, crosswalks, driveways, the construction pit and the
+      // barricaded stretches at the map's edge.
+      const STREET_PARKING_SHARE = 0.05;        // share of the curb spaces taken
+      const NO_STREET_PARKING_X = [8, 232, 815, 1885]; // 10th, 11th, 14th, 20th St
+      const CURB_SPACE_M = 6.6;                // one parallel-parking space along the curb
+      const CURB_TO_CAR_M = 1.25;              // curb to a parked car's middle
+      const insideBounds = [MAP_BOUNDS[0] + 25, MAP_BOUNDS[1] + 25, MAP_BOUNDS[2] - 25, MAP_BOUNDS[3] - 25];
+      const barricadeRects = BARRICADES.map(([px, py, axis, w]) => (axis === "x"
+        ? [px - w / 2, py - 2, px + w / 2, py + 2] : [px - 2, py - w / 2, px + 2, py + w / 2]));
+      const curbBlockers = [...crosswalkRectsPx, ...DRIVEWAYS, ...pitRectsPx, ...barricadeRects];
+      ROADS.forEach((r, ri) => {
+        const width = r[4] || ROAD_WIDTH_PX;
+        const horizontal = isHorizontal(r);
+        if (width < ROAD_WIDTH_PX || (!horizontal && NO_STREET_PARKING_X.includes(r[0]))) return;
+        const otherStreets = streetRectsPx.filter((_, k) => k !== ri);
+        const lateralPx = (width / 2 * MAP_SCALE - CURB_TO_CAR_M) / MAP_SCALE;
+        const [a0, a1] = horizontal ? [Math.min(r[0], r[2]), Math.max(r[0], r[2])] : [Math.min(r[1], r[3]), Math.max(r[1], r[3])];
+        const stepPx = CURB_SPACE_M / MAP_SCALE, halfLenPx = stepPx / 2, halfWidPx = 1.1 / MAP_SCALE;
+        for (const side of [-1, 1]) {
+          for (let t = a0 + halfLenPx; t + halfLenPx <= a1; t += stepPx) {
+            const cx = horizontal ? t : r[0] + side * lateralPx, cy = horizontal ? r[1] + side * lateralPx : t;
+            const footPx = horizontal ? [cx - halfLenPx, cy - halfWidPx, cx + halfLenPx, cy + halfWidPx] : [cx - halfWidPx, cy - halfLenPx, cx + halfWidPx, cy + halfLenPx];
+            if (footPx[0] < insideBounds[0] || footPx[1] < insideBounds[1] || footPx[2] > insideBounds[2] || footPx[3] > insideBounds[3]) continue;
+            // clear of the crossing streets by a car length or so past their sidewalks
+            if (pxRectHits(footPx, otherStreets, SIDEWALK_WIDTH_PX + 8) || pxRectHits(footPx, curbBlockers, 2)) continue;
+            const w = mapToWorld(cx, cy);
+            const foot = { minX: w.x - (footPx[2] - footPx[0]) * MAP_SCALE / 2, maxX: w.x + (footPx[2] - footPx[0]) * MAP_SCALE / 2,
+              minZ: w.z - (footPx[3] - footPx[1]) * MAP_SCALE / 2, maxZ: w.z + (footPx[3] - footPx[1]) * MAP_SCALE / 2 };
+            if (colliderHits(foot)) continue;
+            // heading (0 = +x east, pi/2 = +z south): keep right
+            const yaw = horizontal ? (side < 0 ? Math.PI : 0) : (side < 0 ? Math.PI / 2 : -Math.PI / 2);
+            parkingSpaces.push({ x: w.x, z: w.z, yaw, width: 2.5, depth: CURB_SPACE_M, lot: "street parking", occupancy: STREET_PARKING_SHARE, noBackIn: true });
           }
         }
       });
@@ -5565,7 +5674,7 @@
       for (const r of [...streetRectsPx, ...LOTS, ...PLAZAS, ...DRIVEWAYS, ...RUNWAYS]) if (inRect(px, py, r, 0)) return "concrete";
       for (const r of [...ROADS, ...CONSTRUCTION_ROADS]) { // the sidewalks along both sides
         const d = distToSegment(px, py, r[0], r[1], r[2], r[3]);
-        if (Math.abs(d - ((r[4] || ROAD_WIDTH_PX) / 2 + SIDEWALK_GAP_PX + SIDEWALK_WIDTH_PX / 2)) <= SIDEWALK_WIDTH_PX / 2) return "concrete";
+        if (Math.abs(d - ((r[4] || ROAD_WIDTH_PX) / 2 + SIDEWALK_WIDTH_PX / 2)) <= SIDEWALK_WIDTH_PX / 2) return "concrete";
       }
       for (const p of [...PATHS, ...LOT_WALKS]) {
         if (distToSegment(px, py, p[0], p[1], p[2], p[3]) <= (p[4] || PATH_WIDTH_PX) / 2) return "concrete";
@@ -5609,7 +5718,7 @@
       const islands = GRASS_AREAS.filter(rectHits);
       const coverRects = [...streetRectsPx, ...LOTS, ...PLAZAS, ...DRIVEWAYS, ...RUNWAYS, ...TURF_AREAS, ...SOCCER_FIELDS,
         ...POOLS, ...WADING_POOLS, ...DIRT_AREAS, ...pitRectsPx].filter(rectHits);
-      const sidewalkReach = (r) => (r[4] || ROAD_WIDTH_PX) / 2 + SIDEWALK_GAP_PX + SIDEWALK_WIDTH_PX;
+      const sidewalkReach = (r) => (r[4] || ROAD_WIDTH_PX) / 2 + SIDEWALK_WIDTH_PX;
       const roads = [...ROADS, ...CONSTRUCTION_ROADS].filter((r) => segHits(r, sidewalkReach(r) + pad));
       const paths = [...PATHS, ...LOT_WALKS].filter((p) => segHits(p, (p[4] || PATH_WIDTH_PX) / 2 + pad));
       const arcs = [...PATH_ARCS, ...DRIVE_ARCS].filter((a) => circleHits(a[0], a[1], a[2] + a[3]));
@@ -5635,9 +5744,9 @@
           for (const r of roads) {
             const d = distToSegment(px, py, r[0], r[1], r[2], r[3]);
             if (d <= sidewalkReach(r) + edgePx) {
-              // the road itself, or the sidewalk -- the grass strip between them stays
+              // the road itself, or the sidewalk (which starts right at the curb)
               const half = (r[4] || ROAD_WIDTH_PX) / 2;
-              if (d <= half + edgePx || Math.abs(d - (half + SIDEWALK_GAP_PX + SIDEWALK_WIDTH_PX / 2)) <= SIDEWALK_WIDTH_PX / 2 + edgePx) return -1;
+              if (d <= half + edgePx || Math.abs(d - (half + SIDEWALK_WIDTH_PX / 2)) <= SIDEWALK_WIDTH_PX / 2 + edgePx) return -1;
             }
           }
           for (const p of paths) if (distToSegment(px, py, p[0], p[1], p[2], p[3]) <= (p[4] || PATH_WIDTH_PX) / 2 + edgePx) return -1;

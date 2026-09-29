@@ -611,11 +611,35 @@
       BONES.forEach((def, i) => { if (def.parent >= 0) bones[def.parent].add(bones[i]); });
       rig.add(bones[0]);
       const skeleton = new THREE.Skeleton(bones, shapeData.normal.boneInverses.map((m) => m.clone()));
+      // Bone matrices relative to the rig, not the world: the body meshes
+      // sit at identity in the rig, so with a "detached" identity bind the
+      // result is the same, but walking no longer changes them -- only
+      // posing does. three.js calls skeleton.update() (and re-uploads the
+      // bone texture) for every drawn skinned mesh every frame; here it
+      // does nothing unless the pose changed since (poseDirty, set wherever
+      // the bones are updateMatrix()'d), so zombies on an animation-LOD
+      // skip frame cost no upload at all.
+      const rigRelative = bones.map(() => new THREE.Matrix4());
+      const boneMatrix = new THREE.Matrix4();
+      skeleton.poseDirty = true;
+      skeleton.update = function () {
+        if (!this.poseDirty) return;
+        this.poseDirty = false;
+        for (let i = 0; i < BONE_COUNT; i++) {
+          const parent = BONES[i].parent; // (parents always come first)
+          if (parent < 0) rigRelative[i].copy(bones[i].matrix);
+          else rigRelative[i].multiplyMatrices(rigRelative[parent], bones[i].matrix);
+          boneMatrix.multiplyMatrices(rigRelative[i], this.boneInverses[i]);
+          boneMatrix.toArray(this.boneMatrices, i * 16);
+        }
+        if (this.boneTexture) this.boneTexture.needsUpdate = true;
+      };
       const identity = new THREE.Matrix4();
       const lodMeshes = LODS.map((lod, i) => {
         const mesh = new THREE.SkinnedMesh(shapeData.normal.lods[i].geometry, bodyMaterial);
         mesh.name = "ZombieBody";
         mesh.bind(skeleton, identity);
+        mesh.bindMode = "detached"; // (see skeleton.update above)
         mesh.raycast = noRaycast;
         mesh.castShadow = i < 2;
         mesh.receiveShadow = i === 0;
@@ -876,6 +900,7 @@
       });
       model.bones[B.head].scale.setScalar(ap.headScale);
       model.bones[B.head].updateMatrix();
+      model.skeleton.poseDirty = true;
       model.headwear.geometry = getHeadwearGeometry(ap.headwear);
       model.headwear.scale.x = 1 / WIDEN_X;
       model.face.scale.x = 1 / WIDEN_X;
@@ -1562,6 +1587,7 @@
       const rest = shapeData[model.shapeKey].localRest[0];
       bones[0].position.copy(rest).add(anim.hipsOffset);
       for (let i = 0; i < BONE_COUNT; i++) bones[i].updateMatrix();
+      model.skeleton.poseDirty = true;
     }
 
     function setWindup(model, active) {

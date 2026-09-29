@@ -11,10 +11,12 @@
 //     (bumpers, hood, windshield, roof, rear window, trunk or hatch, wheel
 //     arches, tumblehome), with wheels, rims, lights, grille, plates,
 //     mirrors, door seams and handles as small separate pieces.
-//   - Three LODs: LOD0 (near) has everything; LOD1 drops mirrors, seams,
+//   - Four LODs: LOD0 (near) has everything; LOD1 drops mirrors, seams,
 //     handles and hubs and uses fewer sections; LOD2 (far) is one coarse
 //     shape per body class (sedan, two-box, pickup) scaled to each model.
-//     Past VEHICLE_CULL_DISTANCE (inside the fog) nothing is drawn.
+//     Past VEHICLE_SIMPLE_DISTANCE every car is LOD3, one very simple
+//     shared shape (body, cabin, roof, wheels) scaled to each car -- never
+//     removed for distance, only when out of every player's view.
 //   - One shared Phong material for every car: a per-vertex part id picks
 //     the surface (paint, glass, rubber, rim, trim, chrome, lights, plate,
 //     dark) and per-instance data carries the paint color, gloss, age,
@@ -26,9 +28,13 @@
 //   - A soft shadow under every drawn car, all in one instanced draw.
 //
 // Usage: const v = createParkedVehicleSystem(THREE, root, spaces, options);
-//   spaces: [{ x, z, yaw, width, depth, lot, profile }] -- yaw = the
-//   direction a car parked nose-in faces (radians, 0 = +x); lot = a lot
-//   key (occupancy is drawn per lot); profile = a key of LOT_PROFILES.
+//   spaces: [{ x, z, yaw, width, depth, lot, occupancy | profile }] -- yaw =
+//   the direction a car parked nose-in faces (radians, 0 = +x); lot = a lot
+//   key; occupancy = the exact share of the lot's spaces taken, or else
+//   profile = a key of PARKING_OCCUPANCY (a share drawn per lot); bias
+//   (optional) = "west": the taken spaces lean toward the lot's west side;
+//   count (optional) = exactly this many cars in the lot instead of a
+//   share; noBackIn = never backed in (street parking faces the traffic).
 //   options.groundHeightAt(x, z)
 //   v.update(viewers, views)   // once per frame, viewers = [{x, z}, ...];
 //     views (optional) = [{x, z, fx, fz, cos}] -- see cullToViews
@@ -69,7 +75,7 @@
     PARKING_JITTER_M: 0.12,         // how far off center a car may sit (sideways; forward is limited by the space)
     PARKING_JITTER_DEG: 1.4,        // max heading error
     VEHICLE_LOD_DISTANCES: [20, 60], // LOD0 -> LOD1, LOD1 -> LOD2 (m)
-    VEHICLE_CULL_DISTANCE: 115,     // not drawn past this (the fog is opaque by ~110 m)
+    VEHICLE_SIMPLE_DISTANCE: 115,   // past this, every car is the simple LOD3 shape (never culled by distance)
     VEHICLE_LOD_FADE_TIME: 0.35,    // s cross-fade between LODs
     LOD_UPDATE_INTERVAL: 0.15,      // s between LOD re-assignments
     SHADOW_OPACITY: 0.5,
@@ -422,6 +428,21 @@
     return g;
   }
 
+  // The farthest LOD (LOD3): one very simple car for every model -- a
+  // painted body box, a glass cabin with a painted roof, and a dark strip
+  // under each axle for the wheels -- at unit size (1 long, 1 tall, 1 wide),
+  // scaled to each car. Car space as above: +x forward, middle at origin.
+  function buildSimpleCar(THREE) {
+    const b = meshBuilder();
+    b.box(0, 0.36, 0, 1, 0.4, 0.97, P.paint);                // body
+    b.box(-0.04, 0.745, 0, 0.5, 0.37, 0.84, P.glass);       // cabin (windows)
+    b.box(-0.04, 0.965, 0, 0.46, 0.07, 0.8, P.paint);       // roof
+    for (const x of [-0.31, 0.31]) b.box(x, 0.11, 0, 0.15, 0.22, 0.92, P.rubber); // wheels
+    const g = b.build(THREE);
+    g.computeBoundingSphere();
+    return g;
+  }
+
   // ------------------------------------------------------------------ material
   // One shared material. Per vertex: carPart. Per instance: carPaint (rgb),
   // carMisc (gloss, age, glass tint, dark rims), carFade (LOD cross-fade:
@@ -539,18 +560,49 @@
     const color = new THREE.Color();
     const hsl = { h: 0, s: 0, l: 0 };
     const V = C.VEHICLE_VARIATION_AMOUNT;
+    // Occupancy varies a little across a lot (people bunch near the ends
+    // they walk to), from a smooth field -- never a regular pattern.
+    const bunching = (sp) => 0.85 + 0.3 * Math.sin(sp.x * 0.045 + Math.sin(sp.z * 0.037) * 2.1) * Math.cos(sp.z * 0.041 - 0.7);
+    // Spaces with an exact `occupancy` (share of their lot's spaces): that
+    // many of the lot's spaces are taken, the best-placed ones by the
+    // bunching field plus a seeded shuffle (its own random stream).
+    const taken = new Set();
+    {
+      const rTake = mulberry32(C.SEED + 7);
+      const byLot = new Map();
+      for (const sp of spaces) {
+        const score = rTake() / bunching(sp);
+        if (sp.occupancy === undefined) continue;
+        if (!byLot.has(sp.lot)) byLot.set(sp.lot, []);
+        byLot.get(sp.lot).push({ sp, score });
+      }
+      for (const list of byLot.values()) {
+        const share = Math.min(1, list[0].sp.occupancy * C.VEHICLE_DENSITY);
+        if (list[0].sp.bias === "west") {
+          // Denser toward the lot's west side, thinning out east: the score
+          // grows across the lot (x runs west -> east), randomness kept.
+          let minX = Infinity, maxX = -Infinity;
+          for (const e of list) { minX = Math.min(minX, e.sp.x); maxX = Math.max(maxX, e.sp.x); }
+          for (const e of list) e.score *= 0.25 + 1.5 * ((e.sp.x - minX) / Math.max(1, maxX - minX));
+        }
+        list.sort((a, b) => a.score - b.score);
+        const n = list[0].sp.count !== undefined ? Math.min(list.length, list[0].sp.count) : Math.floor(list.length * share + 1e-6);
+        for (let i = 0; i < n; i++) taken.add(list[i].sp);
+      }
+    }
     for (const sp of spaces) {
       // (every space draws the same random numbers, used or not, so one
       // space's outcome never reshuffles the rest)
       const rOcc = rand(), rModel = rand(), rColor = rand(), rShade = rand(), rAge = rand(), rVar = [rand(), rand(), rand(), rand(), rand(), rand(), rand()];
-      if (!lotOccupancy.has(sp.lot)) {
-        const [lo, hi] = C.PARKING_OCCUPANCY[sp.profile] || C.PARKING_OCCUPANCY.normal;
-        lotOccupancy.set(sp.lot, Math.min(0.98, (lo + (hi - lo) * rand()) * C.VEHICLE_DENSITY));
+      if (sp.occupancy !== undefined) {
+        if (!taken.has(sp)) continue;
+      } else {
+        if (!lotOccupancy.has(sp.lot)) {
+          const [lo, hi] = C.PARKING_OCCUPANCY[sp.profile] || C.PARKING_OCCUPANCY.normal;
+          lotOccupancy.set(sp.lot, Math.min(0.98, (lo + (hi - lo) * rand()) * C.VEHICLE_DENSITY));
+        }
+        if (rOcc > lotOccupancy.get(sp.lot) * bunching(sp)) continue;
       }
-      // Occupancy varies a little across a lot (people bunch near the ends
-      // they walk to), from a smooth field -- never a regular pattern.
-      const field = 0.85 + 0.3 * Math.sin(sp.x * 0.045 + Math.sin(sp.z * 0.037) * 2.1) * Math.cos(sp.z * 0.041 - 0.7);
-      if (rOcc > lotOccupancy.get(sp.lot) * field) continue;
       // A model that fits the space.
       let name = null;
       for (let k = 0; k < 6 && !name; k++) {
@@ -575,7 +627,7 @@
       const glassTint = rVar[3] * V;
       const darkRims = rVar[4] < 0.3 ? 1 : 0;
       // Pose: nose in (mostly) or backed in, a little off center / square.
-      const backed = rVar[5] < C.BACKED_IN_SHARE;
+      const backed = !sp.noBackIn && rVar[5] < C.BACKED_IN_SHARE;
       const yaw = sp.yaw + (backed ? Math.PI : 0) + (rVar[6] - 0.5) * 2 * (C.PARKING_JITTER_DEG * Math.PI / 180) * V;
       // drivers pull up toward the head of the space (either way round)
       const slackAlong = Math.max(0, (sp.depth - m.L) / 2 - 0.08);
@@ -583,7 +635,7 @@
       const side = (rand() - 0.5) * 2 * Math.min(C.PARKING_JITTER_M, Math.max(0, (sp.width - m.W) / 2 - 0.25));
       const fx = Math.cos(sp.yaw), fz = Math.sin(sp.yaw);
       const x = sp.x + fx * along - fz * side, z = sp.z + fz * along + fx * side;
-      cars.push({ name, m, x, z, y: groundHeightAt(x, z), yaw, paint: [color.r, color.g, color.b], misc: [gloss, age, glassTint, darkRims], lod: -1, from: -1, t: 1 });
+      cars.push({ name, m, lot: sp.lot, x, z, y: groundHeightAt(x, z), yaw, paint: [color.r, color.g, color.b], misc: [gloss, age, glassTint, darkRims], lod: -1, from: -1, t: 1 });
     }
 
     // ---- instanced meshes: per model LOD0 / LOD1, per class LOD2, shadows.
@@ -617,6 +669,7 @@
       const count = cars.filter((c) => c.m.cls === cls).length;
       if (count) farMeshes[cls] = makeMesh(farGeometries[cls], count);
     }
+    const simpleMesh = makeMesh(buildSimpleCar(THREE), Math.max(1, cars.length)); // LOD3, every car
     const shadowMaterial = new THREE.MeshBasicMaterial({ map: makeShadowTexture(THREE), color: 0x000000, transparent: true, depthWrite: false, opacity: C.SHADOW_OPACITY, fog: false });
     shadowMaterial.polygonOffset = true;
     shadowMaterial.polygonOffsetFactor = -2;
@@ -630,7 +683,8 @@
     root.add(shadowMesh);
 
     // Each car's instance matrices, computed once: its own model's (LOD0/1),
-    // the class shape scaled to it (LOD2), and its shadow.
+    // the class shape scaled to it (LOD2), the simple car scaled to it
+    // (LOD3), and its shadow.
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), yAxis = new THREE.Vector3(0, 1, 0);
     for (const c of cars) {
       // three's yaw turns +x toward -z; a heading angle `yaw` in the x/z
@@ -640,6 +694,7 @@
       c.matrix = m4.compose(at, q, new THREE.Vector3(1, 1, 1)).toArray();
       const base = MODELS[classBase[c.m.cls]];
       c.farMatrix = m4.compose(at, q, new THREE.Vector3(c.m.L / base.L, c.m.H / base.H, c.m.W / base.W)).toArray();
+      c.simpleMatrix = m4.compose(at, q, new THREE.Vector3(c.m.L, c.m.H, c.m.W)).toArray();
       c.shadowMatrix = m4.compose(new THREE.Vector3(c.x, c.y + 0.02, c.z), q, new THREE.Vector3(c.m.L + 0.45, 1, c.m.W + 0.4)).toArray();
     }
 
@@ -651,8 +706,8 @@
       const edge = (limit, cur) => limit + (cur ? hys : -hys);
       if (d < edge(lod01, c.lod === 0)) return 0;
       if (d < edge(lod12, c.lod === 1)) return 1;
-      if (d < edge(C.VEHICLE_CULL_DISTANCE, c.lod === 2)) return 2;
-      return -1;
+      if (d < edge(C.VEHICLE_SIMPLE_DISTANCE, c.lod === 2)) return 2;
+      return 3; // the simple car, however far: only leaving the view hides it
     }
     const push = (entry, c, matrix, fade) => {
       const i = entry.n++;
@@ -661,7 +716,8 @@
       entry.misc.array.set(c.misc, i * 4);
       entry.fade.array[i] = fade;
     };
-    const target = (c, lod) => (lod === 2 ? farMeshes[c.m.cls] : lodMeshes[c.name][lod]);
+    const target = (c, lod) => (lod === 3 ? simpleMesh : lod === 2 ? farMeshes[c.m.cls] : lodMeshes[c.name][lod]);
+    const matrixFor = (c, lod) => (lod === 3 ? c.simpleMatrix : lod === 2 ? c.farMatrix : c.matrix);
     // Cars in draw order: nearest first (re-sorted at each LOD update), so
     // the depth test rejects the hidden parts of the cars behind early.
     let drawOrder = [];
@@ -671,40 +727,54 @@
       for (const c of drawOrder) {
         if (c.hidden) continue;
         const fadeIn = c.t < 1 ? Math.max(0.001, c.t) : 1;
-        if (c.lod >= 0) push(target(c, c.lod), c, c.lod === 2 ? c.farMatrix : c.matrix, fadeIn);
-        if (c.t < 1 && c.from >= 0) push(target(c, c.from), c, c.from === 2 ? c.farMatrix : c.matrix, -Math.max(0.001, c.t));
-        if (c.lod >= 0 || (c.t < 1 && c.from >= 0)) shadowMesh.instanceMatrix.array.set(c.shadowMatrix, 16 * shadows++);
+        if (c.lod >= 0) push(target(c, c.lod), c, matrixFor(c, c.lod), fadeIn);
+        if (c.t < 1 && c.from >= 0) push(target(c, c.from), c, matrixFor(c, c.from), -Math.max(0.001, c.t));
+        // (no soft shadow under the simple far cars)
+        if ((c.lod >= 0 && c.lod < 3) || (c.t < 1 && c.from >= 0 && c.from < 3)) shadowMesh.instanceMatrix.array.set(c.shadowMatrix, 16 * shadows++);
       }
       for (const e of meshes) {
         e.mesh.count = e.n;
         e.mesh.visible = e.n > 0;
         if (e.n > 0) {
-          e.mesh.instanceMatrix.needsUpdate = true;
-          e.paint.needsUpdate = e.misc.needsUpdate = e.fade.needsUpdate = true;
+          // (upload only the instances in use, not the whole capacity)
+          for (const a of [e.mesh.instanceMatrix, e.paint, e.misc, e.fade]) {
+            a.updateRange.offset = 0;
+            a.updateRange.count = e.n * a.itemSize;
+            a.needsUpdate = true;
+          }
         }
       }
       shadowMesh.count = shadows;
       shadowMesh.visible = shadows > 0;
-      if (shadows > 0) shadowMesh.instanceMatrix.needsUpdate = true;
+      if (shadows > 0) {
+        shadowMesh.instanceMatrix.updateRange.offset = 0;
+        shadowMesh.instanceMatrix.updateRange.count = shadows * 16;
+        shadowMesh.instanceMatrix.needsUpdate = true;
+      }
     }
 
     // views (optional): per viewer { x, z, fx, fz, cos } -- where it stands,
     // which way it faces (unit, horizontal) and the cosine of its half
-    // field of view (with a margin). Cars outside every view are skipped
-    // (checked every frame -- a dot product per nearby car -- so turning
-    // never shows a missing car); cars very close always stay.
+    // field of view (with a margin). A car is drawn only if some part of it
+    // can be inside a view: the angle to its middle, less the angle its
+    // own size spans from there, within the view's half-angle (checked
+    // every frame -- turning never shows a missing car). Only a car right
+    // beside a viewer (its footprint around them) always stays.
     let hiddenCount = -1;
+    const CAR_RADIUS_M = 2.8; // middle to corner, the biggest model
+    const viewHalf = [];
     function cullToViews(views) {
+      for (let i = 0; i < views.length; i++) viewHalf[i] = Math.acos(Math.max(-1, Math.min(1, views[i].cos)));
       let hidden = 0;
       for (const c of drawOrder) {
         let seen = false;
-        for (const v of views) {
+        for (let i = 0; i < views.length; i++) {
+          const v = views[i];
           const dx = c.x - v.x, dz = c.z - v.z;
           const d = Math.hypot(dx, dz);
-          if (d < 9) { seen = true; break; }
-          // a car is ~2.7 m from its middle to its corners
-          const slack = Math.sin(Math.min(1.2, 2.8 / d));
-          if ((dx * v.fx + dz * v.fz) / d > v.cos - slack) { seen = true; break; }
+          if (d < CAR_RADIUS_M + 0.5) { seen = true; break; }
+          const angle = Math.acos(Math.max(-1, Math.min(1, (dx * v.fx + dz * v.fz) / d)));
+          if (angle - Math.asin(CAR_RADIUS_M / d) < viewHalf[i]) { seen = true; break; }
         }
         if (c.hidden === seen) dirty = true;
         c.hidden = !seen;
@@ -758,12 +828,20 @@
       }
     }
 
+    // cars / spaces per lot
+    function lotStats() {
+      const out = {};
+      for (const sp of spaces) (out[sp.lot] || (out[sp.lot] = { spaces: 0, cars: 0 })).spaces++;
+      for (const c of cars) out[c.lot].cars++;
+      for (const k in out) out[k].share = +(out[k].cars / out[k].spaces).toFixed(3);
+      return out;
+    }
     function stats() {
       const drawn = meshes.reduce((s, e) => s + e.n, 0);
       const models = {};
       for (const c of cars) models[c.name] = (models[c.name] || 0) + 1;
       return { spaces: spaces.length, cars: cars.length, drawnInstances: drawn, draws: meshes.filter((e) => e.n > 0).length + (shadowMesh.count > 0 ? 1 : 0), models,
-        lots: Object.fromEntries([...lotOccupancy].map(([k, v]) => [k, +v.toFixed(2)])) };
+        lots: lotStats() };
     }
 
     return { update, stats, cars, material };
