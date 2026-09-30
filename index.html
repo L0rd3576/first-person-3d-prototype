@@ -1279,6 +1279,20 @@
   body.trio-mode .coop-p1.coop-spectator-screen { left: 0; top: 0; width: 100vw; }
   body.trio-mode .coop-p2.coop-spectator-screen { left: 0; top: 50vh; }
   body.trio-mode .coop-p3.coop-spectator-screen { left: 50vw; top: 50vh; }
+  /* Dynamic split-screen layout (see SPLIT-SCREEN SCREEN AREAS): after a dead
+     player gives their screen area away, JS positions every HUD piece from
+     the live viewport rects and draws its own dividers. */
+  #split-divider-h, #split-divider-v {
+    display: none;
+    position: fixed;
+    background: rgba(255, 255, 255, 0.5);
+    z-index: 10;
+    pointer-events: none;
+  }
+  #split-divider-h { height: 2px; margin-top: -1px; }
+  #split-divider-v { width: 2px; margin-left: -1px; }
+  body.layout-dyn #coop-divider, body.layout-dyn #coop-divider-v { display: none !important; }
+  body.layout-dyn #split-divider-h.on, body.layout-dyn #split-divider-v.on { display: block; }
   body.spectating-p1 .coop-p1.coop-health-hud, body.spectating-p1 .coop-p1.coop-ammo-hud, body.spectating-p1 .coop-p1.coop-crosshair, body.spectating-p1 .coop-p1.coop-hit-marker,
   body.spectating-p2 .coop-p2.coop-health-hud, body.spectating-p2 .coop-p2.coop-ammo-hud, body.spectating-p2 .coop-p2.coop-crosshair, body.spectating-p2 .coop-p2.coop-hit-marker,
   body.spectating-p3 .coop-p3.coop-health-hud, body.spectating-p3 .coop-p3.coop-ammo-hud, body.spectating-p3 .coop-p3.coop-crosshair, body.spectating-p3 .coop-p3.coop-hit-marker,
@@ -3062,6 +3076,8 @@
      comment above. Shown instead of the elements above via body.coop-mode. -->
 <div id="coop-divider"></div>
 <div id="coop-divider-v"></div>
+<div id="split-divider-h"></div>
+<div id="split-divider-v"></div>
 
 <div id="crosshair-p1" class="coop-crosshair coop-p1 aim-hidden"></div>
 <div id="crosshair-p2" class="coop-crosshair coop-p2 aim-hidden"></div>
@@ -13093,6 +13109,412 @@
     };
   }
 
+  // ------------------------------------------------------------------
+  // DYNAMIC ZONE + SHARED MINIMAP
+  // One authoritative zoneState (local split screen shares it by
+  // construction) drives both the damage check and the minimap. The zone
+  // cycles STAY -> WARNING (next zone shown white on the minimap) ->
+  // TRANSITION (the boundary glides to it) -> STAY..., changing size and/or
+  // place each time. It only hurts players standing outside it; zombie
+  // spawning, navigation and AI never read it.
+  // Radii and relocation distances default to fractions of the map's
+  // shorter side (auto-detected from the campus bounds / platform), so they
+  // follow the map; set a metre value to override.
+  // ------------------------------------------------------------------
+  const ZONE_CONFIG = {
+    ZONE_ENABLED: true,
+    INITIAL_ZONE_DELAY: 240,          // s of safe exploring before the first warning
+    ZONE_STAY_DURATION: 150,          // s a zone holds between moves (+/- ZONE_STAY_JITTER)
+    ZONE_STAY_JITTER: 0.3,
+    ZONE_WARNING_DURATION: 60,        // s the next zone is shown before it starts moving
+    ZONE_TRANSITION_DURATION: 90,     // s the boundary takes to glide there
+    LARGE_ZONE_RADIUS: null,          // metres; null = fraction x shorter map side
+    MEDIUM_ZONE_RADIUS: null,
+    SMALL_ZONE_RADIUS: null,
+    LARGE_ZONE_RADIUS_FRACTION: 0.46,
+    MEDIUM_ZONE_RADIUS_FRACTION: 0.29,
+    SMALL_ZONE_RADIUS_FRACTION: 0.16,
+    MIN_ZONE_RELOCATION_DISTANCE: null, // metres; null = fraction x shorter map side
+    MAX_ZONE_RELOCATION_DISTANCE: null,
+    MIN_ZONE_RELOCATION_FRACTION: 0.18,
+    MAX_ZONE_RELOCATION_FRACTION: 0.75,
+    ZONE_CENTER_INSET_FRACTION: 0.08, // a new centre stays this far inside the map edge
+    ZONE_DAMAGE_PER_SECOND: 2,        // HP/s once the grace period is over
+    ZONE_DAMAGE_START_DELAY: 5,       // s outside before any damage
+    ZONE_DAMAGE_RAMP: 0.15,           // extra HP/s per second outside (after the delay)
+    ZONE_DAMAGE_MAX_PER_SECOND: 8,
+    ZONE_WARNING_VISUALS_ENABLED: true,
+    MINIMAP_ENABLED: true,
+    MINIMAP_SIZE: 360,                // px, the map's longer side
+    MINIMAP_POSITION: "top-left",     // top-left | top-right | bottom-left | bottom-right | top-center | bottom-center
+  };
+  const ZONE_PLAYER_COLORS = ["#ff5252", "#4da6ff", "#5cf28a", "#ffd24d"];
+  const zoneState = {
+    initialized: false,
+    phase: "stay",          // "stay" | "warning" | "transition"
+    phaseTime: 0,
+    phaseDuration: 0,
+    center: { x: 0, z: 0 }, radius: 100, sizeName: "LARGE",
+    from: null,             // the zone a transition started from
+    next: null,             // { x, z, radius, sizeName } while warning/transitioning
+    history: [],            // recent centres, so relocations don't repeat
+    moves: 0,
+  };
+
+  function zoneMapRect() {
+    if (isCampusMap && campusWorld) return campusWorld.bounds;
+    const h = PLATFORM_SIZE / 2 - PLAYER_MARGIN;
+    return { minX: -h, maxX: h, minZ: -h, maxZ: h };
+  }
+  function zoneRadiusFor(sizeName) {
+    const m = zoneMapRect();
+    const short = Math.min(m.maxX - m.minX, m.maxZ - m.minZ);
+    const c = ZONE_CONFIG;
+    return c[sizeName + "_ZONE_RADIUS"] ?? c[sizeName + "_ZONE_RADIUS_FRACTION"] * short;
+  }
+  function zoneRelocationRange() {
+    const m = zoneMapRect();
+    const short = Math.min(m.maxX - m.minX, m.maxZ - m.minZ);
+    const c = ZONE_CONFIG;
+    return [c.MIN_ZONE_RELOCATION_DISTANCE ?? c.MIN_ZONE_RELOCATION_FRACTION * short,
+      c.MAX_ZONE_RELOCATION_DISTANCE ?? c.MAX_ZONE_RELOCATION_FRACTION * short];
+  }
+  function zoneClampCenter(x, z) {
+    const m = zoneMapRect();
+    const inset = ZONE_CONFIG.ZONE_CENTER_INSET_FRACTION * Math.min(m.maxX - m.minX, m.maxZ - m.minZ);
+    return { x: Math.max(m.minX + inset, Math.min(m.maxX - inset, x)), z: Math.max(m.minZ + inset, Math.min(m.maxZ - inset, z)) };
+  }
+  function zoneCenterInside(x, z) {
+    const m = zoneMapRect();
+    const inset = ZONE_CONFIG.ZONE_CENTER_INSET_FRACTION * Math.min(m.maxX - m.minX, m.maxZ - m.minZ);
+    return x >= m.minX + inset && x <= m.maxX - inset && z >= m.minZ + inset && z <= m.maxZ - inset;
+  }
+  function zoneStayDuration() {
+    const j = ZONE_CONFIG.ZONE_STAY_JITTER;
+    return ZONE_CONFIG.ZONE_STAY_DURATION * (1 - j + Math.random() * 2 * j);
+  }
+  function zoneMatchPlayers() {
+    return isCoopMatchActive ? players : [players[0]];
+  }
+
+  function initZone() {
+    const ps = zoneMatchPlayers().filter((p) => !p.isDead);
+    let cx = 0, cz = 0;
+    for (const p of ps) { cx += p.camera.position.x; cz += p.camera.position.z; }
+    if (ps.length) { cx /= ps.length; cz /= ps.length; }
+    const c = zoneClampCenter(cx, cz);
+    zoneState.initialized = true;
+    zoneState.phase = "stay";
+    zoneState.phaseTime = 0;
+    zoneState.phaseDuration = ZONE_CONFIG.INITIAL_ZONE_DELAY;
+    zoneState.sizeName = "LARGE";
+    zoneState.center = { x: c.x, z: c.z };
+    zoneState.radius = zoneRadiusFor("LARGE");
+    zoneState.from = null;
+    zoneState.next = null;
+    zoneState.history = [{ x: c.x, z: c.z }];
+    zoneState.moves = 0;
+    for (const p of allPlayers) { p.zoneOutsideSeconds = 0; p.zoneDamageAccum = 0; }
+  }
+  function resetZone() {
+    zoneState.initialized = false;
+    for (const p of allPlayers) { p.zoneOutsideSeconds = 0; p.zoneDamageAccum = 0; }
+    setZoneUiVisible(false);
+  }
+
+  // Next zone: a size (biased so it doesn't feel scripted -- sometimes the
+  // same, sometimes bigger or smaller) and a centre a configurable distance
+  // away, inside the map, not on top of where the zone recently was.
+  function pickNextZone() {
+    const cur = zoneState.center;
+    const weights = zoneState.sizeName === "SMALL" ? { LARGE: 0.4, MEDIUM: 0.35, SMALL: 0.25 }
+      : zoneState.sizeName === "LARGE" ? { LARGE: 0.2, MEDIUM: 0.45, SMALL: 0.35 }
+        : { LARGE: 0.3, MEDIUM: 0.3, SMALL: 0.4 };
+    let roll = Math.random(), sizeName = "MEDIUM";
+    for (const name of ["LARGE", "MEDIUM", "SMALL"]) { roll -= weights[name]; if (roll <= 0) { sizeName = name; break; } }
+    const [minD, maxD] = zoneRelocationRange();
+    const recent = zoneState.history.slice(-3, -1); // older than the current one
+    let best = null;
+    for (let attempt = 0; attempt < 48 && !best; attempt++) {
+      const tier = Math.random();
+      const lo = tier < 0.25 ? minD : tier < 0.7 ? minD * 1.6 : (minD + maxD) / 2;
+      const hi = tier < 0.25 ? Math.min(maxD, minD * 1.6) : tier < 0.7 ? (minD + maxD) / 2 : maxD;
+      const d = lo + Math.random() * Math.max(0, hi - lo);
+      const a = Math.random() * Math.PI * 2;
+      const x = cur.x + Math.cos(a) * d, z = cur.z + Math.sin(a) * d;
+      if (!zoneCenterInside(x, z)) continue;
+      if (recent.some((h) => Math.hypot(h.x - x, h.z - z) < minD * 0.6)) continue;
+      best = { x, z };
+    }
+    if (!best) { // cornered near an edge: sweep directions for any valid spot at least minD away
+      for (let k = 0; k < 36 && !best; k++) {
+        const a = (k / 36) * Math.PI * 2;
+        for (const d of [minD, (minD + maxD) / 2, maxD]) {
+          const x = cur.x + Math.cos(a) * d, z = cur.z + Math.sin(a) * d;
+          if (zoneCenterInside(x, z)) { best = { x, z }; break; }
+        }
+      }
+    }
+    if (!best) best = zoneClampCenter(cur.x + minD, cur.z);
+    zoneState.next = { x: best.x, z: best.z, radius: zoneRadiusFor(sizeName), sizeName };
+  }
+
+  function updateZone(deltaSeconds) {
+    if (!ZONE_CONFIG.ZONE_ENABLED || !(isCoopMatchActive || isSingleplayerMatchActive)) {
+      if (zoneUi.root && zoneUi.visible) setZoneUiVisible(false);
+      return;
+    }
+    if (zoneMatchPlayers().every((p) => p.isDead)) { // run over: the death screen owns the display
+      if (zoneUi.visible) setZoneUiVisible(false);
+      return;
+    }
+    if (!zoneState.initialized) initZone();
+    const z = zoneState;
+    z.phaseTime += deltaSeconds;
+    if (z.phase === "stay" && z.phaseTime >= z.phaseDuration) {
+      z.phase = "warning"; z.phaseTime = 0; z.phaseDuration = ZONE_CONFIG.ZONE_WARNING_DURATION;
+      pickNextZone();
+    } else if (z.phase === "warning" && z.phaseTime >= z.phaseDuration) {
+      z.phase = "transition"; z.phaseTime = 0; z.phaseDuration = ZONE_CONFIG.ZONE_TRANSITION_DURATION;
+      z.from = { x: z.center.x, z: z.center.z, radius: z.radius };
+    }
+    if (z.phase === "transition") {
+      const t = Math.min(1, z.phaseTime / z.phaseDuration);
+      z.center.x = z.from.x + (z.next.x - z.from.x) * t;
+      z.center.z = z.from.z + (z.next.z - z.from.z) * t;
+      z.radius = z.from.radius + (z.next.radius - z.from.radius) * t;
+      if (t >= 1) { // future zone becomes the current one
+        z.center = { x: z.next.x, z: z.next.z }; z.radius = z.next.radius; z.sizeName = z.next.sizeName;
+        z.history.push({ x: z.center.x, z: z.center.z }); if (z.history.length > 6) z.history.shift();
+        z.next = null; z.from = null; z.moves++;
+        z.phase = "stay"; z.phaseTime = 0; z.phaseDuration = zoneStayDuration();
+      }
+    }
+    updateZoneDamage(deltaSeconds);
+    updateZoneUi(deltaSeconds);
+  }
+
+  // Outside the boundary: a grace period, then damage that ramps up the
+  // longer you stay out. Goes through takeDamage like any other hit (whole
+  // points at a time, so the health UI isn't rewritten every frame).
+  function updateZoneDamage(deltaSeconds) {
+    const c = ZONE_CONFIG, z = zoneState;
+    for (const p of zoneMatchPlayers()) {
+      if (p.isDead) { p.zoneOutsideSeconds = 0; p.zoneDamageAccum = 0; continue; }
+      const outside = Math.hypot(p.camera.position.x - z.center.x, p.camera.position.z - z.center.z) > z.radius;
+      if (!outside) {
+        p.zoneOutsideSeconds = 0; p.zoneDamageAccum = 0;
+        continue;
+      }
+      p.zoneOutsideSeconds += deltaSeconds;
+      const over = p.zoneOutsideSeconds - c.ZONE_DAMAGE_START_DELAY;
+      if (over <= 0) continue;
+      const dps = Math.min(c.ZONE_DAMAGE_MAX_PER_SECOND, c.ZONE_DAMAGE_PER_SECOND + c.ZONE_DAMAGE_RAMP * over);
+      p.zoneDamageAccum += dps * deltaSeconds;
+      if (p.zoneDamageAccum >= 1) {
+        const whole = Math.floor(p.zoneDamageAccum);
+        p.zoneDamageAccum -= whole;
+        takeDamage(p, whole);
+      }
+    }
+  }
+
+  // ---- minimap + zone HUD (one instance for the whole game) --------------
+  const zoneUi = { root: null, canvas: null, ctx: null, label: null, visible: false, staticLayer: null, staticMapKey: "", w: 0, h: 0, dpr: 1, drawTimer: 0, borders: [] };
+  const ZONE_MM_REFRESH_SECONDS = 0.1;
+
+  function buildZoneUi() {
+    if (zoneUi.root) return;
+    const style = document.createElement("style");
+    style.textContent = `
+      #zone-minimap { position: fixed; z-index: 12; pointer-events: none; font-family: Arial, Helvetica, sans-serif; display: none; }
+      #zone-minimap canvas { display: block; border: 2px solid rgba(255,255,255,0.7); border-radius: 4px; background: #1b2620; }
+      #zone-minimap-label { margin-top: 3px; text-align: center; color: #fff; font-size: 13px; font-weight: bold; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+      #zone-minimap-label.warn { color: #ffd24d; }
+      #zone-minimap-label.moving { color: #ff9a4d; }
+      .zone-outside-vignette { position: fixed; z-index: 9; pointer-events: none; display: none; box-shadow: inset 0 0 90px 24px rgba(200, 20, 20, 0.55); }
+    `;
+    document.head.appendChild(style);
+    const root = document.createElement("div");
+    root.id = "zone-minimap";
+    const canvas = document.createElement("canvas");
+    const label = document.createElement("div");
+    label.id = "zone-minimap-label";
+    root.append(canvas, label);
+    document.body.appendChild(root);
+    zoneUi.root = root; zoneUi.canvas = canvas; zoneUi.ctx = canvas.getContext("2d"); zoneUi.label = label;
+    zoneUi.vignettes = [0, 1, 2, 3].map(() => {
+      const el = document.createElement("div");
+      el.className = "zone-outside-vignette";
+      document.body.appendChild(el);
+      return el;
+    });
+    positionZoneUi();
+    window.addEventListener("resize", positionZoneUi);
+  }
+  function positionZoneUi() {
+    if (!zoneUi.root) return;
+    const s = zoneUi.root.style;
+    s.top = s.bottom = s.left = s.right = "auto"; s.transform = "none";
+    const pos = ZONE_CONFIG.MINIMAP_POSITION;
+    if (pos.startsWith("top")) s.top = "16px"; else s.bottom = "16px";
+    if (pos.endsWith("left")) s.left = "16px";
+    else if (pos.endsWith("right")) s.right = "16px";
+    else { s.left = "50%"; s.transform = "translateX(-50%)"; }
+  }
+  function setZoneUiVisible(visible) {
+    if (!zoneUi.root) { if (!visible) return; buildZoneUi(); }
+    zoneUi.visible = visible;
+    zoneUi.root.style.display = visible && ZONE_CONFIG.MINIMAP_ENABLED ? "block" : "none";
+    if (!visible) for (const v of zoneUi.vignettes) v.style.display = "none";
+  }
+
+  // The static layer (buildings from the campus colliders, drawn once per
+  // map) so the per-frame cost is one drawImage plus a few circles.
+  function ensureZoneStaticLayer() {
+    const m = zoneMapRect();
+    const key = `${isCampusMap ? "campus" : "arena"}|${m.minX}|${m.maxX}|${m.minZ}|${m.maxZ}`;
+    if (zoneUi.staticMapKey === key && zoneUi.canvas.width) return;
+    zoneUi.staticMapKey = key;
+    const mw = m.maxX - m.minX, mh = m.maxZ - m.minZ;
+    const long = ZONE_CONFIG.MINIMAP_SIZE;
+    zoneUi.w = mw >= mh ? long : Math.round(long * mw / mh);
+    zoneUi.h = mw >= mh ? Math.round(long * mh / mw) : long;
+    zoneUi.dpr = Math.min(2, window.devicePixelRatio || 1);
+    zoneUi.canvas.width = Math.round(zoneUi.w * zoneUi.dpr);
+    zoneUi.canvas.height = Math.round(zoneUi.h * zoneUi.dpr);
+    zoneUi.canvas.style.width = zoneUi.w + "px";
+    zoneUi.canvas.style.height = zoneUi.h + "px";
+    const layer = document.createElement("canvas");
+    layer.width = zoneUi.canvas.width; layer.height = zoneUi.canvas.height;
+    const g = layer.getContext("2d");
+    const sx = layer.width / mw, sz = layer.height / mh;
+    g.fillStyle = "#26352b";
+    g.fillRect(0, 0, layer.width, layer.height);
+    if (isCampusMap && campusWorld && campusWorld.minimapFootprints) {
+      g.fillStyle = "#8b9199";
+      for (const c of campusWorld.minimapFootprints()) {
+        if (c.shape === "cylinder") continue; // trunks/poles: too small to read
+        g.save();
+        g.translate((c.cx - m.minX) * sx, (c.cz - m.minZ) * sz);
+        g.rotate(-c.yaw);
+        g.fillRect(-c.halfX * sx, -c.halfZ * sz, Math.max(1, c.halfX * 2 * sx), Math.max(1, c.halfZ * 2 * sz));
+        g.restore();
+      }
+    }
+    zoneUi.staticLayer = layer;
+  }
+
+  function zoneFmtTime(s) {
+    s = Math.max(0, Math.ceil(s));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+
+  function updateZoneUi(deltaSeconds) {
+    if (!zoneUi.root) buildZoneUi();
+    if (!zoneUi.visible) setZoneUiVisible(true);
+    if (!ZONE_CONFIG.MINIMAP_ENABLED) return;
+    const z = zoneState;
+    // label: what's coming
+    const left = z.phaseDuration - z.phaseTime;
+    let text = "", cls = "";
+    if (z.phase === "stay") text = z.moves === 0 && z.phaseDuration === ZONE_CONFIG.INITIAL_ZONE_DELAY ? `Zone holds • ${zoneFmtTime(left)}` : `Zone stable • ${zoneFmtTime(left)}`;
+    else if (z.phase === "warning") { text = ZONE_CONFIG.ZONE_WARNING_VISUALS_ENABLED ? `ZONE MOVING SOON • ${zoneFmtTime(left)}` : ""; cls = "warn"; }
+    else { text = `Zone moving • ${zoneFmtTime(left)}`; cls = "moving"; }
+    if (zoneUi.label.textContent !== text) zoneUi.label.textContent = text;
+    if (zoneUi.label.className !== cls) zoneUi.label.className = cls;
+    // red edge on the views of players who are outside
+    for (let i = 0; i < 4; i++) {
+      const v = zoneUi.vignettes[i];
+      const p = players[i];
+      const show = !!p && (isCoopMatchActive || i === 0) && !p.isDead && !p.screenGiven && p.zoneOutsideSeconds > 0;
+      if (!show) { if (v.style.display !== "none") v.style.display = "none"; continue; }
+      const r = getPlayerViewportRect(i);
+      v.style.display = "block";
+      v.style.left = r.x + "px"; v.style.top = r.y + "px"; v.style.width = r.width + "px"; v.style.height = r.height + "px";
+      v.style.opacity = String(Math.min(1, 0.35 + p.zoneOutsideSeconds / (ZONE_CONFIG.ZONE_DAMAGE_START_DELAY * 2)));
+    }
+    zoneUi.drawTimer -= deltaSeconds;
+    if (zoneUi.drawTimer > 0) return;
+    zoneUi.drawTimer = ZONE_MM_REFRESH_SECONDS;
+    drawZoneMinimap();
+  }
+
+  function drawZoneMinimap() {
+    ensureZoneStaticLayer();
+    const g = zoneUi.ctx, m = zoneMapRect(), z = zoneState;
+    const W = zoneUi.canvas.width, H = zoneUi.canvas.height;
+    const sx = W / (m.maxX - m.minX), sz = H / (m.maxZ - m.minZ);
+    const X = (x) => (x - m.minX) * sx, Z = (zz) => (zz - m.minZ) * sz;
+    const px = zoneUi.dpr;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.drawImage(zoneUi.staticLayer, 0, 0);
+    // danger area: everything outside the current zone, tinted red
+    g.beginPath();
+    g.rect(0, 0, W, H);
+    g.arc(X(z.center.x), Z(z.center.z), z.radius * sx, 0, Math.PI * 2, true);
+    g.fillStyle = "rgba(200, 30, 30, 0.30)";
+    g.fill("evenodd");
+    // current zone
+    g.lineWidth = 2 * px;
+    g.strokeStyle = "#3aa0ff";
+    g.beginPath();
+    g.arc(X(z.center.x), Z(z.center.z), z.radius * sx, 0, Math.PI * 2);
+    g.stroke();
+    // future zone (white), with a dashed route from here to there
+    if (z.next && ZONE_CONFIG.ZONE_WARNING_VISUALS_ENABLED) {
+      const pulse = z.phase === "warning" ? 0.65 + 0.35 * Math.sin(performance.now() / 260) : 1;
+      g.strokeStyle = `rgba(255,255,255,${pulse})`;
+      g.beginPath();
+      g.arc(X(z.next.x), Z(z.next.z), z.next.radius * sx, 0, Math.PI * 2);
+      g.stroke();
+      g.setLineDash([5 * px, 5 * px]);
+      g.lineWidth = 1 * px;
+      g.strokeStyle = "rgba(255,255,255,0.55)";
+      g.beginPath();
+      g.moveTo(X(z.center.x), Z(z.center.z));
+      g.lineTo(X(z.next.x), Z(z.next.z));
+      g.stroke();
+      g.setLineDash([]);
+      g.fillStyle = "rgba(255,255,255,0.9)";
+      g.beginPath();
+      g.arc(X(z.next.x), Z(z.next.z), 2.5 * px, 0, Math.PI * 2);
+      g.fill();
+    }
+    // players: a coloured arrow along their facing (world forward = -sin/-cos of yaw)
+    const list = zoneMatchPlayers();
+    for (let i = 0; i < list.length; i++) {
+      const p = list[i];
+      const cx = X(p.camera.position.x), cz = Z(p.camera.position.z);
+      if (p.isDead) { // inactive marker
+        g.strokeStyle = "rgba(190,190,190,0.8)";
+        g.lineWidth = 1.5 * px;
+        const s = 3.5 * px;
+        g.beginPath();
+        g.moveTo(cx - s, cz - s); g.lineTo(cx + s, cz + s);
+        g.moveTo(cx + s, cz - s); g.lineTo(cx - s, cz + s);
+        g.stroke();
+        continue;
+      }
+      const dx = -Math.sin(p.yaw), dz = -Math.cos(p.yaw);
+      const ang = Math.atan2(dz, dx);
+      const size = 5.5 * px;
+      g.save();
+      g.translate(cx, cz);
+      g.rotate(ang);
+      g.beginPath();
+      g.moveTo(size, 0); g.lineTo(-size * 0.7, size * 0.65); g.lineTo(-size * 0.3, 0); g.lineTo(-size * 0.7, -size * 0.65);
+      g.closePath();
+      g.globalAlpha = p.isDowned ? 0.55 : 1;
+      g.fillStyle = ZONE_PLAYER_COLORS[i % 4];
+      g.fill();
+      g.lineWidth = 1 * px;
+      g.strokeStyle = "rgba(0,0,0,0.85)";
+      g.stroke();
+      g.restore();
+    }
+  }
+
   function updateCampusFrame(deltaSeconds) {
     if (!isCampusMap) return;
     campusRecycler.update(deltaSeconds);
@@ -16903,6 +17325,7 @@
     document.body.classList.remove(`spectating-p${index + 1}`);
     player.spectateIndex = null;
     coopSpectatingLabelEls[index].textContent = "";
+    reclaimScreenArea(index);
     if (coopFullscreenSurvivorIndex !== null) {
       coopFullscreenSurvivorIndex = null;
       document.body.classList.remove("coop-spectator-fullscreen", "coop-spectator-fullscreen-p1", "coop-spectator-fullscreen-p2");
@@ -17077,6 +17500,135 @@
     return isCoopMatchActive && players.length >= 3;
   }
 
+  // ------------------------------------------------------------------
+  // SPLIT-SCREEN SCREEN AREAS (3-4 player matches). Player identity and
+  // viewport ownership are separate: once a dead player presses
+  // Triangle (Enter on keyboard) to give their screen area away
+  // (giveScreenArea), the remaining area holders are re-tiled by count
+  // -- 4: quadrants, 3: wide top + two bottom, 2: top/bottom halves,
+  // 1: full screen -- and each view slides to its new rect. Rects are
+  // window fractions so a resize just re-rounds them. Until the first
+  // handoff `dynamic` stays false and the original CSS/quadrant layout
+  // runs untouched. Players, cameras and inputs are never touched.
+  // ------------------------------------------------------------------
+  const VIEW_LAYOUT_ANIM_SECONDS = 0.35;
+  const viewLayout = { dynamic: false, from: [], cur: [], target: [], t: 1 };
+  const layoutHudBases = ["crosshair", "hit-marker", "health-hud", "ammo-hud", "interact-prompt", "scope-overlay", "inventory-panel", "coop-spectator-screen"];
+  const layoutHudProps = ["left", "top", "right", "bottom", "width", "height", "transform"];
+  function layoutSlots(n) {
+    if (n <= 1) return [{ x: 0, y: 0, w: 1, h: 1 }];
+    if (n === 2) return [{ x: 0, y: 0, w: 1, h: 0.5 }, { x: 0, y: 0.5, w: 1, h: 0.5 }];
+    if (n === 3) return [{ x: 0, y: 0, w: 1, h: 0.5 }, { x: 0, y: 0.5, w: 0.5, h: 0.5 }, { x: 0.5, y: 0.5, w: 0.5, h: 0.5 }];
+    return [{ x: 0, y: 0, w: 0.5, h: 0.5 }, { x: 0.5, y: 0, w: 0.5, h: 0.5 }, { x: 0, y: 0.5, w: 0.5, h: 0.5 }, { x: 0.5, y: 0.5, w: 0.5, h: 0.5 }];
+  }
+  function isScreenAreaGiven(index) {
+    return !!players[index].screenGiven;
+  }
+  function layoutPixelRect(index) {
+    const width = window.innerWidth, height = window.innerHeight;
+    const f = viewLayout.cur[index] || viewLayout.target[index];
+    if (!f) return { x: 0, y: 0, width, height };
+    const x0 = Math.round(f.x * width), x1 = Math.round((f.x + f.w) * width);
+    const y0 = Math.round(f.y * height), y1 = Math.round((f.y + f.h) * height);
+    return { x: x0, y: y0, width: Math.max(1, x1 - x0), height: Math.max(1, y1 - y0) };
+  }
+  function retargetViewLayout(animate) {
+    const holders = [];
+    players.forEach((p, i) => { if (!p.screenGiven) holders.push(i); });
+    const slots = layoutSlots(holders.length);
+    const defaults = layoutSlots(players.length);
+    viewLayout.from = players.map((p, i) => viewLayout.cur[i] || defaults[i]);
+    viewLayout.target = players.map(() => null);
+    holders.forEach((playerIndex, k) => { viewLayout.target[playerIndex] = slots[k]; });
+    // A giver keeps its last rect (it isn't drawn) so nothing reads null.
+    players.forEach((p, i) => { if (!viewLayout.target[i]) viewLayout.target[i] = viewLayout.from[i]; });
+    viewLayout.t = animate ? 0 : 1;
+    viewLayout.cur = (animate ? viewLayout.from : viewLayout.target).map((f) => ({ ...f }));
+    const n = holders.length;
+    document.body.classList.toggle("coop-spectator-fullscreen", n === 1);
+    const dh = document.getElementById("split-divider-h"), dv = document.getElementById("split-divider-v");
+    dh.classList.toggle("on", n >= 2);
+    dh.style.cssText = "left:0;top:50vh;width:100%;";
+    dv.classList.toggle("on", n >= 3);
+    dv.style.cssText = n === 3 ? "left:50vw;top:50vh;height:50%;" : "left:50vw;top:0;height:100%;";
+    applyLayoutHud();
+    updateCameraAspectsForRenderMode();
+  }
+  // Positions every per-player HUD piece inside its player's current rect.
+  function applyLayoutHud() {
+    if (!viewLayout.dynamic) return;
+    const W = window.innerWidth, H = window.innerHeight;
+    const px = (v) => `${Math.round(v)}px`;
+    const place = (base, index, css) => {
+      const el = document.getElementById(`${base}-p${index + 1}`);
+      if (!el) return;
+      for (const [k, v] of Object.entries(css)) el.style[k] = v;
+    };
+    players.forEach((p, i) => {
+      if (p.screenGiven) return;
+      const r = layoutPixelRect(i);
+      const cx = r.x + r.width / 2, cy = r.y + r.height / 2;
+      const bottom = H - (r.y + r.height) + 20, right = W - (r.x + r.width) + 20;
+      place("crosshair", i, { left: px(cx), top: px(cy) });
+      place("hit-marker", i, { left: px(cx), top: px(cy) });
+      place("health-hud", i, { left: px(r.x + 20), bottom: px(bottom), top: "auto" });
+      place("ammo-hud", i, { right: px(right), bottom: px(bottom), left: "auto", top: "auto" });
+      place("interact-prompt", i, { left: px(cx), top: px(r.y + r.height * 0.7) });
+      place("scope-overlay", i, { left: px(r.x), top: px(r.y), width: px(r.width), height: px(r.height) });
+      const full = r.width > W * 0.9 && r.height > H * 0.9;
+      place("inventory-panel", i, { left: px(cx), top: px(cy), transform: `translate(-50%, -50%) scale(${full ? 1 : 0.85})` });
+      place("coop-spectator-screen", i, { left: px(r.x), top: px(r.y), width: px(r.width) });
+    });
+  }
+  function tickViewportLayout(deltaSeconds) {
+    if (!viewLayout.dynamic || viewLayout.t >= 1) return;
+    viewLayout.t = Math.min(1, viewLayout.t + deltaSeconds / VIEW_LAYOUT_ANIM_SECONDS);
+    const e = viewLayout.t * viewLayout.t * (3 - 2 * viewLayout.t); // smoothstep
+    viewLayout.cur = viewLayout.target.map((to, i) => {
+      const from = viewLayout.from[i] || to;
+      return { x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e, w: from.w + (to.w - from.w) * e, h: from.h + (to.h - from.h) * e };
+    });
+    applyLayoutHud();
+    updateCameraAspectsForRenderMode();
+  }
+  function resetViewLayout() {
+    viewLayout.dynamic = false;
+    viewLayout.from = []; viewLayout.cur = []; viewLayout.target = []; viewLayout.t = 1;
+    for (const p of allPlayers) p.screenGiven = false;
+    document.body.classList.remove("layout-dyn");
+    for (const base of layoutHudBases) {
+      for (let n = 1; n <= 4; n++) {
+        const el = document.getElementById(`${base}-p${n}`);
+        if (el) for (const prop of layoutHudProps) el.style.removeProperty(prop);
+      }
+    }
+    for (const id of ["split-divider-h", "split-divider-v"]) {
+      const el = document.getElementById(id);
+      if (el) { el.classList.remove("on"); el.style.cssText = ""; }
+    }
+  }
+  // A dead player's confirm press: hand their screen area to the survivors.
+  function giveScreenArea(deadIndex) {
+    const player = players[deadIndex];
+    if (!isThreePlusMatch() || !player.isDead || player.screenGiven) return;
+    if (!players.some((p) => !p.isDead)) return; // everyone's down: the death screen owns the display
+    player.screenGiven = true;
+    coopSpectatorScreenEls[deadIndex].classList.remove("visible");
+    if (!viewLayout.dynamic) {
+      viewLayout.dynamic = true;
+      document.body.classList.add("layout-dyn");
+      viewLayout.cur = layoutSlots(players.length).map((f) => ({ ...f }));
+    }
+    playClip("menu_click_01", { volume: 0.5 });
+    retargetViewLayout(true);
+  }
+  // A revived player takes a screen area back.
+  function reclaimScreenArea(index) {
+    if (!viewLayout.dynamic || !players[index].screenGiven) return;
+    players[index].screenGiven = false;
+    retargetViewLayout(true);
+  }
+
   // Where a player's own view sits on screen, in CSS pixels from the
   // top-left: the whole window in singleplayer (or for a 2-player
   // "Full Screen" survivor), top/bottom half in a 2-player match, and a
@@ -17091,6 +17643,7 @@
     if (!isCoopMatchActive || coopFullscreenSurvivorIndex === playerIndex) {
       return { x: 0, y: 0, width, height };
     }
+    if (viewLayout.dynamic && isThreePlusMatch()) return layoutPixelRect(playerIndex);
     const topHeight = Math.ceil(height / 2);
     if (!isThreePlusMatch() || (players.length === 3 && playerIndex === 0)) {
       return playerIndex === 0
@@ -17383,6 +17936,7 @@
     // just the one that just ended.
     currentScore = 0;
     updateScoreUI();
+    resetZone();
 
     for (const enemyState of enemies) {
       scene.remove(enemyState.mesh);
@@ -17457,6 +18011,8 @@
     isSingleplayerPaused = false;
     setCursorHidden(false); // back to the title screen, which always wants a real, visible cursor -- startSingleplayerGame re-hides it afterward for its own controller branch
     coopFullscreenSurvivorIndex = null;
+    resetViewLayout();
+    resetZone();
     document.body.classList.remove("coop-spectator-fullscreen", "coop-spectator-fullscreen-p1", "coop-spectator-fullscreen-p2");
     document.body.classList.remove("quad-mode", "trio-mode", "spectating-p1", "spectating-p2", "spectating-p3", "spectating-p4");
     coopSpectatorScreenEls.forEach((el) => el.classList.remove("visible"));
@@ -18035,7 +18591,7 @@
   // Screen" for the one survivor; with 4 it steps to the next living
   // teammate to watch.
   function confirmCoopSpectatorPrompt(deadIndex) {
-    if (isThreePlusMatch()) cycleSpectateTarget(deadIndex);
+    if (isThreePlusMatch()) giveScreenArea(deadIndex);
     else enterCoopSpectatorFullscreen(1 - deadIndex);
   }
 
@@ -18915,7 +19471,7 @@
   document.addEventListener("keydown", function (event) {
     if (event.code !== "Enter") return;
     if (!isCoopMatchActive || coopFullscreenSurvivorIndex !== null) return;
-    if (matchP1Scheme !== "keyboard" || !players[0].isDead) return;
+    if (matchP1Scheme !== "keyboard" || !players[0].isDead || players[0].screenGiven) return;
     if (!coopSpectatorScreenEls[0].classList.contains("visible")) return;
     confirmCoopSpectatorPrompt(0);
   });
@@ -20534,6 +21090,7 @@
     }
     for (let i = 1; i < players.length; i++) players[i].input.assignGamepad(quadSetup.slots[i].gamepadIndex);
 
+    resetViewLayout();
     players.forEach((player) => resetPlayerState(player));
     resetSharedWorldState();
 
@@ -20542,10 +21099,11 @@
       setPlayerFace(player, slot.faceKey || pickRandomPlayerFaceKey());
       applyCustomizationToCharacter(player.human, slot); // headgear, shirt, pants
       player.spectateIndex = null;
+      player.screenGiven = false;
       player.camera.position.set((i - (players.length - 1) / 2) * 2, EYE_HEIGHT, 0); // side by side, same spacing as co-op's +/-1
       applyCameraRotation(player);
       coopSpectatingLabelEls[i].textContent = "";
-      coopSpectatorFullscreenButtonEls[i].innerHTML = `${readyIconHTML(i === 0 ? matchP1Scheme : "controller")}Next Player`;
+      coopSpectatorFullscreenButtonEls[i].innerHTML = `${readyIconHTML(i === 0 ? matchP1Scheme : "controller")}Give Screen Area`;
     });
     applySelectedMap();
     placePlayersAtMapSpawn(players.slice());
@@ -25088,7 +25646,9 @@
     // Each player's half (2 players) or quadrant (4 players) -- see
     // getPlayerViewportRect. A dead 4-player teammate's quadrant shows
     // whoever they're spectating (see getSpectateViewIndex).
+    let drewFirstView = false;
     players.forEach((player, index) => {
+      if (player.screenGiven) return; // gave their screen area away: no viewport
       const rect = getPlayerViewportRect(index);
       // WebGL viewport/scissor y is measured from the BOTTOM of the
       // canvas, opposite of CSS/DOM -- so a top-row view is the upper
@@ -25106,7 +25666,7 @@
       if (sharedShadow) {
         // The shared shadow map doesn't depend on the viewing camera, so
         // every view after the first reuses the one it drew.
-        renderer.shadowMap.autoUpdate = index === 0 && shadowsThisFrame;
+        renderer.shadowMap.autoUpdate = !drewFirstView && shadowsThisFrame;
       } else {
         centerSunShadow(viewCamera.position.x, viewCamera.position.z, SUN_SHADOW_HALF_M);
         renderer.shadowMap.autoUpdate = true;
@@ -25121,6 +25681,7 @@
         zombieSystem.showLodForView(enemyState.zombie, Math.hypot(pos.x - vx, pos.z - vz) * lodScale);
       }
       renderer.toneMappingExposure = exposureOf(getSpectateViewIndex(index));
+      drewFirstView = true;
       const ownAspect = viewCamera.aspect;
       const viewAspect = rect.width / rect.height;
       if (Math.abs(ownAspect - viewAspect) > 0.001) {
@@ -25150,6 +25711,7 @@
   // WINDOW RESIZE
   // ------------------------------------------------------------------
   window.addEventListener("resize", function () {
+    applyLayoutHud();
     updateCameraAspectsForRenderMode();
     renderer.setSize(window.innerWidth, window.innerHeight);
     syncSceneTargetSize();
@@ -25294,6 +25856,7 @@
   // playable here, just not yet visible; real split-screen rendering is
   // the next slice of this same step.
   function updateCoopMatchFrame(deltaSeconds) {
+    tickViewportLayout(deltaSeconds);
     pollCoopMatchPauseGamepads();
 
     // Extra defensive re-hide (user-reported, intermittent -- "pretty
@@ -25458,7 +26021,7 @@
       // for them.
       if (coopFullscreenSurvivorIndex === null) {
         for (let i = 0; i < players.length; i++) {
-          if (players[i].isDead && players[i].input.wasActionJustPressed("switchWeapon")) {
+          if (players[i].isDead && !players[i].screenGiven && players[i].input.wasActionJustPressed("switchWeapon")) {
             confirmCoopSpectatorPrompt(i);
             if (!isThreePlusMatch()) break; // 2 players: going fullscreen ends the prompt for both
           }
@@ -25478,6 +26041,7 @@
       updateDownedPlayers(deltaSeconds); // the authoritative bleed-out clock (see DOWNED STATE)
       updateEnemies(deltaSeconds);
       updateWaveManager(deltaSeconds);
+      updateZone(deltaSeconds);
       updateCampusFrame(deltaSeconds);
       updateParticleBursts(deltaSeconds);
       updateBloodDecals(deltaSeconds);
@@ -26103,6 +26667,7 @@
       if (!isWorldPaused) {
         updateEnemies(deltaSeconds);
         updateWaveManager(deltaSeconds);
+        updateZone(deltaSeconds);
         updateCampusFrame(deltaSeconds);
         updateParticleBursts(deltaSeconds);
         updateBloodDecals(deltaSeconds);

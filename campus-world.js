@@ -6968,6 +6968,12 @@
       resolveCircle,
       supportHeightAt,
       segmentBlocked,
+      // Sight-blocking footprints (buildings, walls) for the minimap's one-time static layer.
+      minimapFootprints: () => {
+        const out = [];
+        forEachColliderIn(bounds.minX, bounds.minZ, bounds.maxX, bounds.maxZ, (c) => { if (blocksSight(c)) out.push(c); return false; });
+        return out;
+      },
       vehicleBlocksShot,
       // visual effects only (impacts, footstep puffs, streetlights)
       raycast,
