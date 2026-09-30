@@ -524,7 +524,8 @@ other player or affects their gameplay.
 | Shotgun | 5 scrap | Shotgun Recipe |
 | SMG | 5 scrap | SMG Recipe |
 | Katana | 1 plank + 3 scrap | Katana Recipe |
-| AK-47 | 15 scrap + 3 planks | AK-47 Recipe |
+| AK-47 | 20 scrap + 2 planks | AK-47 Recipe (2 points) |
+| Sniper Rifle | 20 scrap + 2 planks | Sniper Recipe (2 points) |
 
 Weapon recipes show drawn gun-silhouette icons. A crafted weapon fills the first empty slot, or
 replaces (and drops) the held one. Controller: left stick moves the cursor, right stick up/down
@@ -540,9 +541,11 @@ steps through recipes (hold to repeat), R2 clicks. The Craft button is a full-wi
   needs either one). Every node gives +10 max stamina over its original value; all but Distance
   Runner and Mid Distance add +1% sprint speed (multiplicative, regular and tactical sprint).
 - **Sliding:** Sliding (unlocks sliding) → Faster Sliding (+0.2s) → Efficient Slides (sliding
-  costs no stamina).
+  costs half as much stamina).
 - **Weapons:** Baseball Bat Recipe → Glock Recipe → Shotgun Recipe and SMG Recipe → Katana Recipe
-  (needs either one — `parentsRequired: "any"`) → AK-47 Recipe.
+  (needs either one — `parentsRequired: "any"`) → AK-47 Recipe **or** Sniper Recipe (side by side,
+  2 points each). Ammo Conservation II also costs 2 points.
+- **Stacks:** scrap 20; every other item 60.
 - **Health:** Health 1 (+10 max HP) → Bandages → Health 2 (+10) → Medkit.
 
 ---

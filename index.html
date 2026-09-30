@@ -12015,7 +12015,7 @@
   // ------------------------------------------------------------------
   const BARRICADE_ROWS = 4;
   const BARRICADE_HIT_INTERVAL = 1.0;     // s between one zombie's strikes on the boards
-  const BARRICADE_PLANK_HP = 12 * 1.1 * 1.15; // strikes to fully destroy one board (half of it splits it); brutes hit for 2 -- +10%, then +15% (explicit requests)
+  const BARRICADE_PLANK_HP = 12 * 1.1 * 1.15 * 0.8; // strikes to fully destroy one board (half of it splits it); brutes hit for 2 -- +10%, then +15%, then -20% (explicit requests)
   const BARRICADE_REPAIR_RANGE = 2.2;     // m from the doorway's center
   // Zombies break the middle boards first (split, then the stubs), then the outer ones.
   const BARRICADE_BREAK_ORDER = [[1, 1], [2, 1], [1, 0], [2, 0], [0, 1], [3, 1], [0, 0], [3, 0]];
@@ -12389,7 +12389,7 @@
   // ------------------------------------------------------------------
   const TURRET_CONFIG = {
     damage: null,               // per shot -- null = the starting pistol's own body-shot damage (see turretDamage)
-    fireInterval: 1.15,         // s between shots: deliberate, not a spray
+    fireInterval: 1.15 / 0.9,         // s between shots: deliberate, not a spray -- 10% slower (explicit request)
     targetRange: 18,            // TURRET_TARGET_RANGE: m -- only enemies this close are considered
     targetSearchInterval: 0.25, // s between target searches
     sightChecksPerSearch: 3,    // nearest candidates given a line-of-sight check per search
@@ -12399,7 +12399,7 @@
     pitchMin: -0.3,             // rad (down)
     pitchMax: 0.55,             // rad (up)
     aimTolerance: 0.07,         // rad -- only fires when this close to on target
-    maxHealth: 358,             // +10% over the old 325 (explicit request); zombies hit it for the difficulty's enemyContactDamage every ENEMY_HIT_INTERVAL
+    maxHealth: 358 * 0.9,             // +10% over the old 325, then -10% (explicit requests); zombies hit it for the difficulty's enemyContactDamage every ENEMY_HIT_INTERVAL
     ammo: Infinity,             // rounds per placement (finite later: turret.ammo counts down per shot)
     deployedScale: 1.55,        // placed turrets are drawn this much bigger (~1.1 m tall, 2/3 of a player); carried ones stay hand-sized
     radius: 0.55,               // m -- its footprint when placed (collision + placement)
@@ -12824,7 +12824,9 @@
   }
   function turretCanSee(turret, e) {
     const a = turret.model.group.position, b = e.mesh.position;
-    return isCampusMap ? !campusWorld.segmentBlocked(a.x, a.z, b.x, b.z, 0) : hasLineOfSight(a.x, a.z, b.x, b.z, 0.05);
+    // Standing heights (turret.model.group sits on its floor) so an enemy on
+    // another floor is judged against the slabs/walls actually between them.
+    return isCampusMap ? !campusWorld.segmentBlocked(a.x, a.z, b.x, b.z, 0, false, a.y, e.campusGroundY || 0) : hasLineOfSight(a.x, a.z, b.x, b.z, 0.05);
   }
   // Nearest enemy in range that it can see and turn to (a few sight checks at most).
   function findTurretTarget(turret) {
@@ -12864,7 +12866,7 @@
     // boards and glass don't block it -- turrets see and shoot straight
     // through both (explicit request; glass colliders are seeThrough, so
     // segmentBlocked already skips them).
-    const blocked = isCampusMap && campusWorld.segmentBlocked(turretMuzzle.x, turretMuzzle.z, turretAimPoint.x, turretAimPoint.z, 0);
+    const blocked = isCampusMap && campusWorld.segmentBlocked(turretMuzzle.x, turretMuzzle.z, turretAimPoint.x, turretAimPoint.z, 0, false, turret.model.group.position.y, e.campusGroundY || 0);
     if (blocked) {
       turret.enemy = null;
       turret.searchTimer = 0;
@@ -12958,8 +12960,12 @@
 
   // A bullet can't pass through a campus building (the tiny map never
   // checked walls for shots, so this only applies on the campus).
-  function worldBlocksShot(origin, point) {
-    return isCampusMap && (campusWorld.segmentBlocked(origin.x, origin.z, point.x, point.z, 0) ||
+  // shooterFeetY / targetFeetY (standing heights, see targetStandingY) make the
+  // wall check floor-aware so a shot into an upstairs room is judged against
+  // the walls/slabs on its actual path, not a flat 2D projection. Omitted or
+  // ground-to-ground, it's the plain check.
+  function worldBlocksShot(origin, point, shooterFeetY, targetFeetY) {
+    return isCampusMap && (campusWorld.segmentBlocked(origin.x, origin.z, point.x, point.z, 0, false, shooterFeetY, targetFeetY) ||
       campusWorld.vehicleBlocksShot(origin.x, origin.y, origin.z, point.x, point.y, point.z));
   }
 
@@ -14692,7 +14698,7 @@
   // generically the same way weapons are (an id-keyed def table), so
   // adding a new item later never means special-casing anything below.
   //
-  // `maxStack: null` means unlimited -- every current item uses this,
+  // `maxStack: null` means unlimited (none currently do),
   // but addItemToInventory below already fully honors a finite cap
   // (splitting overflow into additional slots), so giving any item def
   // a real number later needs no changes here.
@@ -14733,7 +14739,7 @@
       displayName: "Bandages",
       category: "healing",
       icon: "\u{1FA79}",
-      maxStack: null,
+      maxStack: 60,
       get healAmount() { return bandageHealAmount(); }, // depends on the difficulty
       get description() { return `Heals ${bandageHealAmount()} Health`; },
     },
@@ -14751,14 +14757,14 @@
         '<rect x="20" y="31" width="24" height="8" fill="#d42a2a"/>' +
         "</svg>"
       ),
-      maxStack: null,
+      maxStack: 60,
       get healAmount() { return medkitHealAmount(); }, // depends on the difficulty
       get description() { return `Heals ${medkitHealAmount()} Health`; },
     },
-    rocks: { id: "rocks", displayName: "Rocks", category: "crafting", icon: "\u{1FAA8}", maxStack: null },
-    planks: { id: "planks", displayName: "Planks", category: "crafting", icon: "\u{1FAB5}", maxStack: null },
-    cloth: { id: "cloth", displayName: "Cloth", category: "misc", icon: "\u{1F9F5}", iconImage: CLOTH_ICON_URL, maxStack: null },
-    scrap: { id: "scrap", displayName: "Scrap", category: "crafting", icon: "\u{1F529}", maxStack: null },
+    rocks: { id: "rocks", displayName: "Rocks", category: "crafting", icon: "\u{1FAA8}", maxStack: 60 },
+    planks: { id: "planks", displayName: "Planks", category: "crafting", icon: "\u{1FAB5}", maxStack: 60 },
+    cloth: { id: "cloth", displayName: "Cloth", category: "misc", icon: "\u{1F9F5}", iconImage: CLOTH_ICON_URL, maxStack: 60 },
+    scrap: { id: "scrap", displayName: "Scrap", category: "crafting", icon: "\u{1F529}", maxStack: 20 },
   };
 
   // Fills an icon element with the item's `iconImage` (a picture) when it
@@ -14960,7 +14966,7 @@
       description: "A fully automatic assault rifle with a 1.5x ACOG.",
       iconImage: GUN_ICON_URIS.ak47,
       resultWeaponId: "ak47",
-      cost: [{ itemId: "scrap", quantity: 15 }, { itemId: "planks", quantity: 3 }],
+      cost: [{ itemId: "scrap", quantity: 20 }, { itemId: "planks", quantity: 2 }],
       requiredSkillId: "ak47_recipe",
     },
     {
@@ -14969,7 +14975,7 @@
       description: "A bolt-action rifle with a 4x scope. Hits hard -- aim for the head.",
       iconImage: GUN_ICON_URIS.sniper,
       resultWeaponId: "sniper",
-      cost: [{ itemId: "scrap", quantity: 24 }],
+      cost: [{ itemId: "scrap", quantity: 20 }, { itemId: "planks", quantity: 2 }],
       requiredSkillId: "sniper_recipe",
     },
     // resultTurret: crafted straight into the player's hands (see TURRETS)
@@ -15645,7 +15651,7 @@
     },
     {
       id: "efficient_slides", name: "Efficient Slides", tier: 3, position: { x: 0, y: SKILL_NODE_SPACING_Y * 2 }, parentId: "sliding_2",
-      description: "Sliding no longer costs stamina", effect: { freeSlides: true },
+      description: "Sliding costs half as much stamina", effect: { slideCostMultiplier: 0.5 },
     },
     {
       id: "weaponsmith_1", name: "Glock Recipe", tier: 2, position: { x: SKILL_WEAPON_X, y: SKILL_NODE_SPACING_Y }, parentId: "baseball_bat",
@@ -15672,13 +15678,13 @@
       description: "Unlocks Katana Recipe", effect: { unlocksRecipeId: "katana" },
     },
     {
-      id: "ak47_recipe", name: "AK-47 Recipe", tier: 5,
-      position: { x: SKILL_WEAPON_X, y: SKILL_NODE_SPACING_Y * 4 }, parentId: "katana_recipe",
+      id: "ak47_recipe", name: "AK-47 Recipe", tier: 5, cost: 2,
+      position: { x: SKILL_WEAPON_X - SKILL_WEAPONSMITH_CHILD_OFFSET_X, y: SKILL_NODE_SPACING_Y * 4 }, parentId: "katana_recipe",
       description: "Unlocks AK-47 Recipe", effect: { unlocksRecipeId: "ak47" },
     },
     {
-      id: "sniper_recipe", name: "Sniper Recipe", tier: 6,
-      position: { x: SKILL_WEAPON_X, y: SKILL_NODE_SPACING_Y * 5 }, parentId: "ak47_recipe",
+      id: "sniper_recipe", name: "Sniper Recipe", tier: 5, cost: 2,
+      position: { x: SKILL_WEAPON_X + SKILL_WEAPONSMITH_CHILD_OFFSET_X, y: SKILL_NODE_SPACING_Y * 4 }, parentId: "katana_recipe",
       description: "Unlocks Sniper Rifle Recipe", effect: { unlocksRecipeId: "sniper" },
     },
     {
@@ -15710,7 +15716,7 @@
       description: "10% Chance to Not Consume Ammo", effect: { ammoSaveChance: 0.1 },
     },
     {
-      id: "ammo_conservation_2", name: "Ammo Conservation II", tier: 2, position: { x: SKILL_AMMO_X, y: SKILL_NODE_SPACING_Y }, parentId: "ammo_conservation_1",
+      id: "ammo_conservation_2", name: "Ammo Conservation II", tier: 2, cost: 2, position: { x: SKILL_AMMO_X, y: SKILL_NODE_SPACING_Y }, parentId: "ammo_conservation_1",
       description: "20% Chance to Not Consume Ammo", effect: { ammoSaveChance: 0.2 },
     },
   ];
@@ -15827,13 +15833,14 @@
     return duration;
   }
 
-  // Efficient Slides (explicit request): sliding costs no stamina at all.
-  function hasFreeSlides(player) {
+  // Efficient Slides (explicit request): sliding costs half the stamina.
+  function getSlideStaminaCost(player) {
+    let cost = SLIDE_STAMINA_COST;
     for (const id of player.unlockedSkillIds) {
       const effect = SKILL_TREE_NODES_BY_ID[id].effect;
-      if (effect && effect.freeSlides) return true;
+      if (effect && effect.slideCostMultiplier) cost *= effect.slideCostMultiplier;
     }
-    return false;
+    return cost;
   }
 
   // Ammo Conservation: chance a shot doesn't use up its round (see
@@ -19815,7 +19822,8 @@
       aimAssistToEnemyScratch.divideScalar(distance); // normalize
       const angle = aimAssistForwardScratch.angleTo(aimAssistToEnemyScratch);
       if (angle >= bestAngle) continue;
-      if (!hasLineOfSight(origin.x, origin.z, enemyState.mesh.position.x, enemyState.mesh.position.z, 0.15)) continue;
+      if (!hasLineOfSight(origin.x, origin.z, enemyState.mesh.position.x, enemyState.mesh.position.z, 0.15,
+        isCampusMap ? targetStandingY(player) : undefined, isCampusMap ? enemyState.campusGroundY || 0 : undefined)) continue;
       best = enemyState;
       bestAngle = angle;
     }
@@ -21543,7 +21551,7 @@
     }
 
     let hits = raycastEnemies(raycaster);
-    if (isCampusMap) hits = hits.filter((h) => !worldBlocksShot(player.camera.position, h.point));
+    if (isCampusMap) hits = hits.filter((h) => !worldBlocksShot(player.camera.position, h.point, targetStandingY(player), h.object.userData.enemyRef?.campusGroundY || 0));
     hits = filterHitsByBarricades(raycaster, hits);
     // Impact effects (visual only -- the hit itself is already decided).
     const fxPower = (FX_WEAPON[slot.weaponId] || { power: 1 }).power;
@@ -21634,8 +21642,8 @@
       let hits = raycastEnemies(raycaster);
       let bodyHit = findNearestEnemyBodyHit(raycaster.ray);
       if (isCampusMap) {
-        hits = hits.filter((h) => !worldBlocksShot(player.camera.position, h.point));
-        if (bodyHit && worldBlocksShot(player.camera.position, raycaster.ray.at(bodyHit.distance, pelletBodyHitPoint))) bodyHit = null;
+        hits = hits.filter((h) => !worldBlocksShot(player.camera.position, h.point, targetStandingY(player), h.object.userData.enemyRef?.campusGroundY || 0));
+        if (bodyHit && worldBlocksShot(player.camera.position, raycaster.ray.at(bodyHit.distance, pelletBodyHitPoint), targetStandingY(player), bodyHit.enemyState.campusGroundY || 0)) bodyHit = null;
       }
       // Pellets stop at barricade boards too (the gaps let them through).
       if (barricadePlankMeshes.length) {
@@ -22808,7 +22816,8 @@
       const bearing = Math.atan2(dx * rightX + dz * rightZ, dx * forward.x + dz * forward.z);
       const halfWidth = distance > radius ? Math.asin(radius / distance) : Math.PI;
       if (bearing + halfWidth < minYaw || bearing - halfWidth > maxYaw) continue;
-      if (!hasLineOfSight(camX, camZ, enemyState.mesh.position.x, enemyState.mesh.position.z, 0)) continue;
+      if (!hasLineOfSight(camX, camZ, enemyState.mesh.position.x, enemyState.mesh.position.z, 0,
+        isCampusMap ? targetStandingY(player) : undefined, isCampusMap ? enemyState.campusGroundY || 0 : undefined)) continue;
 
       sweep.hitEnemies.add(enemyState);
       playKatanaHitFeedback(player, enemyState);
@@ -23004,14 +23013,11 @@
 
     const forwardSpeed = player.velocity.dot(forwardVector);
     if (forwardSpeed < SLIDE_TRIGGER_SPEED) return;
-    const freeSlides = hasFreeSlides(player);
-    if (!freeSlides && player.stamina < SLIDE_MIN_STAMINA) return;
+    if (player.stamina < SLIDE_MIN_STAMINA) return;
 
-    if (!freeSlides) {
-      player.stamina = Math.max(0, player.stamina - SLIDE_STAMINA_COST);
-      if (player.stamina <= 0) player.isStaminaExhausted = true; // same "hit 0" lockout as running out mid-sprint
-      updateStaminaUI(player);
-    }
+    player.stamina = Math.max(0, player.stamina - getSlideStaminaCost(player));
+    if (player.stamina <= 0) player.isStaminaExhausted = true; // same "hit 0" lockout as running out mid-sprint
+    updateStaminaUI(player);
 
     // Faster Sliding (slideDurationBonus skills): the slide lasts longer
     // by starting further up the same decay curve -- (peak - walk) scales

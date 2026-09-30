@@ -106,6 +106,7 @@
     const trails = [];                // per player: rolling breadcrumbs
     let trailTimer = 0;
     let updateTimer = 0;
+    let nextPlayer = 0;               // whose turn it is to receive the next enemy (round-robin)
     let cachedCandidates = [];        // validated, still-good candidates
     let cacheAnchors = [];            // player positions the cache was built for
     const stats = { attempts: 0, candidatesTested: 0, accepted: 0, rejected: {}, lastAttemptMs: 0, directional: { ahead: 0, side: 0, behind: 0 } };
@@ -263,11 +264,12 @@
       return { x, z, weight, facing: bestClass };
     }
 
-    // A handful of random points on the ring around a random living player.
-    function sampleCandidates(players, directional) {
+    // A handful of random points on the ring around the target player (the
+    // spawn manager hands out players in turn -- see nextPlayer -- so split-up
+    // players each get the same number of enemies).
+    function sampleCandidates(players, directional, playerIndex) {
       const out = [];
       for (let i = 0; i < config.candidatesPerAttempt; i++) {
-        const playerIndex = Math.floor(Math.random() * players.length);
         const p = players[playerIndex];
         let angle = Math.random() * Math.PI * 2;
         const t = directional ? travelOf(playerIndex) : null;
@@ -289,14 +291,14 @@
       }
       // Plus a few spots just behind buildings ahead (one cheap map query).
       if (directional && hooks.findOccludedSpots) {
-        players.forEach((p, playerIndex) => {
-          const t = travelOf(playerIndex);
-          if (!t) return;
+        const p = players[playerIndex];
+        const t = travelOf(playerIndex);
+        if (t) {
           for (const spot of hooks.findOccludedSpots(p.x, p.z, t.dx, t.dz, config.minSpawnDistance,
             config.maxSpawnDistance, (config.forwardSpawnAngleDeg * Math.PI) / 180, config.occludedSpotsPerAttempt)) {
             out.push({ x: spot.x, z: spot.z, playerIndex });
           }
-        });
+        }
       }
       return out;
     }
@@ -317,7 +319,7 @@
       return players.some((p, i) => Math.hypot(p.x - cacheAnchors[i].x, p.z - cacheAnchors[i].z) > config.reuseMoveThreshold);
     }
 
-    function findSpawnPosition(players, directional) {
+    function findSpawnPosition(players, directional, targetIndex) {
       if (playersMovedFromCache(players)) {
         cachedCandidates = [];
         cacheAnchors = players.map((p) => ({ x: p.x, z: p.z }));
@@ -325,15 +327,16 @@
       // Reuse still-valid cached spots first (re-checked cheaply: they may
       // have drifted into view or too close since they were found).
       cachedCandidates = cachedCandidates.filter((c) => evaluate(c.x, c.z, players, directional));
-      const travelling = directional && players.some((_, i) => travelOf(i));
-      const hasAhead = () => cachedCandidates.some((c) => directionalMultiplier(c) > 1.5);
+      const forTarget = () => cachedCandidates.filter((c) => c.playerIndex === targetIndex);
+      const travelling = directional && !!travelOf(targetIndex);
+      const hasAhead = () => forTarget().some((c) => directionalMultiplier(c) > 1.5);
       // A directional request with nothing ahead in the cache samples fresh
       // (forward-biased) batches -- at most 1 + directionalExtraBatches small
       // ones -- before settling for whatever valid spot there is.
-      const batches = cachedCandidates.length === 0 ? 1 + (travelling ? config.directionalExtraBatches : 0)
+      const batches = forTarget().length === 0 ? 1 + (travelling ? config.directionalExtraBatches : 0)
         : travelling && !hasAhead() ? 1 + config.directionalExtraBatches : 0;
       for (let b = 0; b < batches; b++) {
-        for (const c of sampleCandidates(players, directional)) {
+        for (const c of sampleCandidates(players, directional, targetIndex)) {
           const scored = evaluate(c.x, c.z, players, directional);
           if (config.debug) debugLog.push({ x: c.x, z: c.z, ok: !!scored });
           if (scored) {
@@ -342,10 +345,11 @@
           }
         }
         if (debugLog.length > 48) debugLog.splice(0, debugLog.length - 48);
-        if (cachedCandidates.length > 0 && (!travelling || hasAhead())) break;
+        if (forTarget().length > 0 && (!travelling || hasAhead())) break;
       }
-      if (cachedCandidates.length === 0) return null;
-      const chosen = pickWeighted(cachedCandidates, directional);
+      const pool = forTarget();
+      if (pool.length === 0) return null;
+      const chosen = pickWeighted(pool, directional);
       cachedCandidates.splice(cachedCandidates.indexOf(chosen), 1);
       return chosen;
     }
@@ -382,6 +386,7 @@
         cacheAnchors = [];
         debugLog.length = 0;
         updateTimer = 0;
+        nextPlayer = 0;
         travel.length = 0;
       },
       recentSpawns,
@@ -403,9 +408,19 @@
         stats.attempts++;
         for (let n = 0; n < config.spawnsPerUpdate && queue.length > 0; n++) {
           if (hooks.countActiveEnemies() >= config.maxActiveEnemies) break;
-          if (players.every((p) => hooks.countEnemiesNear(p.x, p.z, config.nearbyRadius) >= config.maxNearbyEnemies)) break;
           const directional = !!queue[0].directional;
-          const spot = findSpawnPosition(players, directional);
+          // Every player gets an enemy in turn (starting from nextPlayer), so
+          // split-up players get equal numbers. A player whose surroundings
+          // are already full, or who has no valid spot right now, is skipped
+          // this time rather than holding up the others.
+          let spot = null;
+          for (let k = 0; k < players.length && !spot; k++) {
+            const idx = (nextPlayer + k) % players.length;
+            const p = players[idx];
+            if (hooks.countEnemiesNear(p.x, p.z, config.nearbyRadius) >= config.maxNearbyEnemies) continue;
+            spot = findSpawnPosition(players, directional, idx);
+            if (spot) nextPlayer = (idx + 1) % players.length;
+          }
           if (!spot) break;                              // try again next interval
           const request = queue.shift();
           if (directional) {

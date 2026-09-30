@@ -2040,6 +2040,8 @@
     //   trees      -- [x, y, kind]  kind "e" = evergreen, else deciduous
     //   treeRows   -- [x1, y1, x2, y2, spacing px, kind]
     //   fences     -- [x1, y1, x2, y2, height m, color] thin panels along a segment
+    //   barriers   -- [x1, y1, x2, y2, base m] invisible columns from `base` upward: nothing
+    //                 can stand or climb onto the rectangle above that height (roofs, signs)
     // Fenced areas. `fence` is the fence line (drawn as chain-link panels);
     // `outline` is the whole enclosed area as a polygon (the fence plus the
     // building faces that close it off), used to tell which side of a fence
@@ -2359,12 +2361,20 @@
           [1314.5, 300.05, 1315.4, 300.9, 1.2, 0xb8714a],
           [1318.6, 300.05, 1319.5, 300.9, 1.2, 0xb8714a],
         ],
+        // Nothing can be stood on top of the sign panel or its pedestals.
+        barriers: [[1313.6, 300.05, 1320.4, 300.9, 1.2]],
       },
       Z18: {
         bleachers: [
           // west grandstand (20 walkable steps), open to the sky -- press box below
           [1485, 313, 1509, 440, 10, 20, "e", 0x9da3aa], // north end overlaps the NE inlet a little (screenshot8nemzek.png)
           [1637, 340, 1652, 415, 4, 8, "w", 0x9da3aa], // east bleachers
+        ],
+        // Keep players off the tops of the grandstand's brick back wall and of
+        // Nemzek's east block roof beside it.
+        barriers: [
+          [1483.4, 313.3, 1484.9, 439.7, 11.5], // back wall of the grandstand
+          [1450, 318, 1478, 440, 13],           // east block roof, across the alley
         ],
         props: [
           [1515, 195, 1528, 210, 3.5, 0xc9c2b3],      // ticket booth north of the track
@@ -4175,6 +4185,8 @@
       return false;
     }
 
+    const INVISIBLE_BARRIER_HEIGHT_M = 40; // how far up a `barriers` column reaches (well past any jump)
+
     // Expands one zone's detail entry into colliders (props, bleachers,
     // trees) and tree instances.
     function zoneDetailContents(id) {
@@ -4278,6 +4290,17 @@
           Math.atan2(-(b.z - a.z), b.x - a.x));
         c.color = f[5];
         c.seeThrough = true; // chain-link
+        colliders.push(c);
+      }
+      for (const b of detail.barriers || []) {
+        const w = rectToWorld(b);
+        const c = makeCollider((w.minX + w.maxX) / 2, (w.minZ + w.maxZ) / 2,
+          (w.maxX - w.minX) / 2, (w.maxZ - w.minZ) / 2, b[4] + INVISIBLE_BARRIER_HEIGHT_M, 0);
+        c.base = b[4];
+        c.halfHeight = true;
+        c.render = false;
+        c.seeThrough = true;
+        c.noImpact = true; // invisible: shots never mark it
         colliders.push(c);
       }
       for (const t of detail.trees || []) addTree(t[0], t[1], t[2]);
@@ -6438,6 +6461,8 @@
         const cap = capsuleOf(r);
         const d = Math.hypot(x - cap.cx, z - Math.max(cap.zTop, Math.min(cap.zBottom, z)));
         if (d <= cap.radius && d >= cap.radius - TRACK_LANES * TRACK_LANE_WIDTH_M) return "concrete";
+        const chuteTop = r[4] && r[4].westChuteTopY;
+        if (chuteTop !== undefined && inRect(px, py, [r[0], chuteTop, r[0] + (TRACK_LANES * TRACK_LANE_WIDTH_M) / MAP_SCALE, r[1] + (r[2] - r[0]) / 2], 0)) return "concrete";
       }
       return "grass";
     }
@@ -6466,8 +6491,12 @@
       const circleHits = (cx, cy, r) => cx + r >= pMinX && cx - r <= pMaxX && cy + r >= pMinY && cy - r <= pMaxY;
       const edgePx = GRASS_EDGE_PAD_M / MAP_SCALE;
       const islands = GRASS_AREAS.filter(rectHits);
+      // The track's square-ended west chute sticks out past the capsule's
+      // round end (the northwest corner of the track): no grass on it.
+      const trackChutes = TRACKS.filter((r) => r[4] && r[4].westChuteTopY !== undefined).map((r) =>
+        [r[0], r[4].westChuteTopY, r[0] + (TRACK_LANES * TRACK_LANE_WIDTH_M) / MAP_SCALE, r[1] + (r[2] - r[0]) / 2]);
       const coverRects = [...streetRectsPx, ...LOTS, ...PLAZAS, ...DRIVEWAYS, ...RUNWAYS, ...TURF_AREAS, ...SOCCER_FIELDS,
-        ...POOLS, ...WADING_POOLS, ...DIRT_AREAS, ...pitRectsPx].filter(rectHits);
+        ...POOLS, ...WADING_POOLS, ...DIRT_AREAS, ...trackChutes, ...pitRectsPx].filter(rectHits);
       const sidewalkReach = (r) => (r[4] || ROAD_WIDTH_PX) / 2 + SIDEWALK_WIDTH_PX;
       const roads = [...ROADS, ...CONSTRUCTION_ROADS].filter((r) => segHits(r, sidewalkReach(r) + pad));
       const paths = [...PATHS, ...LOT_WALKS].filter((p) => segHits(p, (p[4] || PATH_WIDTH_PX) / 2 + pad));
