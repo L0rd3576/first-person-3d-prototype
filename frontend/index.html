@@ -8554,6 +8554,10 @@
     cloudCover: { value: 0 },
     cloudColor: { value: new THREE.Color() },
     cloudOffset: { value: new THREE.Vector2() },
+    // Zone storm (see PHYSICAL STORM): xy = zone centre relative to the
+    // rendering camera, z = radius, w = intensity (0 = branch skipped).
+    stormZone: { value: new THREE.Vector4(0, 0, 1, 0) },
+    stormSkyColor: { value: new THREE.Color(0x30304a) },
   };
   const skyDome = new THREE.Mesh(
     new THREE.SphereGeometry(450, 32, 16),
@@ -8566,6 +8570,7 @@
         "uniform vec3 horizonColor; uniform vec3 midColor; uniform vec3 topColor; uniform vec3 glowColor;" +
         "uniform float glowStrength; uniform vec3 sunDirection; uniform vec3 sunDiscColor; uniform float sunDiscSize;" +
         "uniform float starStrength; uniform float cloudCover; uniform vec3 cloudColor; uniform vec2 cloudOffset; varying vec3 vDir;" +
+        "uniform vec4 stormZone; uniform vec3 stormSkyColor;" +
         "float hash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453); }" +
         "float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }" +
         "float vnoise(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);" +
@@ -8597,6 +8602,24 @@
         "    float c = mix(veil + cloudCover * 0.25, max(lumps, veil), detail) * smoothstep(-0.05, 0.04, dir.y);" +
         "    col = mix(col, cloudColor * (0.82 + 0.3 * n * detail), clamp(c, 0.0, 1.0));" +
         "  }" +
+        // Zone storm: sky beyond the wall is a dense dark overcast. Below the
+        // elevation at which the wall's top would appear (soft edge) -- or
+        // everywhere once the camera is out in the storm.
+        "  if (stormZone.w > 0.001) {" +
+        "    float hl = max(length(dir.xz), 1e-4);" +
+        "    vec2 hn = dir.xz / hl;" +
+        "    float cl = length(stormZone.xy);" +
+        "    float b = dot(stormZone.xy, hn);" +
+        "    float disc = stormZone.z * stormZone.z - (cl * cl - b * b);" +
+        "    float outsideAmt = smoothstep(0.0, 70.0, cl - stormZone.z);" +
+        "    float tEx = disc > 0.0 ? max(b + sqrt(disc), 5.0) : 5.0;" +
+        "    float el = atan(dir.y, hl);" +
+        "    float topEl = atan(300.0, tEx);" +
+        "    float band = 1.0 - smoothstep(topEl * 0.55, topEl, el);" +
+        "    float s = max(outsideAmt, band) * stormZone.w;" +
+        "    float sn = fbm(dir.xz / (max(dir.y, 0.0) + 0.14) * 0.8 + cloudOffset * 1.6);" +
+        "    col = mix(col, stormSkyColor * (0.7 + 0.6 * sn), clamp(s * 0.92, 0.0, 1.0));" +
+        "  }" +
         "  gl_FragColor = vec4(col, 1.0);" +
         "}",
       side: THREE.BackSide,
@@ -8613,6 +8636,7 @@
   skyDome.onBeforeRender = function (_renderer, _scene, renderCamera) {
     renderCamera.getWorldPosition(skyDome.position);
     skyDome.updateMatrixWorld();
+    if (skyUniforms.stormZone.value.w > 0) stormSkyForCamera(skyDome.position); // per view (split screen)
   };
   scene.add(skyDome);
 
@@ -11722,6 +11746,7 @@
   }
 
   function removeEnemy(enemyState) {
+    if (enemyState.carClimb) releaseCarClimb(enemyState, 0);
     scene.remove(enemyState.mesh);
     if (enemyState.zombie) zombieSystem.release(enemyState.zombie); // model back to the pool
     enemyState.isRemoved = true;
@@ -11853,7 +11878,8 @@
     campusSpawner = createProceduralSpawnManager(CAMPUS_SPAWN_CONFIG, {
       getPlayers: () => livingPlayersForCampus().map((p) => ({ x: p.camera.position.x, z: p.camera.position.z, yaw: p.yaw })),
       isInsideBounds: (x, z) => x > b.minX + CAMPUS_BOUNDARY_MARGIN && x < b.maxX - CAMPUS_BOUNDARY_MARGIN &&
-        z > b.minZ + CAMPUS_BOUNDARY_MARGIN && z < b.maxZ - CAMPUS_BOUNDARY_MARGIN,
+        z > b.minZ + CAMPUS_BOUNDARY_MARGIN && z < b.maxZ - CAMPUS_BOUNDARY_MARGIN &&
+        campusWorld.insidePlayableEdge(x, z, CAMPUS_BOUNDARY_MARGIN), // not past the border-row wall line (bounds is a bigger rectangle)
       isWalkable: (x, z, r) => campusWorld.isWalkable(x, z, r),
       isSightBlocked: (ax, az, bx, bz) => campusWorld.segmentBlocked(ax, az, bx, bz, 0),
       isReachable: (px, pz, x, z) => campusWorld.isSameFenceSide(px, pz, x, z, CAMPUS_SPAWN_NEAR_GATE),
@@ -11942,6 +11968,7 @@
   // anywhere can touch it), skipped by updateEnemies -- but still in
   // `enemies`, so the wave isn't counted as cleared while it's out.
   function makeEnemyDormant(enemyState) {
+    if (enemyState.carClimb) releaseCarClimb(enemyState, 0);
     enemyState.dormant = true;
     enemyState.mesh.visible = false;
     enemyState.mesh.position.set(1e6, -1000, 1e6);
@@ -11988,6 +12015,7 @@
   // recycled). Pure field reads + one distance -- no queries.
   function isCampusEnemyBusy(enemyState, nearestPlayerDistance) {
     if (enemyState.carriedBy || enemyState.thrownState) return true;
+    if (enemyState.carClimb) return true; // working its way onto / off a car (it has its own attempt timeout)
     // On a stair route (see STAIR_ROUTE_GRACE_MS): slow, back-and-forth
     // switchback climbing isn't being stuck -- as long as it's still getting
     // higher or lower. No height change for a while and the grace ends.
@@ -12415,7 +12443,7 @@
     pitchMin: -0.3,             // rad (down)
     pitchMax: 0.55,             // rad (up)
     aimTolerance: 0.07,         // rad -- only fires when this close to on target
-    maxHealth: 358 * 0.9,             // +10% over the old 325, then -10% (explicit requests); zombies hit it for the difficulty's enemyContactDamage every ENEMY_HIT_INTERVAL
+    maxHealth: 358 * 0.9 * 0.95,             // +10% over the old 325, then -10%, then -5% (explicit requests); zombies hit it for the difficulty's enemyContactDamage every ENEMY_HIT_INTERVAL
     ammo: Infinity,             // rounds per placement (finite later: turret.ammo counts down per shot)
     deployedScale: 1.55,        // placed turrets are drawn this much bigger (~1.1 m tall, 2/3 of a player); carried ones stay hand-sized
     radius: 0.55,               // m -- its footprint when placed (collision + placement)
@@ -13140,13 +13168,39 @@
     MAX_ZONE_RELOCATION_FRACTION: 0.75,
     ZONE_CENTER_INSET_FRACTION: 0.08, // a new centre stays this far inside the map edge
     ZONE_DAMAGE_PER_SECOND: 2,        // HP/s once the grace period is over
-    ZONE_DAMAGE_START_DELAY: 5,       // s outside before any damage
+    ZONE_DAMAGE_START_DELAY: 2,       // s outside before any damage
     ZONE_DAMAGE_RAMP: 0.15,           // extra HP/s per second outside (after the delay)
     ZONE_DAMAGE_MAX_PER_SECOND: 8,
     ZONE_WARNING_VISUALS_ENABLED: true,
+    // Zones may hang over the playable border (the eye just has less land).
+    ALLOW_ZONE_BORDER_OVERLAP: true,
+    MIN_PLAYABLE_ZONE_OVERLAP: 0.35,  // at least this fraction of the circle must be over playable terrain
+    MAX_BORDER_OVERLAP: 0.6,          // the circle may stick out past any edge by at most this fraction of its diameter
     MINIMAP_ENABLED: true,
-    MINIMAP_SIZE: 360,                // px, the map's longer side
+    MINIMAP_SIZE: 210,                // px, diameter of the circle
     MINIMAP_POSITION: "top-left",     // top-left | top-right | bottom-left | bottom-right | top-center | bottom-center
+    MINIMAP_OPACITY: 0.9,
+    MINIMAP_BASE_RADIUS: 150,         // metres from centre to rim at zoom 1
+    MINIMAP_MIN_ZOOM: 0.3,            // most zoomed out (~500 m radius)
+    MINIMAP_MAX_ZOOM: 1.6,            // most zoomed in (~95 m radius)
+    MINIMAP_PLAYER_PADDING: 45,       // metres kept between the outermost living player and the rim
+    MINIMAP_ZOOM_SPEED: 2.5,          // 1/s easing rate of zoom changes
+    // Physical storm
+    STORM_ENABLED: true,
+    STORM_COLOR: 0x7a6fd0,            // hue of the wall, haze, sky and screen tint
+    STORM_OPACITY: 0.8,
+    STORM_GLOW: 0.9,
+    STORM_DISTORTION: 0.6,            // how much the wall's noise is warped
+    STORM_SCROLL_SPEED: 1,
+    STORM_WALL_HEIGHT: 320,           // metres
+    STORM_SKY_DENSITY: 0.9,           // how strongly the sky beyond the wall is overcast
+    STORM_EDGE_BLEND_M: 60,           // metres past the boundary over which the outside look fades in
+    STORM_HAZE_RANGE_M: 160,          // metres inside the boundary where haze starts to build
+    STORM_SCREEN_TINT: 0.6,
+    STORM_FOG_INTENSITY: 0.6,
+    STORM_PARTICLE_DENSITY: 0.6,
+    STORM_SCREEN_DISTORTION: 0.4,     // gust "breathing" of the storm vignette (no expensive refraction)
+    STORM_AUDIO_VOLUME: 0.5,
   };
   const ZONE_PLAYER_COLORS = ["#ff5252", "#4da6ff", "#5cf28a", "#ffd24d"];
   const zoneState = {
@@ -13188,6 +13242,33 @@
     const m = zoneMapRect();
     const inset = ZONE_CONFIG.ZONE_CENTER_INSET_FRACTION * Math.min(m.maxX - m.minX, m.maxZ - m.minZ);
     return x >= m.minX + inset && x <= m.maxX - inset && z >= m.minZ + inset && z <= m.maxZ - inset;
+  }
+  // Border-aware centre check: the circle may overhang the playable rectangle
+  // (up to MAX_BORDER_OVERLAP of its diameter) as long as enough of it still
+  // covers playable ground. Area overlap is sampled on a small grid (only
+  // done while picking a zone, never per frame).
+  function zoneOverlapFraction(x, z, r) {
+    const m = zoneMapRect();
+    let inCircle = 0, inBoth = 0;
+    const N = 12;
+    for (let i = -N; i <= N; i++) {
+      for (let j = -N; j <= N; j++) {
+        const dx = (i / N) * r, dz = (j / N) * r;
+        if (dx * dx + dz * dz > r * r) continue;
+        inCircle++;
+        const px = x + dx, pz = z + dz;
+        if (px >= m.minX && px <= m.maxX && pz >= m.minZ && pz <= m.maxZ) inBoth++;
+      }
+    }
+    return inBoth / Math.max(1, inCircle);
+  }
+  function zoneCenterValid(x, z, r) {
+    const c = ZONE_CONFIG;
+    if (!c.ALLOW_ZONE_BORDER_OVERLAP) return zoneCenterInside(x, z);
+    const m = zoneMapRect();
+    const slack = (2 * c.MAX_BORDER_OVERLAP - 1) * r; // how far past an edge the centre may sit (negative = must be inside)
+    if (x < m.minX - slack || x > m.maxX + slack || z < m.minZ - slack || z > m.maxZ + slack) return false;
+    return zoneOverlapFraction(x, z, r) >= c.MIN_PLAYABLE_ZONE_OVERLAP;
   }
   function zoneStayDuration() {
     const j = ZONE_CONFIG.ZONE_STAY_JITTER;
@@ -13233,6 +13314,7 @@
     let roll = Math.random(), sizeName = "MEDIUM";
     for (const name of ["LARGE", "MEDIUM", "SMALL"]) { roll -= weights[name]; if (roll <= 0) { sizeName = name; break; } }
     const [minD, maxD] = zoneRelocationRange();
+    const nextRadius = zoneRadiusFor(sizeName);
     const recent = zoneState.history.slice(-3, -1); // older than the current one
     let best = null;
     for (let attempt = 0; attempt < 48 && !best; attempt++) {
@@ -13242,7 +13324,7 @@
       const d = lo + Math.random() * Math.max(0, hi - lo);
       const a = Math.random() * Math.PI * 2;
       const x = cur.x + Math.cos(a) * d, z = cur.z + Math.sin(a) * d;
-      if (!zoneCenterInside(x, z)) continue;
+      if (!zoneCenterValid(x, z, nextRadius)) continue;
       if (recent.some((h) => Math.hypot(h.x - x, h.z - z) < minD * 0.6)) continue;
       best = { x, z };
     }
@@ -13251,7 +13333,7 @@
         const a = (k / 36) * Math.PI * 2;
         for (const d of [minD, (minD + maxD) / 2, maxD]) {
           const x = cur.x + Math.cos(a) * d, z = cur.z + Math.sin(a) * d;
-          if (zoneCenterInside(x, z)) { best = { x, z }; break; }
+          if (zoneCenterValid(x, z, nextRadius)) { best = { x, z }; break; }
         }
       }
     }
@@ -13314,22 +13396,27 @@
       if (p.zoneDamageAccum >= 1) {
         const whole = Math.floor(p.zoneDamageAccum);
         p.zoneDamageAccum -= whole;
-        takeDamage(p, whole);
+        takeDamage(p, whole, null); // null: no blood/kick feedback for zone ticks
       }
     }
   }
 
-  // ---- minimap + zone HUD (one instance for the whole game) --------------
-  const zoneUi = { root: null, canvas: null, ctx: null, label: null, visible: false, staticLayer: null, staticMapKey: "", w: 0, h: 0, dpr: 1, drawTimer: 0, borders: [] };
-  const ZONE_MM_REFRESH_SECONDS = 0.1;
+  // ---- circular shared minimap + zone HUD (one instance for the whole game) --
+  const zoneUi = {
+    root: null, canvas: null, ctx: null, label: null, visible: false, vignettes: [],
+    layer: null, layerKey: "", layerPxPerM: 1, size: 0, dpr: 1, drawTimer: 0,
+    zoom: 1, zoomTarget: 1, cx: 0, cz: 0, hasView: false,
+  };
+  const ZONE_MM_REFRESH_SECONDS = 1 / 30;
 
   function buildZoneUi() {
     if (zoneUi.root) return;
     const style = document.createElement("style");
     style.textContent = `
       #zone-minimap { position: fixed; z-index: 12; pointer-events: none; font-family: Arial, Helvetica, sans-serif; display: none; }
-      #zone-minimap canvas { display: block; border: 2px solid rgba(255,255,255,0.7); border-radius: 4px; background: #1b2620; }
-      #zone-minimap-label { margin-top: 3px; text-align: center; color: #fff; font-size: 13px; font-weight: bold; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+      #zone-minimap .mm-disc { position: relative; border-radius: 50%; overflow: hidden; border: 3px solid rgba(255,255,255,0.78); box-shadow: 0 2px 10px rgba(0,0,0,0.55), inset 0 0 14px rgba(0,0,0,0.6); background: #0d1311; }
+      #zone-minimap canvas { display: block; border-radius: 50%; }
+      #zone-minimap-label { margin-top: 4px; text-align: center; color: #fff; font-size: 13px; font-weight: bold; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
       #zone-minimap-label.warn { color: #ffd24d; }
       #zone-minimap-label.moving { color: #ff9a4d; }
       .zone-outside-vignette { position: fixed; z-index: 9; pointer-events: none; display: none; box-shadow: inset 0 0 90px 24px rgba(200, 20, 20, 0.55); }
@@ -13337,10 +13424,13 @@
     document.head.appendChild(style);
     const root = document.createElement("div");
     root.id = "zone-minimap";
+    const disc = document.createElement("div");
+    disc.className = "mm-disc";
     const canvas = document.createElement("canvas");
+    disc.appendChild(canvas);
     const label = document.createElement("div");
     label.id = "zone-minimap-label";
-    root.append(canvas, label);
+    root.append(disc, label);
     document.body.appendChild(root);
     zoneUi.root = root; zoneUi.canvas = canvas; zoneUi.ctx = canvas.getContext("2d"); zoneUi.label = label;
     zoneUi.vignettes = [0, 1, 2, 3].map(() => {
@@ -13349,6 +13439,12 @@
       document.body.appendChild(el);
       return el;
     });
+    const size = ZONE_CONFIG.MINIMAP_SIZE;
+    zoneUi.size = size;
+    zoneUi.dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = canvas.height = Math.round(size * zoneUi.dpr);
+    canvas.style.width = canvas.style.height = size + "px";
+    disc.style.opacity = String(ZONE_CONFIG.MINIMAP_OPACITY);
     positionZoneUi();
     window.addEventListener("resize", positionZoneUi);
   }
@@ -13366,29 +13462,22 @@
     if (!zoneUi.root) { if (!visible) return; buildZoneUi(); }
     zoneUi.visible = visible;
     zoneUi.root.style.display = visible && ZONE_CONFIG.MINIMAP_ENABLED ? "block" : "none";
-    if (!visible) for (const v of zoneUi.vignettes) v.style.display = "none";
+    if (!visible) { for (const v of zoneUi.vignettes) v.style.display = "none"; zoneUi.hasView = false; }
   }
 
   // The static layer (buildings from the campus colliders, drawn once per
-  // map) so the per-frame cost is one drawImage plus a few circles.
+  // map at up to ~2.5 px/m) so a frame is one clipped drawImage + circles.
   function ensureZoneStaticLayer() {
     const m = zoneMapRect();
     const key = `${isCampusMap ? "campus" : "arena"}|${m.minX}|${m.maxX}|${m.minZ}|${m.maxZ}`;
-    if (zoneUi.staticMapKey === key && zoneUi.canvas.width) return;
-    zoneUi.staticMapKey = key;
+    if (zoneUi.layerKey === key && zoneUi.layer) return;
+    zoneUi.layerKey = key;
     const mw = m.maxX - m.minX, mh = m.maxZ - m.minZ;
-    const long = ZONE_CONFIG.MINIMAP_SIZE;
-    zoneUi.w = mw >= mh ? long : Math.round(long * mw / mh);
-    zoneUi.h = mw >= mh ? Math.round(long * mh / mw) : long;
-    zoneUi.dpr = Math.min(2, window.devicePixelRatio || 1);
-    zoneUi.canvas.width = Math.round(zoneUi.w * zoneUi.dpr);
-    zoneUi.canvas.height = Math.round(zoneUi.h * zoneUi.dpr);
-    zoneUi.canvas.style.width = zoneUi.w + "px";
-    zoneUi.canvas.style.height = zoneUi.h + "px";
+    const pxPerM = Math.min(2.5, 4096 / Math.max(mw, mh));
+    zoneUi.layerPxPerM = pxPerM;
     const layer = document.createElement("canvas");
-    layer.width = zoneUi.canvas.width; layer.height = zoneUi.canvas.height;
+    layer.width = Math.max(1, Math.round(mw * pxPerM)); layer.height = Math.max(1, Math.round(mh * pxPerM));
     const g = layer.getContext("2d");
-    const sx = layer.width / mw, sz = layer.height / mh;
     g.fillStyle = "#26352b";
     g.fillRect(0, 0, layer.width, layer.height);
     if (isCampusMap && campusWorld && campusWorld.minimapFootprints) {
@@ -13396,13 +13485,13 @@
       for (const c of campusWorld.minimapFootprints()) {
         if (c.shape === "cylinder") continue; // trunks/poles: too small to read
         g.save();
-        g.translate((c.cx - m.minX) * sx, (c.cz - m.minZ) * sz);
+        g.translate((c.cx - m.minX) * pxPerM, (c.cz - m.minZ) * pxPerM);
         g.rotate(-c.yaw);
-        g.fillRect(-c.halfX * sx, -c.halfZ * sz, Math.max(1, c.halfX * 2 * sx), Math.max(1, c.halfZ * 2 * sz));
+        g.fillRect(-c.halfX * pxPerM, -c.halfZ * pxPerM, Math.max(1, c.halfX * 2 * pxPerM), Math.max(1, c.halfZ * 2 * pxPerM));
         g.restore();
       }
     }
-    zoneUi.staticLayer = layer;
+    zoneUi.layer = layer;
   }
 
   function zoneFmtTime(s) {
@@ -13410,19 +13499,34 @@
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
 
+  // Shared framing: centred on the average of the LIVING players, zoomed
+  // out just far enough to keep the farthest one (plus padding) inside the
+  // circle. Zooming out is immediate-ish, zooming back in only after a real
+  // change (deadband) and always eased, so small movements never pump it.
+  function updateMinimapView(deltaSeconds) {
+    const c = ZONE_CONFIG;
+    const live = zoneMatchPlayers().filter((p) => !p.isDead);
+    if (live.length) {
+      let ax = 0, az = 0;
+      for (const p of live) { ax += p.camera.position.x; az += p.camera.position.z; }
+      ax /= live.length; az /= live.length;
+      let maxD = 0;
+      for (const p of live) maxD = Math.max(maxD, Math.hypot(p.camera.position.x - ax, p.camera.position.z - az));
+      const target = Math.min(c.MINIMAP_MAX_ZOOM, Math.max(c.MINIMAP_MIN_ZOOM, c.MINIMAP_BASE_RADIUS / (maxD + c.MINIMAP_PLAYER_PADDING)));
+      zoneUi.cx = ax; zoneUi.cz = az;
+      if (!zoneUi.hasView) { zoneUi.zoom = zoneUi.zoomTarget = target; zoneUi.hasView = true; }
+      else if (target < zoneUi.zoomTarget || Math.abs(Math.log(target / zoneUi.zoomTarget)) > 0.12) zoneUi.zoomTarget = target;
+    } else if (!zoneUi.hasView) {
+      zoneUi.cx = zoneState.center.x; zoneUi.cz = zoneState.center.z;
+      zoneUi.zoom = zoneUi.zoomTarget = c.MINIMAP_MIN_ZOOM; zoneUi.hasView = true;
+    }
+    zoneUi.zoom *= Math.exp(Math.log(zoneUi.zoomTarget / zoneUi.zoom) * (1 - Math.exp(-c.MINIMAP_ZOOM_SPEED * deltaSeconds)));
+  }
+
   function updateZoneUi(deltaSeconds) {
     if (!zoneUi.root) buildZoneUi();
     if (!zoneUi.visible) setZoneUiVisible(true);
-    if (!ZONE_CONFIG.MINIMAP_ENABLED) return;
     const z = zoneState;
-    // label: what's coming
-    const left = z.phaseDuration - z.phaseTime;
-    let text = "", cls = "";
-    if (z.phase === "stay") text = z.moves === 0 && z.phaseDuration === ZONE_CONFIG.INITIAL_ZONE_DELAY ? `Zone holds • ${zoneFmtTime(left)}` : `Zone stable • ${zoneFmtTime(left)}`;
-    else if (z.phase === "warning") { text = ZONE_CONFIG.ZONE_WARNING_VISUALS_ENABLED ? `ZONE MOVING SOON • ${zoneFmtTime(left)}` : ""; cls = "warn"; }
-    else { text = `Zone moving • ${zoneFmtTime(left)}`; cls = "moving"; }
-    if (zoneUi.label.textContent !== text) zoneUi.label.textContent = text;
-    if (zoneUi.label.className !== cls) zoneUi.label.className = cls;
     // red edge on the views of players who are outside
     for (let i = 0; i < 4; i++) {
       const v = zoneUi.vignettes[i];
@@ -13434,6 +13538,15 @@
       v.style.left = r.x + "px"; v.style.top = r.y + "px"; v.style.width = r.width + "px"; v.style.height = r.height + "px";
       v.style.opacity = String(Math.min(1, 0.35 + p.zoneOutsideSeconds / (ZONE_CONFIG.ZONE_DAMAGE_START_DELAY * 2)));
     }
+    if (!ZONE_CONFIG.MINIMAP_ENABLED) return;
+    updateMinimapView(deltaSeconds);
+    const left = z.phaseDuration - z.phaseTime;
+    let text = "", cls = "";
+    if (z.phase === "stay") text = `Storm holds • ${zoneFmtTime(left)}`;
+    else if (z.phase === "warning") { text = ZONE_CONFIG.ZONE_WARNING_VISUALS_ENABLED ? `STORM MOVING SOON • ${zoneFmtTime(left)}` : ""; cls = "warn"; }
+    else { text = `Storm moving • ${zoneFmtTime(left)}`; cls = "moving"; }
+    if (zoneUi.label.textContent !== text) zoneUi.label.textContent = text;
+    if (zoneUi.label.className !== cls) zoneUi.label.className = cls;
     zoneUi.drawTimer -= deltaSeconds;
     if (zoneUi.drawTimer > 0) return;
     zoneUi.drawTimer = ZONE_MM_REFRESH_SECONDS;
@@ -13442,65 +13555,82 @@
 
   function drawZoneMinimap() {
     ensureZoneStaticLayer();
-    const g = zoneUi.ctx, m = zoneMapRect(), z = zoneState;
-    const W = zoneUi.canvas.width, H = zoneUi.canvas.height;
-    const sx = W / (m.maxX - m.minX), sz = H / (m.maxZ - m.minZ);
-    const X = (x) => (x - m.minX) * sx, Z = (zz) => (zz - m.minZ) * sz;
-    const px = zoneUi.dpr;
+    const g = zoneUi.ctx, m = zoneMapRect(), z = zoneState, dpr = zoneUi.dpr;
+    const S = zoneUi.canvas.width, half = S / 2;
+    const R = ZONE_CONFIG.MINIMAP_BASE_RADIUS / zoneUi.zoom;   // world metres from centre to rim
+    const ppm = half / R;
+    const cx = zoneUi.cx, cz = zoneUi.cz;
     g.setTransform(1, 0, 0, 1, 0, 0);
-    g.drawImage(zoneUi.staticLayer, 0, 0);
-    // danger area: everything outside the current zone, tinted red
+    g.clearRect(0, 0, S, S);
+    g.save();
+    g.beginPath(); g.arc(half, half, half, 0, Math.PI * 2); g.clip();   // the actual circular mask
+    g.fillStyle = "#0b0f0e";
+    g.fillRect(0, 0, S, S);
+    // world -> canvas: the map slides under the (centred) view
+    g.setTransform(ppm, 0, 0, ppm, half - cx * ppm, half - cz * ppm);
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = "high";
+    g.drawImage(zoneUi.layer, m.minX, m.minZ, m.maxX - m.minX, m.maxZ - m.minZ);
+    // storm: everything outside the current safe zone (also over the void past the border)
     g.beginPath();
-    g.rect(0, 0, W, H);
-    g.arc(X(z.center.x), Z(z.center.z), z.radius * sx, 0, Math.PI * 2, true);
-    g.fillStyle = "rgba(200, 30, 30, 0.30)";
+    g.rect(cx - R * 1.6, cz - R * 1.6, R * 3.2, R * 3.2);
+    g.arc(z.center.x, z.center.z, z.radius, 0, Math.PI * 2, true);
+    g.fillStyle = "rgba(120, 90, 210, 0.36)";
     g.fill("evenodd");
-    // current zone
-    g.lineWidth = 2 * px;
+    // playable-area border
+    g.lineWidth = 1.5 * dpr / ppm;
+    g.strokeStyle = "rgba(255,255,255,0.35)";
+    g.strokeRect(m.minX, m.minZ, m.maxX - m.minX, m.maxZ - m.minZ);
+    // current safe zone
+    g.lineWidth = 2.5 * dpr / ppm;
     g.strokeStyle = "#3aa0ff";
     g.beginPath();
-    g.arc(X(z.center.x), Z(z.center.z), z.radius * sx, 0, Math.PI * 2);
+    g.arc(z.center.x, z.center.z, z.radius, 0, Math.PI * 2);
     g.stroke();
-    // future zone (white), with a dashed route from here to there
+    // future zone (white) + route
     if (z.next && ZONE_CONFIG.ZONE_WARNING_VISUALS_ENABLED) {
       const pulse = z.phase === "warning" ? 0.65 + 0.35 * Math.sin(performance.now() / 260) : 1;
       g.strokeStyle = `rgba(255,255,255,${pulse})`;
       g.beginPath();
-      g.arc(X(z.next.x), Z(z.next.z), z.next.radius * sx, 0, Math.PI * 2);
+      g.arc(z.next.x, z.next.z, z.next.radius, 0, Math.PI * 2);
       g.stroke();
-      g.setLineDash([5 * px, 5 * px]);
-      g.lineWidth = 1 * px;
+      g.setLineDash([6 * dpr / ppm, 6 * dpr / ppm]);
+      g.lineWidth = 1.2 * dpr / ppm;
       g.strokeStyle = "rgba(255,255,255,0.55)";
       g.beginPath();
-      g.moveTo(X(z.center.x), Z(z.center.z));
-      g.lineTo(X(z.next.x), Z(z.next.z));
+      g.moveTo(z.center.x, z.center.z);
+      g.lineTo(z.next.x, z.next.z);
       g.stroke();
       g.setLineDash([]);
       g.fillStyle = "rgba(255,255,255,0.9)";
       g.beginPath();
-      g.arc(X(z.next.x), Z(z.next.z), 2.5 * px, 0, Math.PI * 2);
+      g.arc(z.next.x, z.next.z, 3 * dpr / ppm, 0, Math.PI * 2);
       g.fill();
     }
-    // players: a coloured arrow along their facing (world forward = -sin/-cos of yaw)
+    // players, in screen space so markers keep a constant size
+    g.setTransform(1, 0, 0, 1, 0, 0);
     const list = zoneMatchPlayers();
     for (let i = 0; i < list.length; i++) {
       const p = list[i];
-      const cx = X(p.camera.position.x), cz = Z(p.camera.position.z);
+      let sx = half + (p.camera.position.x - cx) * ppm, sz = half + (p.camera.position.z - cz) * ppm;
+      const off = Math.hypot(sx - half, sz - half), lim = half * 0.9;
+      const clamped = off > lim;
+      if (clamped) { sx = half + (sx - half) * lim / off; sz = half + (sz - half) * lim / off; }
       if (p.isDead) { // inactive marker
+        if (clamped) continue;
         g.strokeStyle = "rgba(190,190,190,0.8)";
-        g.lineWidth = 1.5 * px;
-        const s = 3.5 * px;
+        g.lineWidth = 1.5 * dpr;
+        const s = 3.5 * dpr;
         g.beginPath();
-        g.moveTo(cx - s, cz - s); g.lineTo(cx + s, cz + s);
-        g.moveTo(cx + s, cz - s); g.lineTo(cx - s, cz + s);
+        g.moveTo(sx - s, sz - s); g.lineTo(sx + s, sz + s);
+        g.moveTo(sx + s, sz - s); g.lineTo(sx - s, sz + s);
         g.stroke();
         continue;
       }
-      const dx = -Math.sin(p.yaw), dz = -Math.cos(p.yaw);
-      const ang = Math.atan2(dz, dx);
-      const size = 5.5 * px;
+      const ang = Math.atan2(-Math.cos(p.yaw), -Math.sin(p.yaw)); // world forward = (-sin, -cos) of yaw
+      const size = 6 * dpr * (clamped ? 0.8 : 1);
       g.save();
-      g.translate(cx, cz);
+      g.translate(sx, sz);
       g.rotate(ang);
       g.beginPath();
       g.moveTo(size, 0); g.lineTo(-size * 0.7, size * 0.65); g.lineTo(-size * 0.3, 0); g.lineTo(-size * 0.7, -size * 0.65);
@@ -13508,10 +13638,498 @@
       g.globalAlpha = p.isDowned ? 0.55 : 1;
       g.fillStyle = ZONE_PLAYER_COLORS[i % 4];
       g.fill();
-      g.lineWidth = 1 * px;
+      g.lineWidth = 1 * dpr;
       g.strokeStyle = "rgba(0,0,0,0.85)";
       g.stroke();
       g.restore();
+    }
+    // north marker (the map stays north-up)
+    g.fillStyle = "rgba(255,255,255,0.85)";
+    g.font = `bold ${Math.round(10 * dpr)}px Arial`;
+    g.textAlign = "center";
+    g.fillText("N", half, 12 * dpr);
+    g.restore();
+  }
+
+  // ------------------------------------------------------------------
+  // PHYSICAL STORM. One translucent noise-shaded wall follows zoneState
+  // (centre/radius, so it glides with every transition); the sky shader
+  // gets the same zone so the stormy sky lies beyond the wall; per view,
+  // fog/light are blended toward storm by how far that camera is outside.
+  // Everything keys off zoneState -- no second source of truth -- and all of
+  // it is shared materials + a handful of uniforms per view.
+  // ------------------------------------------------------------------
+  let stormFade = 0; // 0..1, eases in/out as the zone appears/disappears
+  const stormTint = new THREE.Color(ZONE_CONFIG.STORM_COLOR);
+  const stormGrayColor = new THREE.Color();
+  const stormWall = (() => {
+    const geo = new THREE.CylinderGeometry(1, 1, 1, 96, 1, true);
+    geo.translate(0, 0.5, 0);
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color(ZONE_CONFIG.STORM_COLOR) },
+        uOpacity: { value: ZONE_CONFIG.STORM_OPACITY },
+        uGlow: { value: ZONE_CONFIG.STORM_GLOW },
+        uDistort: { value: ZONE_CONFIG.STORM_DISTORTION },
+        uScroll: { value: ZONE_CONFIG.STORM_SCROLL_SPEED },
+        uTime: { value: 0 },
+        uZone: { value: new THREE.Vector4() },
+        uTop: { value: ZONE_CONFIG.STORM_WALL_HEIGHT },
+        uFade: { value: 0 },
+      },
+      vertexShader:
+        "varying vec3 vW;" +
+        "void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }",
+      fragmentShader:
+        "uniform vec3 uColor; uniform float uOpacity; uniform float uGlow; uniform float uDistort; uniform float uScroll;" +
+        "uniform float uTime; uniform vec4 uZone; uniform float uTop; uniform float uFade; varying vec3 vW;" +
+        "float h3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }" +
+        "float n3(vec3 x) { vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f);" +
+        "  return mix(mix(mix(h3(i), h3(i + vec3(1.0, 0.0, 0.0)), f.x), mix(h3(i + vec3(0.0, 1.0, 0.0)), h3(i + vec3(1.0, 1.0, 0.0)), f.x), f.y)," +
+        "             mix(mix(h3(i + vec3(0.0, 0.0, 1.0)), h3(i + vec3(1.0, 0.0, 1.0)), f.x), mix(h3(i + vec3(0.0, 1.0, 1.0)), h3(i + vec3(1.0, 1.0, 1.0)), f.x), f.y), f.z); }" +
+        "void main() {" +
+        "  vec2 rel = vW.xz - uZone.xy;" +
+        "  float rl = max(length(rel), 1.0);" +
+        "  vec2 tang = vec2(-rel.y, rel.x) / rl;" +
+        "  float t = uTime * uScroll;" +
+        // swirl around the eye + slow vertical drift; a low-frequency sample warps the main one
+        "  vec3 p = vW * 0.011;" +
+        "  p.xz += tang * t * 0.06;" +
+        "  p.y -= t * 0.05;" +
+        "  float w = n3(p * 0.7 + vec3(0.0, t * 0.03, 0.0));" +
+        "  p += (w - 0.5) * uDistort * 1.4;" +
+        "  float n = n3(p * 1.6) * 0.6 + n3(p * 3.3 + 7.1) * 0.4;" +
+        "  float dens = smoothstep(0.22, 0.78, n);" +
+        "  float hgt = vW.y;" +
+        "  float vert = smoothstep(-3.0, 3.0, hgt) * (1.0 - smoothstep(uTop * 0.6, uTop, hgt));" +
+        "  vec3 toCam = cameraPosition - vW;" +
+        "  float dist = length(toCam);" +
+        "  float nearFade = smoothstep(0.3, 5.0, dist);" +  // only fades when you're practically inside it, so it stays readable up close
+        "  float camD = length(cameraPosition.xz - uZone.xy) - uZone.z;" +
+        "  float outside = smoothstep(-10.0, 50.0, camD);" +
+        "  vec3 nrm = normalize(vec3(rel.x, 0.0, rel.y));" +
+        "  float rim = 1.0 - abs(dot(normalize(toCam), nrm));" +
+        "  float proximity = 1.0 + 0.5 * (1.0 - smoothstep(20.0, 500.0, dist));" +
+        // vertical energy streaks and a bright foot where the wall meets the ground mark exactly where the edge is
+        "  float streak = smoothstep(0.58, 0.88, n3(vec3(vW.x * 0.07, vW.y * 0.0066 - t * 0.02, vW.z * 0.07) + 11.0));" +
+        "  float foot = 1.0 - smoothstep(0.0, 14.0, hgt);" +
+        "  float a = uOpacity * (0.45 + 0.55 * dens) * vert * nearFade * proximity * mix(1.0, 0.75, outside) * uFade;" +
+        "  a *= 0.6 + 0.4 * rim;" +
+        "  a += (streak * 0.22 + foot * 0.35) * vert * nearFade * uFade * uOpacity;" +
+        "  vec3 col = uColor * (0.55 + 0.7 * n);" +
+        "  col += uColor * uGlow * (0.25 + 0.6 * rim);" +
+        "  col += uColor * uGlow * foot * 1.0 + vec3(1.0) * streak * uGlow * 0.3;" +
+        "  col += vec3(1.0) * uGlow * 0.22 * smoothstep(uTop * 0.3, uTop * 0.7, hgt) * (1.0 - smoothstep(uTop * 0.7, uTop, hgt));" +
+        "  gl_FragColor = vec4(col, clamp(a, 0.0, 0.95));" +
+        "}",
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      fog: false,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 5;
+    mesh.visible = false;
+    scene.add(mesh);
+    return mesh;
+  })();
+  const STORM_WALL_BASE_Y = -15; // sunk a little so the ground hides the seam
+
+  function stormActive() {
+    return ZONE_CONFIG.ZONE_ENABLED && ZONE_CONFIG.STORM_ENABLED && zoneState.initialized &&
+      (isCoopMatchActive || isSingleplayerMatchActive) && !zoneMatchPlayers().every((p) => p.isDead);
+  }
+  // How far past the boundary a camera is, eased over STORM_EDGE_BLEND_M
+  // (0 inside the eye, 1 well into the storm) and how close to it inside.
+  function stormOutsideAmount(x, z) {
+    const d = Math.hypot(x - zoneState.center.x, z - zoneState.center.z) - zoneState.radius;
+    const s = Math.min(1, Math.max(0, d / ZONE_CONFIG.STORM_EDGE_BLEND_M));
+    return s * s * (3 - 2 * s);
+  }
+  function stormNearAmount(x, z) {
+    const d = Math.hypot(x - zoneState.center.x, z - zoneState.center.z) - zoneState.radius;
+    const s = Math.min(1, Math.max(0, (d + ZONE_CONFIG.STORM_HAZE_RANGE_M) / ZONE_CONFIG.STORM_HAZE_RANGE_M));
+    return s * s * (3 - 2 * s);
+  }
+
+  // Per view: fog/light blended toward the storm look. Weather's own values
+  // (rain, overcast, fog, day/night) are what we blend FROM, so all of it
+  // coexists; restored after the views so nothing leaks into the next frame.
+  const stormAtm = {
+    on: false, fogColor: new THREE.Color(), fogNear: 0, fogFar: 0, bg: new THREE.Color(), sun: 0, amb: 0, work: new THREE.Color(),
+  };
+  function stormAtmosphereBegin() {
+    stormAtm.on = stormFade > 0.01;
+    if (!stormAtm.on) return;
+    stormAtm.fogColor.copy(scene.fog.color); stormAtm.fogNear = scene.fog.near; stormAtm.fogFar = scene.fog.far;
+    if (scene.background && scene.background.isColor) stormAtm.bg.copy(scene.background);
+    stormAtm.sun = sunLight.intensity; stormAtm.amb = ambientLight.intensity;
+  }
+  function stormAtmosphereRestore() {
+    scene.fog.color.copy(stormAtm.fogColor); scene.fog.near = stormAtm.fogNear; scene.fog.far = stormAtm.fogFar;
+    if (scene.background && scene.background.isColor) scene.background.copy(stormAtm.bg);
+    sunLight.intensity = stormAtm.sun; ambientLight.intensity = stormAtm.amb;
+  }
+  function stormAtmosphereApply(cam) {
+    if (!stormAtm.on) return;
+    stormAtmosphereRestore();
+    const out = stormOutsideAmount(cam.position.x, cam.position.z) * stormFade;
+    const near = stormNearAmount(cam.position.x, cam.position.z) * stormFade;
+    if (out < 0.002 && near < 0.002) return;
+    const F = ZONE_CONFIG.STORM_FOG_INTENSITY;
+    const c = stormAtm.fogColor;
+    const lum = c.r * 0.299 + c.g * 0.587 + c.b * 0.114;
+    // storm haze: the storm hue, greyed, only as bright as the current sky
+    stormAtm.work.copy(stormTint);
+    const tl = stormTint.r * 0.299 + stormTint.g * 0.587 + stormTint.b * 0.114;
+    stormGrayColor.setRGB(tl, tl, tl);
+    stormAtm.work.lerp(stormGrayColor, 0.55).multiplyScalar(0.25 + 0.6 * Math.min(1, lum * 1.6));
+    scene.fog.color.lerp(stormAtm.work, Math.min(1, 0.8 * out + 0.22 * near));
+    scene.fog.near = Math.max(1, stormAtm.fogNear * (1 - 0.5 * F * out - 0.15 * F * near));
+    scene.fog.far = Math.max(scene.fog.near + 12, stormAtm.fogFar * (1 - 0.55 * F * out - 0.2 * F * near));
+    if (scene.background && scene.background.isColor) scene.background.copy(scene.fog.color);
+    sunLight.intensity = stormAtm.sun * (1 - 0.55 * out);
+    ambientLight.intensity = stormAtm.amb * (1 - 0.12 * out);
+  }
+  function stormAtmosphereEnd() {
+    if (stormAtm.on) stormAtmosphereRestore();
+    stormAtm.on = false;
+  }
+  // Sky dome: zone relative to the rendering camera (per view).
+  function stormSkyForCamera(cam) {
+    const u = skyUniforms.stormZone.value;
+    if (u.w <= 0) return;
+    u.x = zoneState.center.x - cam.x; u.y = zoneState.center.z - cam.z; u.z = zoneState.radius;
+  }
+
+  // ---- storm screen effects (one overlay canvas, only for views in the storm) ----
+  const stormFx = { canvas: null, ctx: null, w: 0, h: 0, timer: 0, wasActive: false, level: [0, 0, 0, 0], parts: [], time: 0 };
+  function buildStormFx() {
+    const canvas = document.createElement("canvas");
+    canvas.style.cssText = "position:fixed;left:0;top:0;width:100vw;height:100vh;z-index:8;pointer-events:none;";
+    document.body.appendChild(canvas);
+    stormFx.canvas = canvas; stormFx.ctx = canvas.getContext("2d");
+    for (let i = 0; i < 4; i++) {
+      stormFx.parts.push(Array.from({ length: 48 }, () => ({ x: Math.random(), y: Math.random(), s: 0.6 + Math.random() * 0.9, l: 18 + Math.random() * 44, a: 0.25 + Math.random() * 0.5 })));
+    }
+  }
+  function drawStormFx(dt) {
+    const c = ZONE_CONFIG, fx = stormFx, g = fx.ctx;
+    const W = window.innerWidth, H = window.innerHeight;
+    if (fx.w !== W || fx.h !== H) { fx.canvas.width = fx.w = W; fx.canvas.height = fx.h = H; }
+    g.clearRect(0, 0, W, H);
+    fx.time += dt;
+    const tr = Math.round(stormTint.r * 255), tg = Math.round(stormTint.g * 255), tb = Math.round(stormTint.b * 255);
+    const wind = 0.75 + 0.35 * Math.sin(fx.time * 0.7) + 0.2 * Math.sin(fx.time * 2.3);
+    for (let i = 0; i < 4; i++) {
+      const lvl = fx.level[i];
+      const p = players[i];
+      if (lvl < 0.02 || !p || p.isDead || p.screenGiven || !(isCoopMatchActive || i === 0)) continue;
+      const r = getPlayerViewportRect(i);
+      g.save();
+      g.beginPath(); g.rect(r.x, r.y, r.width, r.height); g.clip();
+      // muted, slightly lower-contrast wash + soft dark storm vignette that breathes with the gusts
+      g.fillStyle = `rgba(${Math.round(tr * 0.5 + 60)},${Math.round(tg * 0.5 + 60)},${Math.round(tb * 0.5 + 68)},${(0.11 * c.STORM_SCREEN_TINT * lvl).toFixed(3)})`;
+      g.fillRect(r.x, r.y, r.width, r.height);
+      const cx = r.x + r.width / 2, cy = r.y + r.height / 2;
+      const breathe = 1 + 0.05 * c.STORM_SCREEN_DISTORTION * Math.sin(fx.time * 1.7 + i) * wind;
+      const grad = g.createRadialGradient(cx, cy, Math.min(r.width, r.height) * 0.3 * breathe, cx, cy, Math.hypot(r.width, r.height) * 0.56);
+      grad.addColorStop(0, `rgba(${tr >> 2},${tg >> 2},${tb >> 2},0)`);
+      grad.addColorStop(1, `rgba(${tr >> 2},${tg >> 2},${tb >> 2},${(0.5 * c.STORM_SCREEN_TINT * lvl).toFixed(3)})`);
+      g.fillStyle = grad;
+      g.fillRect(r.x, r.y, r.width, r.height);
+      // wind-blown debris/rain streaks from a fixed pool (count scales with density x how deep in the storm)
+      const n = Math.round(48 * Math.min(1, c.STORM_PARTICLE_DENSITY) * lvl);
+      if (n > 0) {
+        g.lineWidth = 1.2;
+        g.strokeStyle = `rgba(225,225,240,${(0.32 * lvl).toFixed(3)})`;
+        g.beginPath();
+        const pool = fx.parts[i];
+        for (let k = 0; k < n; k++) {
+          const q = pool[k];
+          q.x += dt * q.s * 0.55 * wind; q.y += dt * q.s * 0.05;
+          if (q.x > 1.1) { q.x = -0.1; q.y = Math.random(); }
+          if (q.y > 1.05) q.y = -0.05;
+          const x = r.x + q.x * r.width, y = r.y + q.y * r.height;
+          g.moveTo(x, y); g.lineTo(x - q.l * (0.6 + 0.4 * wind), y - q.l * 0.09);
+        }
+        g.stroke();
+      }
+      g.restore();
+    }
+  }
+
+  // ---- storm audio: low rumble + wind from the existing wind noise, rare thunder ----
+  let stormAudio = null, stormAudioLevel = 0, stormThunderTimer = 12;
+  function updateStormAudio(dt, level) {
+    stormAudioLevel += (level - stormAudioLevel) * Math.min(1, dt * 1.6);
+    if (!stormAudio) {
+      if (stormAudioLevel < 0.02 || audioContext.state !== "running") return;
+      const source = audioContext.createBufferSource();
+      source.buffer = windNoiseBuffer || (windNoiseBuffer = buildWindNoiseBuffer());
+      source.loop = true;
+      source.loopEnd = source.buffer.duration - 0.25;
+      source.playbackRate.value = 0.7;
+      const rumble = audioContext.createBiquadFilter(); rumble.type = "lowpass"; rumble.frequency.value = 170;
+      const rumbleGain = audioContext.createGain(); rumbleGain.gain.value = 0;
+      const howl = audioContext.createBiquadFilter(); howl.type = "bandpass"; howl.frequency.value = 820; howl.Q.value = 0.5;
+      const howlGain = audioContext.createGain(); howlGain.gain.value = 0;
+      source.connect(rumble).connect(rumbleGain).connect(masterGainNode);
+      source.connect(howl).connect(howlGain).connect(masterGainNode);
+      source.start();
+      stormAudio = { source, rumbleGain, howlGain, howl };
+    }
+    if (level === 0 && stormAudioLevel < 0.004) {
+      stormAudio.source.stop(); stormAudio.source.disconnect(); stormAudio = null;
+      return;
+    }
+    const v = ZONE_CONFIG.STORM_AUDIO_VOLUME * stormAudioLevel;
+    stormAudio.rumbleGain.gain.value = v * 1.3;
+    stormAudio.howlGain.gain.value = v * 0.55 * (0.8 + 0.2 * Math.sin(performance.now() / 1300));
+    if (stormAudioLevel > 0.4) {
+      stormThunderTimer -= dt;
+      if (stormThunderTimer <= 0) { stormThunderTimer = 20 + Math.random() * 25; playThunder(); }
+    }
+  }
+
+  // Once per frame from animate(): storm wall/sky/uniforms, per-player levels, overlay, audio.
+  function tickStormVisuals(dt) {
+    const c = ZONE_CONFIG;
+    const active = stormActive();
+    stormFade += ((active ? 1 : 0) - stormFade) * Math.min(1, dt * 1.2);
+    if (stormFade < 0.003 && !active) stormFade = 0;
+    const u = stormWall.material.uniforms;
+    stormWall.visible = stormFade > 0.01;
+    skyUniforms.stormZone.value.w = stormFade * c.STORM_SKY_DENSITY;
+    let audioLevel = 0;
+    if (stormWall.visible) {
+      const z = zoneState;
+      stormWall.position.set(z.center.x, STORM_WALL_BASE_Y, z.center.z);
+      stormWall.scale.set(z.radius, c.STORM_WALL_HEIGHT - STORM_WALL_BASE_Y, z.radius);
+      u.uZone.value.set(z.center.x, z.center.z, z.radius, 0);
+      u.uTime.value += dt;
+      u.uFade.value = stormFade;
+      // the sky over the storm: the storm hue, greyed, as bright as the current sky allows
+      const h = skyUniforms.horizonColor.value;
+      const lum = Math.min(1, (h.r * 0.299 + h.g * 0.587 + h.b * 0.114) * 1.5);
+      const tl = stormTint.r * 0.299 + stormTint.g * 0.587 + stormTint.b * 0.114;
+      stormGrayColor.setRGB(tl, tl, tl);
+      skyUniforms.stormSkyColor.value.copy(stormTint).lerp(stormGrayColor, 0.55).multiplyScalar(0.12 + 0.42 * lum);
+      // per-view storm depth for screen fx + audio (cached per frame)
+      for (let i = 0; i < 4; i++) {
+        const p = players[i];
+        const viewer = p && (isCoopMatchActive || i === 0) && !p.isDead;
+        stormFx.level[i] = viewer ? stormOutsideAmount(p.camera.position.x, p.camera.position.z) * stormFade : 0;
+        audioLevel = Math.max(audioLevel, stormFx.level[i]);
+      }
+    } else {
+      stormFx.level.fill(0);
+    }
+    const any = stormFx.level.some((l) => l > 0.02);
+    if (any) {
+      if (!stormFx.canvas) buildStormFx();
+      stormFx.timer -= dt;
+      if (stormFx.timer <= 0) { drawStormFx(1 / 30); stormFx.timer = 1 / 30; }
+      stormFx.wasActive = true;
+    } else if (stormFx.wasActive) {
+      stormFx.ctx.clearRect(0, 0, stormFx.w, stormFx.h);
+      stormFx.wasActive = false;
+    }
+    updateStormAudio(dt, audioLevel);
+  }
+
+  // ------------------------------------------------------------------
+  // DAMAGE FEEDBACK (per player viewport). Each player gets one overlay
+  // sized to THEIR current screen rect (follows handoff re-tiling), holding
+  // a vignette, four directional edge washes, a flash and a pool of blood
+  // splats; nothing is shared between players, so a hit only ever shows in
+  // the damaged player's own area. Only opacity/transform change per frame.
+  // ------------------------------------------------------------------
+  const DAMAGE_FX_CONFIG = {
+    DAMAGE_FX_ENABLED: true,
+    DAMAGE_VIGNETTE_STRENGTH: 0.85,
+    DAMAGE_BLOOD_INTENSITY: 0.9,
+    DAMAGE_FLASH_DURATION: 0.12,   // s
+    DAMAGE_CAMERA_KICK: 0.022,     // rad, scaled by hit size
+    DAMAGE_FX_FULL_AT: 25,         // damage that counts as a "full strength" hit
+  };
+  const damageFx = { players: [], sprites: null, lastThud: 0 };
+  function buildDamageSprites() {
+    const sprites = [];
+    for (let v = 0; v < 3; v++) {
+      const c = document.createElement("canvas");
+      c.width = c.height = 160;
+      const g = c.getContext("2d");
+      const blob = (x, y, r, a) => {
+        const gr = g.createRadialGradient(x, y, r * 0.15, x, y, r);
+        gr.addColorStop(0, `rgba(120,6,8,${a})`);
+        gr.addColorStop(0.7, `rgba(95,4,6,${a * 0.9})`);
+        gr.addColorStop(1, "rgba(80,3,5,0)");
+        g.fillStyle = gr;
+        g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+      };
+      blob(80, 80, 34 + v * 4, 0.95);
+      for (let i = 0; i < 9 + v * 3; i++) {
+        const a = Math.random() * Math.PI * 2, d = 24 + Math.random() * 46;
+        blob(80 + Math.cos(a) * d, 80 + Math.sin(a) * d, 4 + Math.random() * 11, 0.9);
+      }
+      for (let i = 0; i < 3; i++) { // drip streaks
+        const x = 55 + Math.random() * 50;
+        g.fillStyle = "rgba(100,5,7,0.8)";
+        g.fillRect(x, 80, 3 + Math.random() * 3, 30 + Math.random() * 40);
+        blob(x + 2, 115 + Math.random() * 25, 5, 0.85);
+      }
+      sprites.push(c.toDataURL());
+    }
+    return sprites;
+  }
+  function buildDamageFxFor(index) {
+    if (!damageFx.sprites) {
+      const style = document.createElement("style");
+      style.textContent = `
+        .dmgfx { position: fixed; z-index: 11; pointer-events: none; overflow: hidden; display: none; }
+        .dmgfx > div { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; will-change: opacity; }
+        .dmgfx .dv-vig { background: radial-gradient(ellipse at center, rgba(120,0,0,0) 46%, rgba(120,0,0,0.5) 74%, rgba(80,0,0,0.92) 100%); }
+        .dmgfx .dv-e0 { background: linear-gradient(to bottom, rgba(175,10,10,0.85), rgba(175,10,10,0) 30%); }
+        .dmgfx .dv-e1 { background: linear-gradient(to left, rgba(175,10,10,0.85), rgba(175,10,10,0) 30%); }
+        .dmgfx .dv-e2 { background: linear-gradient(to top, rgba(175,10,10,0.85), rgba(175,10,10,0) 30%); }
+        .dmgfx .dv-e3 { background: linear-gradient(to right, rgba(175,10,10,0.85), rgba(175,10,10,0) 30%); }
+        .dmgfx .dv-flash { background: rgba(255,45,35,0.32); }
+        .dmgfx .dv-splat { width: 10px; height: 10px; background-size: contain; background-repeat: no-repeat; }
+      `;
+      document.head.appendChild(style);
+      damageFx.sprites = buildDamageSprites();
+    }
+    const root = document.createElement("div");
+    root.className = "dmgfx";
+    const mk = (cls) => { const el = document.createElement("div"); el.className = cls; root.appendChild(el); return el; };
+    const fx = {
+      root, vig: mk("dv-vig"), edges: [0, 1, 2, 3].map((k) => mk(`dv-e${k}`)), flash: mk("dv-flash"),
+      splats: Array.from({ length: 8 }, () => { const el = mk("dv-splat"); return { el, life: 0, max: 1 }; }),
+      vigV: 0, vigDur: 1, edgeV: [0, 0, 0, 0], flashV: 0, rect: "", active: false, next: 0,
+    };
+    document.body.appendChild(root);
+    damageFx.players[index] = fx;
+    return fx;
+  }
+  function playDamageThud(k) {
+    const now = performance.now();
+    if (audioContext.state !== "running" || now - damageFx.lastThud < 90) return;
+    damageFx.lastThud = now;
+    const osc = audioContext.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(130, audioContext.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(48, audioContext.currentTime + 0.16);
+    const gain = audioContext.createGain();
+    gain.gain.setValueAtTime(0.34 * (0.5 + 0.5 * k), audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.2);
+    osc.connect(gain).connect(masterGainNode);
+    osc.start();
+    osc.stop(audioContext.currentTime + 0.22);
+  }
+  // source: undefined = no direction known (fall, explosion splash...), {x, z} = where it came from.
+  function triggerDamageFx(player, amount, source) {
+    const c = DAMAGE_FX_CONFIG;
+    if (!c.DAMAGE_FX_ENABLED || amount <= 0) return;
+    const index = players.indexOf(player);
+    if (index < 0 || !(isCoopMatchActive || isSingleplayerMatchActive)) return;
+    const fx = damageFx.players[index] || buildDamageFxFor(index);
+    const k = Math.min(1, Math.max(0.25, amount / c.DAMAGE_FX_FULL_AT));
+    // direction relative to where the player is facing (forward = (-sin, -cos), right = (cos, -sin))
+    const w = [0, 0, 0, 0]; // top(front), right, bottom(behind), left
+    let rightDot = 0;
+    if (source) {
+      const dx = source.x - player.camera.position.x, dz = source.z - player.camera.position.z;
+      const len = Math.hypot(dx, dz);
+      if (len > 0.05) {
+        const fwd = (dx * -Math.sin(player.yaw) + dz * -Math.cos(player.yaw)) / len;
+        rightDot = (dx * Math.cos(player.yaw) + dz * -Math.sin(player.yaw)) / len;
+        w[0] = Math.max(0, fwd); w[2] = Math.max(0, -fwd); w[1] = Math.max(0, rightDot); w[3] = Math.max(0, -rightDot);
+      } else w.fill(0.6);
+    } else w.fill(0.45);
+    fx.vigV = Math.max(fx.vigV, 0.55 + 0.45 * k);
+    fx.vigDur = 0.5 + 0.9 * k;
+    for (let e = 0; e < 4; e++) fx.edgeV[e] = Math.max(fx.edgeV[e], Math.min(1, w[e] * (0.6 + 0.6 * k)));
+    fx.flashV = 1;
+    // blood splats biased toward the side the hit came from
+    const count = 1 + Math.round(k * 2);
+    const spots = [];
+    if (w[3] > 0.15) spots.push(() => [Math.random() * 16 - 4, 12 + Math.random() * 62]);
+    if (w[1] > 0.15) spots.push(() => [84 + Math.random() * 16, 12 + Math.random() * 62]);
+    if (w[0] > 0.15) spots.push(() => [10 + Math.random() * 72, Math.random() * 14 - 4]);
+    if (w[2] > 0.15) spots.push(() => [10 + Math.random() * 72, 82 + Math.random() * 16]);
+    if (!spots.length) spots.push(() => [Math.random() < 0.5 ? Math.random() * 14 : 86 + Math.random() * 14, Math.random() * 90]);
+    for (let s = 0; s < count; s++) {
+      const slot = fx.splats.reduce((a, b) => (b.life < a.life ? b : a));
+      const [px, py] = spots[Math.floor(Math.random() * spots.length)]();
+      const size = 0.16 + 0.16 * k + Math.random() * 0.06;
+      slot.life = slot.max = 1.3 + 1.7 * k;
+      slot.el.style.backgroundImage = `url(${damageFx.sprites[Math.floor(Math.random() * 3)]})`;
+      slot.el.dataset.size = String(size);
+      slot.el.style.left = px + "%"; slot.el.style.top = py + "%";
+      slot.el.style.transformOrigin = "50% 0%";
+      slot.rot = Math.random() * 360;
+    }
+    // a small camera impulse (pitch up, roll away from the hit), decayed in tickDamageFx
+    player.damageKickPitch = (player.damageKickPitch || 0) + c.DAMAGE_CAMERA_KICK * k;
+    player.damageKickRoll = (player.damageKickRoll || 0) + c.DAMAGE_CAMERA_KICK * 0.8 * k * (rightDot >= 0 ? -1 : 1) * (source ? Math.max(0.4, Math.abs(rightDot)) : 0.3);
+    fx.active = true;
+    playDamageThud(k);
+  }
+  function clearDamageFx() {
+    for (const fx of damageFx.players) {
+      if (!fx) continue;
+      fx.root.style.display = "none"; fx.active = false;
+      fx.vigV = 0; fx.flashV = 0; fx.edgeV.fill(0);
+      for (const s of fx.splats) s.life = 0;
+    }
+    for (const p of allPlayers) { p.damageKickPitch = 0; p.damageKickRoll = 0; }
+  }
+  function tickDamageFx(dt) {
+    const c = DAMAGE_FX_CONFIG;
+    const decay = Math.exp(-dt * 10);
+    for (let i = 0; i < allPlayers.length; i++) {
+      const p = allPlayers[i];
+      if (p.damageKickPitch) { p.damageKickPitch *= decay; if (Math.abs(p.damageKickPitch) < 1e-5) p.damageKickPitch = 0; }
+      if (p.damageKickRoll) { p.damageKickRoll *= decay; if (Math.abs(p.damageKickRoll) < 1e-5) p.damageKickRoll = 0; }
+    }
+    for (let i = 0; i < damageFx.players.length; i++) {
+      const fx = damageFx.players[i];
+      if (!fx || !fx.active) continue;
+      const p = players[i];
+      if (!p || p.screenGiven || !(isCoopMatchActive || isSingleplayerMatchActive)) { fx.root.style.display = "none"; fx.active = false; continue; }
+      const r = getPlayerViewportRect(i);
+      const rectKey = `${r.x},${r.y},${r.width},${r.height}`;
+      if (fx.rect !== rectKey) {
+        fx.rect = rectKey;
+        const s = fx.root.style;
+        s.left = r.x + "px"; s.top = r.y + "px"; s.width = r.width + "px"; s.height = r.height + "px";
+      }
+      fx.root.style.display = "block";
+      fx.vigV = Math.max(0, fx.vigV - dt / fx.vigDur);
+      fx.flashV = Math.max(0, fx.flashV - dt / c.DAMAGE_FLASH_DURATION);
+      let alive = fx.vigV > 0 || fx.flashV > 0;
+      fx.vig.style.opacity = (fx.vigV * fx.vigV * (3 - 2 * fx.vigV) * c.DAMAGE_VIGNETTE_STRENGTH).toFixed(3);
+      fx.flash.style.opacity = (fx.flashV * 0.9).toFixed(3);
+      for (let e = 0; e < 4; e++) {
+        fx.edgeV[e] = Math.max(0, fx.edgeV[e] - dt / 0.75);
+        fx.edges[e].style.opacity = (fx.edgeV[e] * c.DAMAGE_VIGNETTE_STRENGTH).toFixed(3);
+        if (fx.edgeV[e] > 0) alive = true;
+      }
+      const minDim = Math.min(r.width, r.height);
+      for (const s of fx.splats) {
+        if (s.life <= 0) { if (s.el.style.opacity !== "0") s.el.style.opacity = "0"; continue; }
+        s.life -= dt;
+        alive = true;
+        const age = 1 - Math.max(0, s.life) / s.max;
+        const fade = Math.min(1, Math.max(0, s.life) / (s.max * 0.4));
+        const px = Number(s.el.dataset.size) * minDim;
+        s.el.style.width = s.el.style.height = px.toFixed(0) + "px";
+        s.el.style.opacity = (fade * c.DAMAGE_BLOOD_INTENSITY).toFixed(3);
+        s.el.style.transform = `translate(-50%, ${(age * 14).toFixed(1)}%) rotate(${s.rot.toFixed(0)}deg) scaleY(${(1 + age * 0.28).toFixed(3)})`;
+      }
+      if (!alive) { fx.active = false; fx.root.style.display = "none"; }
     }
   }
 
@@ -17066,7 +17684,10 @@
     if (ITEM_DEFS[slot.itemId].healAmount) useHealingItem(player, slot.itemId);
   }
 
-  function takeDamage(player, amount) {
+  // `source` (optional): {x, z} of whatever hit them, for the directional
+  // damage feedback; null = no feedback (zone ticks); undefined = feedback
+  // without a direction (falls, splash).
+  function takeDamage(player, amount, source) {
     if (player.isTurretTarget) { // a zombie hitting a deployed turret (see TURRETS)
       damageTurret(player.turret, amount);
       return;
@@ -17078,6 +17699,7 @@
     // and if the boss dies mid-grab, releaseBossGrab clears grabbedBy
     // the same moment, so they're never left stuck invulnerable.
     if (player.grabbedBy) return;
+    if (source !== null) triggerDamageFx(player, amount, source);
     // Already down: health stays at 0, hits eat into the bleed-out clock instead.
     if (player.isDowned) {
       player.downedTimeLeft = Math.max(0, player.downedTimeLeft - amount * DOWNED_BLEEDOUT_SECONDS_PER_DAMAGE);
@@ -17937,6 +18559,7 @@
     currentScore = 0;
     updateScoreUI();
     resetZone();
+    clearDamageFx();
 
     for (const enemyState of enemies) {
       scene.remove(enemyState.mesh);
@@ -18196,11 +18819,11 @@
     player.camera.rotation.y = player.yaw + player.cameraRecoilYawOffset + player.cameraSwingYaw + player.cameraScopeSwayYaw + player.cameraBobYaw;
     player.camera.rotation.x = Math.max(
       -PITCH_LIMIT,
-      Math.min(PITCH_LIMIT, player.pitch + player.cameraRecoilPitchOffset + player.cameraReloadPitch + player.cameraSwingPitch + player.cameraScopeSwayPitch + player.cameraBobPitch)
+      Math.min(PITCH_LIMIT, player.pitch + (player.damageKickPitch || 0) + player.cameraRecoilPitchOffset + player.cameraReloadPitch + player.cameraSwingPitch + player.cameraScopeSwayPitch + player.cameraBobPitch)
     );
     // Tiny reload sway (see updateReloadAnimation), katana swing lean
     // (see updateKatanaCamera) and the running sway (see updateGaitCamera).
-    player.camera.rotation.z = player.cameraReloadRoll + player.cameraSwingRoll + player.cameraBobRoll;
+    player.camera.rotation.z = player.cameraReloadRoll + player.cameraSwingRoll + player.cameraBobRoll + (player.damageKickRoll || 0);
   }
 
   // Clicking the overlay's background (the "click to play" prompt, or
@@ -24444,7 +25067,7 @@
       if (Math.hypot(px - landing.x, pz - landing.z) > BOSS_ENEMY.slamRadius) continue;
       // No hitting through a wall that happens to be inside the radius.
       if (!hasLineOfSight(landing.x, landing.z, px, pz, 0)) continue;
-      takeDamage(player, BOSS_ENEMY.slamDamage);
+      takeDamage(player, BOSS_ENEMY.slamDamage, landing);
     }
     bossSlamEffectPosition.set(landing.x, 0.2, landing.z);
     spawnParticleBurst(bossSlamEffectPosition, BOSS_SLAM_PARTICLE_OPTIONS);
@@ -24804,7 +25427,7 @@
         if (distance > PLAYER_RADIUS + radius + 0.2) continue;
         if (mesh.position.y > player.camera.position.y + 0.4) continue; // sailed over their head
         thrown.hasHit = true;
-        takeDamage(player, THROWN_ENEMY_DAMAGE);
+        takeDamage(player, THROWN_ENEMY_DAMAGE, mesh.position);
         playRandomClip(["bat_hit_01", "bat_hit_02"], { volume: 1.5, position: player.camera.position });
         const speed = Math.hypot(thrown.velocity.x, thrown.velocity.z);
         if (speed > MIN_ENEMY_DISTANCE && !player.grabbedBy) {
@@ -24870,6 +25493,289 @@
   function targetStandingY(target) {
     if (target.isTurretTarget) return target.camera.position.y;
     return isCampusMap ? target.campusGroundY || 0 : 0;
+  }
+
+  // ------------------------------------------------------------------
+  // ZOMBIE CAR CLIMBING. Ground navigation treats a parked car as solid, so
+  // a player standing on one used to be unreachable: too high to hit from the
+  // ground, no stair route to it. Now a zombie whose target is up on a
+  // climbable car (campusWorld.carAt, which reuses the car hitbox data) claims
+  // one of the car's edge slots (campusWorld.carClimbSlots), walks there on
+  // the normal grid path, then runs a scripted traversal -- approach -> climb
+  // -> roof -> (descend) -- driven entirely by one phase timer so the body
+  // and the pose (zombieSystem.setClimb) can't drift apart. The scan only
+  // runs for a zombie that can't reach its target vertically, on a timer;
+  // everything else about navigation, spawning and stuck recovery is
+  // unchanged (a climbing zombie just counts as busy, with its own timeout).
+  // ------------------------------------------------------------------
+  const CAR_CLIMB_CONFIG = {
+    ZOMBIE_CAR_CLIMBING_ENABLED: true,
+    CLIMBABLE_CLASSES: ["sedan", "twobox", "pickup"], // vehicle-models.js cls: cars, SUVs/vans, trucks (extend for other low obstacles)
+    CAR_CLIMB_MAX_HEIGHT: 2.0,        // m a zombie can rise onto (target height above its feet)
+    CAR_CLIMB_APPROACH_DISTANCE: 14,  // m: only zombies this close to the car start using it
+    CAR_CLIMB_ATTEMPT_TIMEOUT: 7,     // s per approach attempt before trying another side
+    CAR_CLIMB_DURATION: 1.7,          // s from hands-on to standing on the car
+    CAR_CLIMB_DOWN_DURATION: 1.2,     // s for the climb down
+    CAR_CLIMB_COOLDOWN: 2.5,          // s before a zombie that gave up tries again
+    CAR_CLIMB_MAX_ZOMBIES_PER_CAR: 5, // at once (approaching, climbing or up on it)
+    CAR_CLIMB_DOWN_ENABLED: true,
+  };
+  const CAR_CLIMB_MIN_RISE_M = 0.45;   // lower than this the zombie can just hit from the ground
+  const CAR_CLIMB_STAND_OFF_M = 0.12;  // clearance between a zombie's body and the car while it waits to climb
+
+  function carClimbRange(t, a, b) {
+    const k = Math.min(1, Math.max(0, (t - a) / (b - a)));
+    return k * k * (3 - 2 * k);
+  }
+
+  function releaseCarClimb(enemyState, cooldownSeconds) {
+    const cc = enemyState.carClimb;
+    if (!cc) return;
+    if (cc.slot && cc.slot.owner === enemyState) cc.slot.owner = null;
+    if (cc.exit && cc.exit.owner === enemyState) cc.exit.owner = null;
+    if (cc.counted) cc.car.climbers = Math.max(0, cc.car.climbers - 1);
+    if (cc.car.riders) { const i = cc.car.riders.indexOf(enemyState); if (i !== -1) cc.car.riders.splice(i, 1); }
+    enemyState.carClimb = null;
+    enemyState.carClimbReadyAt = performance.now() + cooldownSeconds * 1000;
+    enemyState.pathWaypoints = [];
+    enemyState.repathTimer = 0;
+    enemyState.losCheckTimer = 0;
+  }
+
+  // The best free slot on `car` for a zombie at (x, z): nearest stand point,
+  // preferring the side that faces it (so nobody walks round the whole car),
+  // and only where the zombie can actually stand.
+  const carSlotCandidates = [];
+  function pickCarClimbSlot(car, enemyState, x, z, radius, exclude) {
+    const slots = campusWorld.carClimbSlots(car);
+    carSlotCandidates.length = 0;
+    const away = Math.hypot(x - car.x, z - car.z) || 1;
+    for (const slot of slots) {
+      if (slot === exclude) continue;
+      if (slot.owner && slot.owner !== enemyState && !slot.owner.isRemoved && slot.owner.carClimb) continue;
+      const stx = slot.ex + slot.nx * (radius + CAR_CLIMB_STAND_OFF_M), stz = slot.ez + slot.nz * (radius + CAR_CLIMB_STAND_OFF_M);
+      const facing = ((x - car.x) * slot.nx + (z - car.z) * slot.nz) / away;
+      carSlotCandidates.push({ slot, stx, stz, cost: Math.hypot(stx - x, stz - z) + (1 - facing) * 2.5 + Math.random() * 0.6 });
+    }
+    carSlotCandidates.sort((a, b) => a.cost - b.cost);
+    for (let i = 0; i < Math.min(4, carSlotCandidates.length); i++) {
+      const c = carSlotCandidates[i];
+      if (campusWorld.isWalkable(c.stx, c.stz, radius * 0.9)) return c;
+    }
+    return null;
+  }
+
+  // Throttled check for a zombie that can't hit its target from the ground.
+  function maybeStartCarClimb(enemyState, target, deltaSeconds, feetY, radius) {
+    enemyState.carScanTimer = (enemyState.carScanTimer ?? 0) - deltaSeconds;
+    if (enemyState.carScanTimer > 0) return;
+    enemyState.carScanTimer = 0.3 + Math.random() * 0.2;
+    if (performance.now() < (enemyState.carClimbReadyAt || 0) || enemyState.isBrute || target.isTurretTarget) return;
+    const C = CAR_CLIMB_CONFIG;
+    const ty = targetStandingY(target), rise = ty - feetY;
+    if (rise < CAR_CLIMB_MIN_RISE_M || rise > C.CAR_CLIMB_MAX_HEIGHT) return;
+    const tx = target.camera.position.x, tz = target.camera.position.z;
+    const car = campusWorld.carAt(tx, tz, 0.45);
+    if (!car || !C.CLIMBABLE_CLASSES.includes(car.cls) || car.climbers >= C.CAR_CLIMB_MAX_ZOMBIES_PER_CAR) return;
+    if (ty < car.bodyTop - 0.35 || ty > car.roofY + 0.35) return; // standing on the car itself, not something beside it
+    const mesh = enemyState.mesh;
+    if (Math.hypot(mesh.position.x - car.x, mesh.position.z - car.z) > C.CAR_CLIMB_APPROACH_DISTANCE + car.halfL) return;
+    const pick = pickCarClimbSlot(car, enemyState, mesh.position.x, mesh.position.z, radius, null);
+    if (!pick) return;
+    pick.slot.owner = enemyState;
+    car.climbers++;
+    enemyState.carClimb = { car, slot: pick.slot, phase: "approach", attemptT: 0, tries: 0, path: [], pathT: 0, retargetT: 0.5, t: 0, counted: true, roofT: 0, exit: null };
+  }
+
+  function setEnemyHeightOnCar(enemyState, y) {
+    enemyState.campusGroundY = y;
+    enemyState.visualGroundY = y;
+    enemyState.groundFallSpeed = 0;
+    enemyState.mesh.position.y = (ENEMY_SIZE.height / 2) * enemyState.sizeScale + y;
+  }
+
+  // One frame of the scripted traversal. Returns true when it moved the zombie
+  // this frame (so the normal chase is skipped), false when it let go of it.
+  function stepCarClimb(enemyState, deltaSeconds, radius) {
+    const cc = enemyState.carClimb, car = cc.car, mesh = enemyState.mesh, C = CAR_CLIMB_CONFIG;
+    const feetY = enemyState.campusGroundY || 0;
+    cc.retargetT -= deltaSeconds;
+    if (cc.retargetT <= 0) {
+      cc.retargetT = 0.6;
+      const reselected = pickNearestEnemyTarget(mesh.position.x, mesh.position.z);
+      if (reselected) enemyState.targetPlayer = reselected;
+    }
+    const target = enemyState.targetPlayer;
+    if (!target || target.isDead || target.isDowned) { releaseCarClimb(enemyState, 0.3); return false; }
+    const tx = target.camera.position.x, tz = target.camera.position.z, ty = targetStandingY(target);
+    const targetOnCar = !target.isTurretTarget && campusWorld.carAt(tx, tz, 0.45) === car && ty >= car.bodyTop - 0.35 && ty <= car.roofY + 0.35;
+    const zombie = enemyState.zombie;
+    const speed = enemyState.speed;
+
+    if (cc.phase === "approach") {
+      enemyState.hasLineOfSightCached = false; // no attacking while working its way over
+      cc.attemptT += deltaSeconds;
+      if (!targetOnCar) { releaseCarClimb(enemyState, 0.4); return false; } // they got down: back to normal chase
+      if (cc.attemptT > C.CAR_CLIMB_ATTEMPT_TIMEOUT) {
+        // blocked (another zombie, a neighbouring car...): another side, then give up
+        cc.tries++;
+        const old = cc.slot;
+        old.owner = null;
+        const pick = cc.tries >= 2 ? null : pickCarClimbSlot(car, enemyState, mesh.position.x, mesh.position.z, radius, old);
+        if (!pick) { releaseCarClimb(enemyState, C.CAR_CLIMB_COOLDOWN); return false; }
+        pick.slot.owner = enemyState;
+        cc.slot = pick.slot;
+        cc.attemptT = 0;
+        cc.path = [];
+        cc.pathT = 0;
+      }
+      const slot = cc.slot;
+      const standX = slot.ex + slot.nx * (radius + CAR_CLIMB_STAND_OFF_M), standZ = slot.ez + slot.nz * (radius + CAR_CLIMB_STAND_OFF_M);
+      const dist = Math.hypot(standX - mesh.position.x, standZ - mesh.position.z);
+      if (dist < 0.3) {
+        // hands on the car: fix the whole traversal now, from where it's standing
+        const inX = slot.ex - slot.nx * 0.75, inZ = slot.ez - slot.nz * 0.75;
+        let landingY = campusWorld.supportHeightAt(inX, inZ, radius * 0.5, car.roofY + 0.05);
+        landingY = Math.max(landingY, car.bodyTop);
+        cc.phase = "climb";
+        cc.t = 0;
+        cc.s0 = { x: mesh.position.x, z: mesh.position.z, y: feetY };
+        cc.A = { x: slot.ex + slot.nx * radius * 0.85, z: slot.ez + slot.nz * radius * 0.85 };
+        cc.L = { x: inX, z: inZ };
+        cc.landingY = landingY;
+        return stepCarClimb(enemyState, 0, radius);
+      }
+      // walk the normal grid route to a point just out from the slot, then straight in
+      cc.pathT -= deltaSeconds;
+      if (cc.pathT <= 0) {
+        cc.pathT = NAV_REPATH_INTERVAL + Math.random() * NAV_REPATH_JITTER;
+        const preX = slot.ex + slot.nx * (radius + 1.6), preZ = slot.ez + slot.nz * (radius + 1.6);
+        const raw = findGridPath(mesh.position.x, mesh.position.z, preX, preZ);
+        cc.path = raw ? simplifyGridPath(mesh.position.x, mesh.position.z, raw, radius) : [];
+      }
+      while (cc.path.length > 0 && Math.hypot(cc.path[0].x - mesh.position.x, cc.path[0].z - mesh.position.z) < NAV_WAYPOINT_REACHED_DISTANCE) cc.path.shift();
+      let goalX = standX, goalZ = standZ;
+      if (cc.path.length > 0 && dist > 2.5) { goalX = cc.path[0].x; goalZ = cc.path[0].z; }
+      enemyMoveDir.set(goalX - mesh.position.x, 0, goalZ - mesh.position.z).normalize();
+      const slow = dist < 1.4 ? 0.55 : 1; // slows and reaches as it gets to the car
+      const preX = mesh.position.x, preZ = mesh.position.z;
+      moveWithWallCollision(mesh.position, enemyMoveDir.x * speed * slow * deltaSeconds, enemyMoveDir.z * speed * slow * deltaSeconds, radius, feetY);
+      updateEnemyFootsteps(enemyState, Math.hypot(mesh.position.x - preX, mesh.position.z - preZ));
+      turnEnemyToward(enemyState, enemyMoveDir.x, enemyMoveDir.z, ENEMY_TURN_SPEED * deltaSeconds);
+      if (zombie && dist < 1.4) zombieSystem.setClimb(zombie, "prep", 1 - dist / 1.4);
+      enemyState.campusGroundY = campusSupportHeight(mesh.position, radius, feetY);
+      mesh.position.y = (ENEMY_SIZE.height / 2) * enemyState.sizeScale + easeEnemyGroundY(enemyState, deltaSeconds);
+      return true;
+    }
+
+    if (cc.phase === "climb") {
+      enemyState.hasLineOfSightCached = false;
+      cc.t += deltaSeconds / C.CAR_CLIMB_DURATION;
+      const p = Math.min(1, cc.t), s = cc.s0, A = cc.A, L = cc.L;
+      // out to the car's side first, up it, and only then over the edge onto the top
+      const k1 = carClimbRange(p, 0.08, 0.5), k2 = carClimbRange(p, 0.62, 1.0);
+      mesh.position.x = s.x + (A.x - s.x) * k1 + (L.x - A.x) * k2;
+      mesh.position.z = s.z + (A.z - s.z) * k1 + (L.z - A.z) * k2;
+      setEnemyHeightOnCar(enemyState, s.y + (cc.landingY - s.y) * carClimbRange(p, 0.2, 0.78));
+      turnEnemyToward(enemyState, -cc.slot.nx, -cc.slot.nz, ENEMY_TURN_SPEED * 2 * deltaSeconds);
+      if (zombie) zombieSystem.setClimb(zombie, "up", p);
+      if (p >= 1) {
+        cc.phase = "roof";
+        cc.t = 0;
+        (car.riders || (car.riders = [])).push(enemyState); // zombies up here keep a little room from each other
+        if (cc.slot.owner === enemyState) cc.slot.owner = null; // the way up is free for the next one
+        cc.slot = null;
+        enemyState.stairRouteUntil = 0;
+      }
+      return true;
+    }
+
+    if (cc.phase === "roof") {
+      cc.roofT += deltaSeconds;
+      let goal = null, stopAt = 0;
+      if (targetOnCar) {
+        goal = { x: tx, z: tz };
+        stopAt = ENEMY_CONTACT_DISTANCE * enemyState.sizeScale * 0.7;
+        cc.exit = null;
+        cc.roofT = 0;
+      } else if (C.CAR_CLIMB_DOWN_ENABLED) {
+        if (!cc.exit) cc.exit = pickCarExitSlot(car, enemyState, tx, tz, radius);
+        if (!cc.exit) { releaseCarClimb(enemyState, 0.5); return false; }
+        goal = { x: cc.exit.ex - cc.exit.nx * 0.55, z: cc.exit.ez - cc.exit.nz * 0.55 };
+        stopAt = 0.2;
+      } else { releaseCarClimb(enemyState, 0.5); return false; }
+      const dx = goal.x - mesh.position.x, dz = goal.z - mesh.position.z;
+      const dist = Math.hypot(dx, dz);
+      const preX = mesh.position.x, preZ = mesh.position.z;
+      if (enemyState.knockbackVelocity.lengthSq() > KNOCKBACK_STOP_THRESHOLD_SQ) {
+        mesh.position.x += enemyState.knockbackVelocity.x * deltaSeconds;
+        mesh.position.z += enemyState.knockbackVelocity.z * deltaSeconds;
+        enemyState.knockbackVelocity.multiplyScalar(Math.max(0, 1 - KNOCKBACK_DECAY_RATE * deltaSeconds));
+      } else if (dist > stopAt) {
+        mesh.position.x += (dx / dist) * speed * deltaSeconds;
+        mesh.position.z += (dz / dist) * speed * deltaSeconds;
+      }
+      if (car.riders) {
+        for (const other of car.riders) {
+          if (other === enemyState || other.isRemoved) continue;
+          const ox = mesh.position.x - other.mesh.position.x, oz = mesh.position.z - other.mesh.position.z;
+          const od = Math.hypot(ox, oz), room = radius * 1.6;
+          if (od < 1e-4) mesh.position.x += 0.04;
+          else if (od < room) { const push = (room - od) * 0.5; mesh.position.x += (ox / od) * push; mesh.position.z += (oz / od) * push; }
+        }
+      }
+      campusWorld.clampToCarTop(car, mesh.position, radius * 0.4); // never walks off the edge except by the climb down
+      updateEnemyFootsteps(enemyState, Math.hypot(mesh.position.x - preX, mesh.position.z - preZ));
+      if (dist > 0.05) turnEnemyToward(enemyState, dx, dz, ENEMY_TURN_SPEED * deltaSeconds);
+      // ride the car's own surface (hood / roof heights)
+      const surface = Math.max(campusWorld.supportHeightAt(mesh.position.x, mesh.position.z, radius * 0.5, car.roofY + 0.05), car.bodyTop);
+      enemyState.campusGroundY = surface;
+      enemyState.visualGroundY = (enemyState.visualGroundY ?? surface) + (surface - (enemyState.visualGroundY ?? surface)) * Math.min(1, 12 * deltaSeconds);
+      enemyState.groundFallSpeed = 0;
+      mesh.position.y = (ENEMY_SIZE.height / 2) * enemyState.sizeScale + enemyState.visualGroundY;
+      // Both standing on the same car top: nothing can be between them (the general sight
+      // check would count the car's own hitbox as a fence-like blocker).
+      enemyState.hasLineOfSightCached = targetOnCar;
+      if (!targetOnCar && cc.exit && dist <= stopAt + 0.05) {
+        const slot = cc.exit;
+        cc.phase = "descend";
+        cc.t = 0;
+        cc.s0 = { x: mesh.position.x, z: mesh.position.z, y: enemyState.visualGroundY };
+        cc.A = { x: slot.ex + slot.nx * radius * 0.85, z: slot.ez + slot.nz * radius * 0.85 };
+        const gx = slot.ex + slot.nx * 0.75, gz = slot.ez + slot.nz * 0.75;
+        cc.G = { x: gx, z: gz };
+        cc.groundY = campusWorld.supportHeightAt(gx, gz, radius * 0.5, car.groundY + campusWorld.stepUpHeight);
+        enemyState.hasLineOfSightCached = false;
+      } else if (!targetOnCar && cc.roofT > 60) { releaseCarClimb(enemyState, C.CAR_CLIMB_COOLDOWN); return false; } // safety net: no way down found
+      return true;
+    }
+
+    // descend: over the edge and down, mirroring the climb
+    enemyState.hasLineOfSightCached = false;
+    cc.t += deltaSeconds / C.CAR_CLIMB_DOWN_DURATION;
+    const p = Math.min(1, cc.t), s = cc.s0, A = cc.A, G = cc.G;
+    const k1 = carClimbRange(p, 0.0, 0.3), k2 = carClimbRange(p, 0.55, 1.0);
+    mesh.position.x = s.x + (A.x - s.x) * k1 + (G.x - A.x) * k2;
+    mesh.position.z = s.z + (A.z - s.z) * k1 + (G.z - A.z) * k2;
+    setEnemyHeightOnCar(enemyState, s.y + (cc.groundY - s.y) * carClimbRange(p, 0.3, 0.85));
+    turnEnemyToward(enemyState, cc.exit.nx, cc.exit.nz, ENEMY_TURN_SPEED * 2 * deltaSeconds);
+    if (zombie) zombieSystem.setClimb(zombie, "down", p);
+    if (p >= 1) {
+      enemyState.campusGroundY = cc.groundY;
+      releaseCarClimb(enemyState, 0.8);
+    }
+    return true;
+  }
+
+  // Which edge to climb down at: the walkable spot on the ground closest to the target.
+  function pickCarExitSlot(car, enemyState, tx, tz, radius) {
+    const slots = campusWorld.carClimbSlots(car);
+    const ranked = slots.map((slot) => ({ slot, d: Math.hypot(slot.ex + slot.nx * 0.75 - tx, slot.ez + slot.nz * 0.75 - tz) })).sort((a, b) => a.d - b.d);
+    for (const r of ranked.slice(0, 4)) {
+      if (r.slot.owner && r.slot.owner !== enemyState && !r.slot.owner.isRemoved && r.slot.owner.carClimb) continue; // someone's coming up there
+      if (campusWorld.isWalkable(r.slot.ex + r.slot.nx * 0.75, r.slot.ez + r.slot.nz * 0.75, radius * 0.9)) return r.slot;
+    }
+    return null;
   }
 
   function updateEnemies(deltaSeconds) {
@@ -24995,6 +25901,17 @@
       // Target selection (nearest living player) rides the same
       // throttle -- not sticky aggro, but also not re-evaluated every
       // single frame.
+      // Campus: a zombie mid car-climb (or whose target just went up onto a
+      // car it can't hit from the ground) is moved by stepCarClimb instead of
+      // the chase below -- see ZOMBIE CAR CLIMBING.
+      let hasActiveKnockback = false;
+      let carDriven = false;
+      if (isCampusMap && CAR_CLIMB_CONFIG.ZOMBIE_CAR_CLIMBING_ENABLED && !boss) {
+        if (enemyState.carClimb) carDriven = stepCarClimb(enemyState, deltaSeconds, enemyRadius);
+        else if (!lowDetail && !withinReachVertically) maybeStartCarClimb(enemyState, targetPlayer, deltaSeconds, enemyFeetY, enemyRadius);
+      }
+      const scriptedClimb = carDriven && !!enemyState.carClimb && (enemyState.carClimb.phase === "climb" || enemyState.carClimb.phase === "descend");
+      if (!carDriven) {
       enemyState.repathTimer -= deltaSeconds;
       if (enemyState.repathTimer <= 0) {
         enemyState.repathTimer = NAV_REPATH_INTERVAL + Math.random() * NAV_REPATH_JITTER;
@@ -25066,7 +25983,7 @@
       // ease-out, not an instant stop) via KNOCKBACK_DECAY_RATE; once it
       // drops below KNOCKBACK_STOP_THRESHOLD_SQ, normal movement/turning
       // below resumes on its own the very next frame.
-      const hasActiveKnockback = enemyState.knockbackVelocity.lengthSq() > KNOCKBACK_STOP_THRESHOLD_SQ;
+      hasActiveKnockback = enemyState.knockbackVelocity.lengthSq() > KNOCKBACK_STOP_THRESHOLD_SQ;
       if (hasActiveKnockback) {
         const preMoveX = mesh.position.x;
         const preMoveZ = mesh.position.z;
@@ -25111,13 +26028,14 @@
       }
       if (isCampusMap) enemyState.campusGroundY = campusSupportHeight(mesh.position, enemyRadius, enemyFeetY);
       mesh.position.y = (ENEMY_SIZE.height / 2) * enemyState.sizeScale + (isCampusMap ? easeEnemyGroundY(enemyState, deltaSeconds) : 0);
+      } // !carDriven
 
       // Walk only on real chase movement -- being shoved by knockback
       // slides the enemy with its limbs easing back to idle instead.
       const movedDistance = Math.hypot(mesh.position.x - frameStartX, mesh.position.z - frameStartZ);
       updateEnemyAnimation(enemyState, deltaSeconds, {
         movedDistance,
-        isWalking: !hasActiveKnockback && movedDistance > ENEMY_WALK_MIN_SPEED * deltaSeconds,
+        isWalking: !hasActiveKnockback && !scriptedClimb && movedDistance > ENEMY_WALK_MIN_SPEED * deltaSeconds,
         sizeScale: enemyState.sizeScale,
       });
 
@@ -25167,7 +26085,7 @@
           // health<=0 branch), forced by passing its own current health
           // as the damage amount, with EXPLOSION_PARTICLE_OPTIONS swapped
           // in for the usual death-particle burst.
-          takeDamage(targetPlayer, currentDifficulty.greenExplosionDamage ?? GREEN_ENEMY_EXPLOSION_DAMAGE); // explosion sound is played by damageEnemy's green-death branch
+          takeDamage(targetPlayer, currentDifficulty.greenExplosionDamage ?? GREEN_ENEMY_EXPLOSION_DAMAGE, mesh.position); // explosion sound is played by damageEnemy's green-death branch
           damageEnemy(enemyState, enemyState.health, null, EXPLOSION_PARTICLE_OPTIONS);
           continue; // enemyState/mesh are gone -- removeEnemy() already ran
         }
@@ -25178,7 +26096,7 @@
           // updateMovement. BRUTE_ENEMY_HIT_INTERVAL keeps a single
           // contact from ever registering twice.
           playRandomClip(["bat_hit_01", "bat_hit_02"], { volume: 1.5, position: targetPlayer.camera.position });
-          takeDamage(targetPlayer, BRUTE_ENEMY_DAMAGE);
+          takeDamage(targetPlayer, BRUTE_ENEMY_DAMAGE, mesh.position);
           zombieSystem.triggerAttack(enemyState.zombie, "downswing", 1.6);
           if (distanceToPlayer > MIN_ENEMY_DISTANCE) {
             enemyToPlayer.normalize();
@@ -25192,7 +26110,7 @@
         }
 
         // Players and deployed turrets take the difficulty's contact damage (Normal: 8).
-        takeDamage(targetPlayer, currentDifficulty.enemyContactDamage ?? ENEMY_DAMAGE_PER_HIT);
+        takeDamage(targetPlayer, currentDifficulty.enemyContactDamage ?? ENEMY_DAMAGE_PER_HIT, mesh.position);
         zombieSystem.triggerAttack(enemyState.zombie);
 
         // Knockback: shove the player's velocity directly away from the
@@ -25598,7 +26516,9 @@
       if (sunLight.shadow.camera.right !== SUN_SHADOW_HALF_M) centerSunShadow(camera.position.x, camera.position.z, SUN_SHADOW_HALF_M);
       prepareLightsFor(camera);
       renderer.toneMappingExposure = exposureOf(0);
+      stormAtmosphereBegin(); stormAtmosphereApply(camera);
       renderer.render(scene, camera);
+      stormAtmosphereEnd();
       return;
     }
 
@@ -25612,7 +26532,9 @@
       // mode was entered (see the bottom of this function) -- nothing
       // extra to reset here, this is just a plain full-canvas render
       // like singleplayer's, pointed at the survivor's camera instead.
+      stormAtmosphereBegin(); stormAtmosphereApply(players[coopFullscreenSurvivorIndex].camera);
       renderer.render(scene, players[coopFullscreenSurvivorIndex].camera);
+      stormAtmosphereEnd();
       return;
     }
 
@@ -25647,6 +26569,7 @@
     // getPlayerViewportRect. A dead 4-player teammate's quadrant shows
     // whoever they're spectating (see getSpectateViewIndex).
     let drewFirstView = false;
+    stormAtmosphereBegin();
     players.forEach((player, index) => {
       if (player.screenGiven) return; // gave their screen area away: no viewport
       const rect = getPlayerViewportRect(index);
@@ -25681,6 +26604,7 @@
         zombieSystem.showLodForView(enemyState.zombie, Math.hypot(pos.x - vx, pos.z - vz) * lodScale);
       }
       renderer.toneMappingExposure = exposureOf(getSpectateViewIndex(index));
+      stormAtmosphereApply(viewCamera);
       drewFirstView = true;
       const ownAspect = viewCamera.aspect;
       const viewAspect = rect.width / rect.height;
@@ -25695,6 +26619,7 @@
       }
     });
     scene.autoUpdate = true;
+    stormAtmosphereEnd();
     for (const enemyState of enemies) if (enemyState.zombie) zombieSystem.restoreLod(enemyState.zombie);
     if (isCampusMap && campusWorld) campusWorld.endViews();
     // Restore the full-target viewport -- otherwise the NEXT
@@ -26686,6 +27611,8 @@
 
     updateScopeOverlays(deltaSeconds);
     updateWeatherAudio(deltaSeconds);
+    tickStormVisuals(deltaSeconds);
+    tickDamageFx(deltaSeconds);
     updateInteractPrompts();
     if (pendingFaceUploads.length) uploadPendingFaceTextures(isSingleplayerMatchActive || isCoopMatchActive ? 1 : 2);
     if (rendererPrewarmPending) prewarmRendererForRun();
@@ -26750,6 +27677,9 @@
         enterWeatherState(WEATHER_STATES.RAINING, 600);
       },
       prewarmRendererForRun, raycastEnemies,
+      // Zone / storm / damage-feedback smoke tests.
+      CAR_CLIMB_CONFIG, updateEnemyAnimation,
+      updateZone, zoneState, ZONE_CONFIG, tickStormVisuals, tickDamageFx, takeDamage, triggerDamageFx, animateFrame: animate,
       // Split-screen benchmark (#perftest-split): n players (1, 2 or 4)
       // on the campus, the rest `spread` m apart around player 1 and
       // facing different ways -- views only, no match setup.

@@ -1061,10 +1061,14 @@
         postureTarget: new Float32Array(3),
         postureTimer: 0,
         flinch: null,
+        climbBlend: 0, climbTarget: 0, climbKind: null, climbP: 0, // see CLIMBING
       };
     }
 
     function resetAnimState(anim, ap) {
+      anim.climbBlend = 0;
+      anim.climbTarget = 0;
+      anim.climbKind = null;
       anim.walkPhase = Math.random() * Math.PI * 2;
       anim.time = Math.random() * 100;
       anim.accum = 0;
@@ -1579,6 +1583,90 @@
       return anim.baseStride * Math.pow(ratio, 0.66);
     }
 
+
+    // ------------------------------------------------------------------
+    // CLIMBING (cars): the game drives a zombie up onto / down off a car with
+    // setClimb(kind, p) every frame of the traversal (p = progress 0..1); the
+    // pose is a keyframe blend layered over idle/walk, eased in and out like
+    // windup so it never pops. Kinds: "prep" (slowing, reaching for the
+    // car), "up" (hands on the hood/side, pull, knee up, stand), "down"
+    // (sit at the edge, push off, drop into a crouch). Sign conventions as
+    // elsewhere: upper-arm x < 0 raises forward, thigh x < 0 lifts the knee,
+    // shin x > 0 bends the knee, spine x > 0 leans forward; hips y up, z forward.
+    // A little per-zombie asymmetry (armSide) keeps it lurching rather than athletic.
+    // ------------------------------------------------------------------
+    const CLIMB_FRAMES = {
+      prep: [
+        { t: 0, hy: 0, hz: 0, b: {} },
+        { t: 1, hy: -0.03, hz: 0.04, b: { spine: [0.22, 0, 0], chest: [0.15, 0, 0], head: [-0.25, 0, 0], upperArmL: [-1.25, 0, 0.12], upperArmR: [-1.25, 0, -0.12], forearmL: [-0.45, 0, 0], forearmR: [-0.45, 0, 0] } },
+      ],
+      up: [
+        // reach: slowing, hands going out for the car
+        { t: 0.0, hy: 0, hz: 0.02, b: { spine: [0.25, 0, 0], chest: [0.2, 0, 0], head: [-0.3, 0, 0], upperArmL: [-1.5, 0, 0.1], upperArmR: [-1.5, 0, -0.1], forearmL: [-0.4, 0, 0], forearmR: [-0.4, 0, 0], thighL: [-0.1, 0, 0], thighR: [-0.1, 0, 0] } },
+        // hands planted on the car, one knee lifting
+        { t: 0.2, hy: -0.04, hz: 0.1, b: { spine: [0.5, 0, 0], chest: [0.4, 0, 0], head: [-0.5, 0, 0], upperArmL: [-1.95, 0, 0.08], upperArmR: [-1.75, 0, -0.08], forearmL: [-0.3, 0, 0], forearmR: [-0.3, 0, 0], handL: [-0.25, 0, 0], handR: [-0.25, 0, 0], thighL: [-1.2, 0, 0.05], shinL: [1.35, 0, 0], thighR: [-0.12, 0, 0], shinR: [0.15, 0, 0] } },
+        // hauling the chest over, elbows bending
+        { t: 0.45, hy: 0.03, hz: 0.2, b: { spine: [0.85, 0.12, 0], chest: [0.65, -0.1, 0], head: [-0.6, 0, 0], neck: [-0.15, 0, 0], upperArmL: [-0.95, 0, 0.2], upperArmR: [-0.85, 0, -0.2], forearmL: [-1.6, 0, 0], forearmR: [-1.45, 0, 0], thighL: [-1.45, 0, 0.05], shinL: [1.2, 0, 0], thighR: [-0.65, 0, 0], shinR: [0.55, 0, 0] } },
+        // knee on the car, pushing up with the arms
+        { t: 0.72, hy: 0.0, hz: 0.14, b: { spine: [0.9, 0, 0], chest: [0.5, 0, 0], head: [-0.5, 0, 0], upperArmL: [-0.3, 0, 0.3], upperArmR: [-0.35, 0, -0.3], forearmL: [-0.9, 0, 0], forearmR: [-0.9, 0, 0], thighL: [-0.95, 0, 0.04], shinL: [1.45, 0, 0], thighR: [-0.55, 0, 0], shinR: [0.95, 0, 0] } },
+        // rising, weight over the feet
+        { t: 0.88, hy: -0.02, hz: 0.06, b: { spine: [0.5, 0, 0], chest: [0.35, 0, 0], head: [-0.3, 0, 0], upperArmL: [-0.6, 0, 0.15], upperArmR: [-0.6, 0, -0.15], forearmL: [-0.5, 0, 0], forearmR: [-0.5, 0, 0], thighL: [-0.3, 0, 0], shinL: [0.45, 0, 0], thighR: [-0.25, 0, 0], shinR: [0.4, 0, 0] } },
+        { t: 1.0, hy: 0, hz: 0, b: { spine: [0.2, 0, 0], chest: [0.15, 0, 0], head: [-0.15, 0, 0], thighL: [-0.06, 0, 0], thighR: [-0.06, 0, 0], upperArmL: [-0.1, 0, 0.1], upperArmR: [-0.1, 0, -0.1] } },
+      ],
+      down: [
+        { t: 0.0, hy: 0, hz: 0, b: { spine: [0.1, 0, 0] } },
+        // sitting down at the edge, hands pushed back onto the roof
+        { t: 0.3, hy: -0.22, hz: -0.06, b: { spine: [-0.15, 0, 0], chest: [-0.1, 0, 0], head: [0.1, 0, 0], upperArmL: [0.75, 0, 0.25], upperArmR: [0.85, 0, -0.25], forearmL: [0.2, 0, 0], forearmR: [0.2, 0, 0], thighL: [-1.3, 0, 0.05], thighR: [-1.2, 0, -0.05], shinL: [1.0, 0, 0], shinR: [1.05, 0, 0] } },
+        // pushing off, legs reaching for the ground
+        { t: 0.68, hy: -0.3, hz: 0.0, b: { spine: [0.1, 0, 0], chest: [0.05, 0, 0], upperArmL: [-0.5, 0, 0.35], upperArmR: [-0.6, 0, -0.35], forearmL: [-0.4, 0, 0], forearmR: [-0.4, 0, 0], thighL: [-0.65, 0, 0.05], thighR: [-0.75, 0, -0.05], shinL: [0.75, 0, 0], shinR: [0.7, 0, 0] } },
+        // landing crouch
+        { t: 0.88, hy: -0.16, hz: 0.04, b: { spine: [0.45, 0, 0], chest: [0.3, 0, 0], head: [-0.3, 0, 0], upperArmL: [-0.4, 0, 0.25], upperArmR: [-0.4, 0, -0.25], thighL: [-0.7, 0, 0.03], thighR: [-0.7, 0, -0.03], shinL: [1.15, 0, 0], shinR: [1.15, 0, 0] } },
+        { t: 1.0, hy: 0, hz: 0, b: { spine: [0.2, 0, 0], chest: [0.15, 0, 0], thighL: [-0.06, 0, 0], thighR: [-0.06, 0, 0] } },
+      ],
+    };
+    const CLIMB_POSE = new Float32Array(BONE_COUNT * 3);
+    // Sample a frame list at p into CLIMB_POSE (+ hips y/z); returns [hy, hz].
+    function sampleClimb(frames, p, armSide) {
+      let i = 0;
+      while (i < frames.length - 2 && p > frames[i + 1].t) i++;
+      const a = frames[i], b = frames[i + 1];
+      const k = smooth01((p - a.t) / Math.max(1e-6, b.t - a.t));
+      CLIMB_POSE.fill(0);
+      const names = new Set([...Object.keys(a.b), ...Object.keys(b.b)]);
+      for (const name of names) {
+        const av = a.b[name] || [0, 0, 0], bv = b.b[name] || [0, 0, 0];
+        let bone = B[name];
+        // mirror the whole limb pattern for zombies that favour the other side
+        if (armSide < 0 && /L$|R$/.test(name)) bone = B[name.slice(0, -1) + (name.endsWith("L") ? "R" : "L")];
+        const m = armSide < 0 && /L$|R$/.test(name) ? -1 : 1;
+        for (let c = 0; c < 3; c++) CLIMB_POSE[bone * 3 + c] = av[c] + (bv[c] - av[c]) * k;
+        if (m < 0) CLIMB_POSE[bone * 3 + 2] *= -1; // roll flips with the mirror
+      }
+      return [a.hy + (b.hy - a.hy) * k, a.hz + (b.hz - a.hz) * k];
+    }
+    function setClimb(model, kind, p) {
+      const anim = model.anim;
+      anim.climbTarget = 1;
+      anim.climbKind = kind;
+      anim.climbP = p;
+    }
+    // Layered over the walk/idle pose; returns the smoothing to use (0 = none).
+    function applyClimb(anim, pose, dt) {
+      anim.climbBlend += (anim.climbTarget - anim.climbBlend) * Math.min(1, dt * 9);
+      anim.climbTarget = 0;
+      if (anim.climbBlend < 0.01) { anim.climbBlend = 0; return 0; }
+      const frames = CLIMB_FRAMES[anim.climbKind];
+      if (!frames) return 0;
+      const [hy, hz] = sampleClimb(frames, Math.min(1, Math.max(0, anim.climbP)), anim.armSide || 1);
+      blendKeysArray(pose, CLIMB_POSE, anim.climbBlend);
+      anim.hipsOffsetTarget.y += hy * anim.climbBlend;
+      anim.hipsOffsetTarget.z += hz * anim.climbBlend;
+      return 18;
+    }
+    function blendKeysArray(pose, target, w) {
+      for (let i = 0; i < pose.length; i++) pose[i] += (target[i] - pose[i]) * w;
+    }
+
     // context: { movedDistance, isWalking, sizeScale, speed, yaw, distance, legacyPose, legacySmoothing }
     function update(model, deltaSeconds, context) {
       const anim = model.anim;
@@ -1602,7 +1690,7 @@
       // Animation LOD: skip frames at range, carrying the time over.
       anim.accum += deltaSeconds;
       anim.frame++;
-      const busy = anim.attack || context.legacyPose || anim.flinch;
+      const busy = anim.attack || context.legacyPose || anim.flinch || anim.climbBlend > 0 || anim.climbTarget > 0;
       const interval = busy ? 1 : LOD_UPDATE_INTERVAL[lod];
       if (anim.frame % interval !== 0) return;
       const dt = anim.accum;
@@ -1666,6 +1754,8 @@
         if (detail) applyTwitch(anim, pose, dt);
         const attackSmoothing = applyAttack(anim, pose, dt);
         if (attackSmoothing) smoothing = attackSmoothing;
+        const climbSmoothing = applyClimb(anim, pose, dt);
+        if (climbSmoothing) smoothing = Math.max(smoothing, climbSmoothing);
         if (applyFlinch(anim, pose, dt)) smoothing = Math.max(smoothing, 24);
       }
 
@@ -1700,6 +1790,7 @@
       restoreLod,
       triggerAttack,
       setWindup,
+      setClimb,
       flinch,
       bodyMaterial,
       stats: () => ({ pooled: pool.length, shapes: SHAPE_KEYS.length }),

@@ -3150,6 +3150,9 @@
 
     const isHorizontal = (r) => r[1] === r[3];
     const bounds = rectToWorld(MAP_BOUNDS);
+    // World-space segments [ax, az, bx, bz] of the invisible wall line (and the
+    // border-row houses) along the north, west and south edges.
+    const edgeChains = { north: [], south: [], west: [] };
     const GROUND_MARGIN = 100; // unwalkable apron so the edge of the world isn't a visible cliff
 
     // Construction pits: the roadbed of each CONSTRUCTION_ROADS entry, in
@@ -4626,8 +4629,13 @@
       // border-row houses (north, west, south), so the only way past a house
       // row is... nowhere. They also close every street through the row, so
       // each ROAD CLOSED barricade is joined to the houses on either side.
+      // The wall line itself (and the houses it runs through), kept per side
+      // so insidePlayableEdge can tell where the playable area really ends --
+      // MAP_BOUNDS is a plain rectangle that reaches past the house rows.
+      let edgeChainName = null;
       const addWall = (ax, ay, bx, by) => {
         const a = mapToWorld(ax, ay), b = mapToWorld(bx, by);
+        if (edgeChainName) edgeChains[edgeChainName].push([a.x, a.z, b.x, b.z]);
         const len = Math.hypot(b.x - a.x, b.z - a.z);
         if (len < 0.05) return;
         const wall = makeCollider((a.x + b.x) / 2, (a.z + b.z) / 2, len / 2 + 0.3, 0.3, BARRIER_HEIGHT_M,
@@ -4638,6 +4646,10 @@
         zones[ZONES.indexOf(zoneAt((ax + bx) / 2, (ay + by) / 2))].colliders.push(wall);
       };
       const rows = { north: [], west: [], south: [] };
+      const addHouseEdge = (ax, ay, bx, by) => { // a house in the row is part of the edge line too
+        const a = mapToWorld(ax, ay), b = mapToWorld(bx, by);
+        edgeChains[edgeChainName].push([a.x, a.z, b.x, b.z]);
+      };
       for (const h of BORDER_HOUSES) {
         const cx = (h[0] + h[2]) / 2, cy = (h[1] + h[3]) / 2;
         if (cy < -5) rows.north.push(h);
@@ -4647,9 +4659,11 @@
       for (const name of ["north", "south"]) {
         const row = rows[name].sort((p1, p2) => p1[0] - p2[0]);
         let px = MAP_BOUNDS[0], py = (row[0][1] + row[0][3]) / 2;
+        edgeChainName = name;
         for (const h of row) {
           const cy = (h[1] + h[3]) / 2;
           addWall(px, py, h[0], cy);
+          addHouseEdge(h[0], cy, h[2], cy);
           px = h[2];
           py = cy;
         }
@@ -4658,13 +4672,16 @@
       {
         const row = rows.west.sort((p1, p2) => p1[1] - p2[1]);
         let px = (row[0][0] + row[0][2]) / 2, py = MAP_BOUNDS[1];
+        edgeChainName = "west";
         for (const h of row) {
           const cx = (h[0] + h[2]) / 2;
           addWall(px, py, cx, h[1]);
+          addHouseEdge(cx, h[1], cx, h[3]);
           px = cx;
           py = h[3];
         }
         addWall(px, py, px, MAP_BOUNDS[3]);
+        edgeChainName = null;
       }
 
       const addInstanced = (geometry, material, matrices) => {
@@ -6095,6 +6112,71 @@
       }
     }
 
+
+    // ---- Car climbing support (zombies). One record per parked car, built
+    // from the same vehicleSystem.cars the hitboxes above use (no second set of
+    // dimensions), bucketed on a coarse grid so a lookup is a couple of map
+    // reads. Heading is (fx, fz); u runs along it, v across (-fz, fx).
+    // bodyTop / roofY are the two collider heights (hood-and-trunk, cabin).
+    const CAR_BUCKET_M = 16;
+    const carRecords = [];
+    const carBuckets = new Map();
+    if (vehicleSystem) {
+      vehicleSystem.cars.forEach((car, id) => {
+        const m = car.m;
+        const rec = {
+          id, name: car.name, cls: m.cls, x: car.x, z: car.z, yaw: car.yaw,
+          fx: Math.cos(car.yaw), fz: Math.sin(car.yaw), halfL: m.L / 2, halfW: m.W / 2,
+          groundY: car.y, bodyTop: car.y + Math.max(m.belt[0], m.belt[1]), roofY: car.y + m.H,
+          climbers: 0, slots: null,
+        };
+        carRecords.push(rec);
+        const reach = rec.halfL + 1;
+        for (let bx = Math.floor((rec.x - reach) / CAR_BUCKET_M); bx <= Math.floor((rec.x + reach) / CAR_BUCKET_M); bx++) {
+          for (let bz = Math.floor((rec.z - reach) / CAR_BUCKET_M); bz <= Math.floor((rec.z + reach) / CAR_BUCKET_M); bz++) {
+            const key = bx + "," + bz;
+            if (!carBuckets.has(key)) carBuckets.set(key, []);
+            carBuckets.get(key).push(rec);
+          }
+        }
+      });
+    }
+    // The car whose footprint (grown by pad) holds (x, z), or null.
+    function carAt(x, z, pad = 0) {
+      const list = carBuckets.get(Math.floor(x / CAR_BUCKET_M) + "," + Math.floor(z / CAR_BUCKET_M));
+      if (!list) return null;
+      for (const c of list) {
+        const dx = x - c.x, dz = z - c.z;
+        if (Math.abs(dx * c.fx + dz * c.fz) <= c.halfL + pad && Math.abs(-dx * c.fz + dz * c.fx) <= c.halfW + pad) return c;
+      }
+      return null;
+    }
+    // Where a zombie can get up onto a car: edge slots spread along the four
+    // sides ("front"/"rear" = +u/-u, "left"/"right" = -v/+v), each with its
+    // outward normal, made once per car. owner = the zombie holding the slot.
+    function carClimbSlots(c) {
+      if (c.slots) return c.slots;
+      const slots = [];
+      const add = (side, u, v, nu, nv) => {
+        const nx = nu * c.fx + nv * -c.fz, nz = nu * c.fz + nv * c.fx;
+        slots.push({ side, u, v, nx, nz, ex: c.x + u * c.fx + v * -c.fz, ez: c.z + u * c.fz + v * c.fx, owner: null });
+      };
+      for (const v of [-0.4, 0.4]) { add("front", c.halfL, v * c.halfW * 2 * 0.5, 1, 0); add("rear", -c.halfL, v * c.halfW * 2 * 0.5, -1, 0); }
+      for (const u of [-0.55, 0, 0.55]) { add("right", u * c.halfL, c.halfW, 0, 1); add("left", u * c.halfL, -c.halfW, 0, -1); }
+      c.slots = slots;
+      return slots;
+    }
+    // Keep (x, z) on top of the car (inset from its edge by `inset`).
+    function clampToCarTop(c, pos, inset) {
+      const dx = pos.x - c.x, dz = pos.z - c.z;
+      let u = dx * c.fx + dz * c.fz, v = -dx * c.fz + dz * c.fx;
+      const hu = Math.max(0.1, c.halfL - inset), hv = Math.max(0.1, c.halfW - inset);
+      u = Math.max(-hu, Math.min(hu, u));
+      v = Math.max(-hv, Math.min(hv, v));
+      pos.x = c.x + u * c.fx + v * -c.fz;
+      pos.z = c.z + u * c.fz + v * c.fx;
+    }
+
     // Does the shot (ax, ay, az) -> (bx, by, bz) hit a parked car? Slab
     // clip against each car box near the line, ground to its top.
     function vehicleBlocksShot(ax, ay, az, bx, by, bz) {
@@ -6324,14 +6406,16 @@
           }
         }
       }
-      // Instances go into ~400 m blocks (a draw or two near the player).
-      const BLOCK_M = 400;
+      // Instances go into one mesh per ZONE, shown and hidden together with
+      // that zone's buildings (updateVisibility) -- windows in a coarser
+      // block used to appear while the walls they sit on were still culled,
+      // leaving them floating in the distance.
       const blocks = new Map();
-      const blockList = (x, z) => {
-        const key = Math.floor(x / BLOCK_M) + "," + Math.floor(z / BLOCK_M);
-        if (!blocks.has(key)) blocks.set(key, { list: [], cx: (Math.floor(x / BLOCK_M) + 0.5) * BLOCK_M, cz: (Math.floor(z / BLOCK_M) + 0.5) * BLOCK_M });
-        return blocks.get(key).list;
+      const zoneWindowList = (zone) => {
+        if (!blocks.has(zone)) blocks.set(zone, { list: [], zone });
+        return blocks.get(zone).list;
       };
+      const zoneOfPoint = (x, z) => zones[Math.max(0, ZONES.indexOf(zoneAt(x / MAP_SCALE + MAP_CENTER_X, z / MAP_SCALE + MAP_CENTER_Y)))];
       for (const zone of zones) {
         for (const c of zone.colliders) {
           if (c.floorPlan || c.render === false || c.glass || c.shape === "cylinder" || c.color !== undefined) continue;
@@ -6343,13 +6427,13 @@
             [corner(1, -1), corner(1, 1), X.x, X.z], [corner(-1, 1), corner(-1, -1), -X.x, -X.z],
             [corner(1, 1), corner(-1, 1), Z.x, Z.z], [corner(-1, -1), corner(1, -1), -Z.x, -Z.z],
           ];
-          for (const [a, b, nx, nz] of faces) addFace(blockList(c.cx, c.cz), a.x, a.z, b.x, b.z, nx, nz, c.height, occ);
+          for (const [a, b, nx, nz] of faces) addFace(zoneWindowList(zone), a.x, a.z, b.x, b.z, nx, nz, c.height, occ);
         }
       }
       for (const f of FLOOR_PLAN_FACADES) {
         const occ = occupancy(f.key.length * 13.7, f.a.x + f.a.z);
         const skip = (s, y0, y1) => f.gaps.some((g) => g.s0 - 0.5 < s + WINDOW_W / 2 && g.s1 + 0.5 > s - WINDOW_W / 2 && g.y0 < y1 && g.y1 > y0);
-        addFace(blockList((f.a.x + f.b.x) / 2, (f.a.z + f.b.z) / 2), f.a.x, f.a.z, f.b.x, f.b.z, f.outX, f.outZ, f.top, occ, skip);
+        addFace(zoneWindowList(zoneOfPoint((f.a.x + f.b.x) / 2, (f.a.z + f.b.z) / 2)), f.a.x, f.a.z, f.b.x, f.b.z, f.outX, f.outZ, f.top, occ, skip);
       }
       for (const block of blocks.values()) {
         const list = block.list;
@@ -6358,13 +6442,16 @@
         const data = new Float32Array(list.length * 4);
         list.forEach((w, i) => data.set(w.d, i * 4));
         g.setAttribute("windowData", new THREE.InstancedBufferAttribute(data, 4));
-        g.boundingSphere = new THREE.Sphere(new THREE.Vector3(block.cx, 10, block.cz), BLOCK_M * 0.75 + 30);
+        const zb = block.zone.box;
+        g.boundingSphere = new THREE.Sphere(new THREE.Vector3((zb.minX + zb.maxX) / 2, 10, (zb.minZ + zb.maxZ) / 2),
+          Math.hypot(zb.maxX - zb.minX, zb.maxZ - zb.minZ) / 2 + 30);
         const mesh = new THREE.InstancedMesh(g, windowMaterial, list.length);
         list.forEach((w, i) => mesh.setMatrixAt(i, w.m));
         mesh.instanceMatrix.needsUpdate = true;
         mesh.name = "Windows";
         root.add(mesh);
-        windowGroups.push({ mesh, cx: block.cx, cz: block.cz });
+        (block.zone.windowMeshes || (block.zone.windowMeshes = [])).push(mesh);
+        windowGroups.push(mesh);
       }
     }
 
@@ -6925,6 +7012,7 @@
         for (const v of viewers) distance = Math.min(distance, distanceToZone(zone, v.x, v.z));
         for (const mesh of zone.meshes) mesh.visible = distance <= RENDER_DISTANCE;
         for (const mesh of zone.treeMeshes) mesh.visible = distance <= TREE_DRAW_DISTANCE;
+        if (zone.windowMeshes) for (const mesh of zone.windowMeshes) mesh.visible = distance <= RENDER_DISTANCE; // same test as the walls
       }
       // Decal blocks (~160 m): drawn only near a viewer.
       const decalReach = (ENV.DECAL_DRAW_DISTANCE ?? 140) + 283; // + the block's half-diagonal
@@ -6932,13 +7020,6 @@
         let near = false;
         for (const v of viewers) if ((v.x - d.cx) ** 2 + (v.z - d.cz) ** 2 < decalReach * decalReach) { near = true; break; }
         d.mesh.visible = near;
-      }
-      // Window blocks: nothing past the fog is worth drawing.
-      const windowReach = 130 + 283;
-      for (const w of windowGroups) {
-        let near = false;
-        for (const v of viewers) if ((v.x - w.cx) ** 2 + (v.z - w.cz) ** 2 < windowReach * windowReach) { near = true; break; }
-        w.mesh.visible = near;
       }
       if (treeSystem) treeSystem.updateVisibility(viewers, lodScale);
       if (grassSystem) grassSystem.updateVisibility(viewers);
@@ -6969,12 +7050,36 @@
       supportHeightAt,
       segmentBlocked,
       // Sight-blocking footprints (buildings, walls) for the minimap's one-time static layer.
+      // Is (x, z) on the playable side of the border-row wall line, `margin`
+      // m clear of it? (north/south: compared in z along x; west: in x along z.
+      // East is the plain bounds edge.) Used to keep spawns off the far side.
+      insidePlayableEdge: (x, z, margin = 0) => {
+        if (x > bounds.maxX - margin) return false;
+        const along = (segs, pos, horizontal) => {
+          for (const [ax, az, bx, bz] of segs) {
+            const p0 = horizontal ? ax : az, p1 = horizontal ? bx : bz;
+            const lo = Math.min(p0, p1), hi = Math.max(p0, p1);
+            if (pos < lo || pos > hi) continue;
+            const t = hi - lo < 1e-6 ? 0 : (pos - p0) / (p1 - p0);
+            return horizontal ? az + (bz - az) * t : ax + (bx - ax) * t;
+          }
+          return null;
+        };
+        const north = along(edgeChains.north, x, true);
+        if (north !== null && z < north + margin) return false;
+        const south = along(edgeChains.south, x, true);
+        if (south !== null && z > south - margin) return false;
+        const west = along(edgeChains.west, z, false);
+        if (west !== null && x < west + margin) return false;
+        return true;
+      },
       minimapFootprints: () => {
         const out = [];
         forEachColliderIn(bounds.minX, bounds.minZ, bounds.maxX, bounds.maxZ, (c) => { if (blocksSight(c)) out.push(c); return false; });
         return out;
       },
       vehicleBlocksShot,
+      carAt, carClimbSlots, clampToCarTop, carRecords,
       // visual effects only (impacts, footstep puffs, streetlights)
       raycast,
       groundMaterialAt,
