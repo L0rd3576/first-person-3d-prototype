@@ -1852,6 +1852,46 @@
     letter-spacing: 2px;
     text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
   }
+  /* PVP deathmatch (see PVP_PLAN.md) */
+  body.pvp-mode #wave-hud, body.pvp-mode #score-hud, body.pvp-mode #boss-health-hud { display: none; }
+  .player-count-divider { margin-top: 10px; font: bold 14px Arial, Helvetica, sans-serif; color: rgba(255,255,255,0.7); text-align: center; letter-spacing: 2px; text-transform: uppercase; }
+  #pvp-timer { position: fixed; top: 50vh; left: 50%; transform: translate(-50%, -50%); z-index: 12; display: none; padding: 4px 12px; font: bold 22px Arial, Helvetica, sans-serif; color: #fff; background: rgba(0,0,0,0.55); border-radius: 6px; pointer-events: none; }
+  body.pvp-mode #pvp-timer { display: block; }
+  .pvp-board { background: rgba(0,0,0,0.5); color: #fff; font: 13px Arial, Helvetica, sans-serif; border-radius: 6px; padding: 4px 8px; pointer-events: none; user-select: none; }
+  .pvp-board-title { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; opacity: 0.7; text-align: center; margin-bottom: 2px; }
+  .pvp-board-row { display: flex; align-items: center; gap: 6px; padding: 1px 4px 1px 3px; border-left: 3px solid transparent; border-radius: 3px; }
+  .pvp-board-row.leader { background: rgba(255,255,255,0.14); }
+  .pvp-board-face { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; background: #222; flex: none; }
+  .pvp-board-kills { font-weight: bold; min-width: 1.5em; transition: color 0.4s; }
+  .pvp-board-kills.tick { color: #ffd24d; transition: none; }
+  #pvp-kills { position: fixed; top: 6px; left: 50%; transform: translateX(-50%); z-index: 12; display: none; min-width: 84px; }
+  #pvp-kills.visible { display: block; }
+  #pvp-results-board { font-size: 22px; padding: 10px 22px; min-width: 260px; }
+  #pvp-results-board .pvp-board-title { font-size: 14px; margin-bottom: 6px; }
+  #pvp-results-board .pvp-board-face { width: 34px; height: 34px; }
+  #pvp-results-board .pvp-board-row { gap: 12px; padding: 4px 8px 4px 6px; }
+  #pvp-results-board .pvp-board-row.winner { background: rgba(255,210,77,0.28); }
+  .pvp-stat { margin-left: auto; font-size: 14px; opacity: 0.75; }
+  .pvp-badge { position: fixed; z-index: 12; display: none; transform: translateX(-100%); font: bold 16px Arial, Helvetica, sans-serif; color: #fff; text-shadow: 0 1px 3px #000; text-align: right; pointer-events: none; }
+  .pvp-badge.visible { display: block; }
+  .pvp-toast { font-size: 14px; color: #ffd24d; opacity: 0; transition: opacity 0.3s; }
+  .pvp-toast.show { opacity: 1; }
+  .pvp-protect { font-size: 12px; color: #7fd4ff; display: none; }
+  .pvp-protect.show { display: block; }
+  .pvp-panel { position: fixed; z-index: 15; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: rgba(20,0,0,0.6); color: #fff; font-family: Arial, Helvetica, sans-serif; pointer-events: auto; overflow: hidden; }
+  .pvp-panel.visible { display: flex; }
+  .pvp-panel h1 { margin: 0; font-size: clamp(18px, 4vh, 40px); }
+  .pvp-panel-sub { font-size: clamp(12px, 2vh, 18px); min-height: 1.2em; opacity: 0.85; }
+  .pvp-weapon-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(90px, 1fr)); gap: 4px; }
+  .pvp-weapon-list li { padding: 4px 10px; border: 2px solid rgba(255,255,255,0.4); border-radius: 4px; background: rgba(255,255,255,0.08); text-align: center; font-size: clamp(11px, 1.8vh, 16px); cursor: pointer; }
+  .pvp-weapon-list li.selected { border-color: #ffd24d; background: rgba(255,210,77,0.25); }
+  .pvp-countdown { font: bold clamp(20px, 5vh, 44px) Arial, Helvetica, sans-serif; min-height: 1.2em; }
+  .pvp-panel .pvp-respawn { display: none; }
+  .pvp-panel.ready .pvp-respawn { display: block; }
+  .pvp-panel.ready .pvp-countdown { display: none; }
+  .pvp-hint { font-size: 12px; opacity: 0.75; }
+  #pvp-results { position: fixed; inset: 0; z-index: 30; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: rgba(0,0,0,0.8); color: #fff; font-family: Arial, Helvetica, sans-serif; }
+  #pvp-results.visible { display: flex; }
   /* Shared by the death screen's restart button and the pause/controls
      overlay panels' buttons. */
   .menu-button {
@@ -2739,6 +2779,10 @@
       <div class="mode-option" data-players="4">
         <div class="mode-name">4 Players</div>
       </div>
+      <div class="player-count-divider">PVP Deathmatch</div>
+      <div class="mode-option" data-pvp-players="2"><div class="mode-name">PVP: 2 Players</div></div>
+      <div class="mode-option" data-pvp-players="3"><div class="mode-name">PVP: 3 Players</div></div>
+      <div class="mode-option" data-pvp-players="4"><div class="mode-name">PVP: 4 Players</div></div>
     </div>
   </div>
   <div id="title-setup" class="title-panel">
@@ -3177,6 +3221,13 @@
   </div>
 </div>
 
+<div id="pvp-results">
+  <h1 id="pvp-results-banner">P1 WINS</h1>
+  <div id="pvp-results-board" class="pvp-board"></div>
+  <div id="pvp-results-return">Returning to title in 20</div>
+  <button id="pvp-results-continue" class="menu-button">Continue</button>
+</div>
+
 <div id="death-screen">
   <h1>YOU DIED</h1>
   <div>
@@ -3278,6 +3329,30 @@
   // is enough -- with less than the full cost it just drops to 0.
   const SLIDE_STAMINA_COST = 10;
   const SLIDE_MIN_STAMINA = 1;
+
+  // ---- PVP DEATHMATCH (see PVP_PLAN.md) ----
+  // True only during a PVP match (isCoopMatchActive is also true then).
+  // Reset in resetGame and the setSplitScreen test hook, next to isCoopMatchActive.
+  let isPvpMatchActive = false;
+  let pvpSetupSelected = false;           // set by the player-count screen's PVP options, read by startCoopMatch/startQuadMatch
+  const PVP_MATCH_SECONDS = 30 * 60;
+  const PVP_RESPAWN_DELAY_SECONDS = 5;
+  const PVP_SPAWN_PROTECTION_SECONDS = 2;
+  const PVP_MOVE_SPEED_MULTIPLIER = 1.15;
+  const PVP_STAMINA_MULTIPLIER = 2;       // max stamina
+  const PVP_STAMINA_REGEN_MULTIPLIER = 2; // same refill time as PVE ("regen proportionally")
+  const PVP_INFINITE_RESERVE = 9999;      // shown as the infinity symbol
+  const PVP_PLAYER_HIT_RADIUS = 0.35 + 0.1; // PLAYER_RADIUS + margin, like PELLET_BODY_HIT_MARGIN
+  const PVP_HEAD_BAND = 0.25;             // metres below eye height that count as head
+  const PVP_RESULTS_AUTO_RETURN_SECONDS = 20;
+  const PVP_ZONE_TIMING = { INITIAL_ZONE_DELAY: 60, ZONE_STAY_DURATION: 45, ZONE_WARNING_DURATION: 20, ZONE_TRANSITION_DURATION: 30 };
+  const PVP_SPAWN = { CANDIDATES: 90, MIN_DISTANCE: 25, ZONE_EDGE_MARGIN: 8, CLEARANCE: 0.8, DISTANCE_CAP: 150, VISIBLE_PENALTY: 60 };
+  const pvpMatch = { timeLeft: 0, started: false, ended: false, resultsTimer: 0 };
+  function pvpMoveSpeedMultiplier() { return isPvpMatchActive ? PVP_MOVE_SPEED_MULTIPLIER : 1; }
+  // PVP DOM state (built lazily by buildPvpUi; declared here so resetGame can reach it at any time).
+  const pvpUi = { built: false, timerEl: null, killsEl: null, rows: [], panels: [], badges: [], toasts: [], protects: [], lastTimerText: "" };
+  const pvpResultsEl = document.getElementById("pvp-results");
+  const pvpResultsContinueEl = document.getElementById("pvp-results-continue");
   const STAMINA_REGEN_STANDING_PER_SECOND = 14;
   const STAMINA_REGEN_WALKING_PER_SECOND = 9;
   const STAMINA_EXHAUSTED_RECOVER_THRESHOLD = 15;
@@ -12358,6 +12433,7 @@
       : codeToLabel(keybinds.interact);
   }
   function interactPromptFor(player) {
+    if (isPvpMatchActive) return "";
     const reviveTarget = findRevivableTeammate(player);
     if (reviveTarget) {
       const pct = player.reviveTarget === reviveTarget ? Math.min(100, Math.floor(player.reviveProgress / REVIVE_HOLD_SECONDS * 50) * 2) : 0;
@@ -13270,9 +13346,10 @@
     if (x < m.minX - slack || x > m.maxX + slack || z < m.minZ - slack || z > m.maxZ + slack) return false;
     return zoneOverlapFraction(x, z, r) >= c.MIN_PLAYABLE_ZONE_OVERLAP;
   }
+  function zoneTiming(k) { return isPvpMatchActive ? PVP_ZONE_TIMING[k] : ZONE_CONFIG[k]; }
   function zoneStayDuration() {
     const j = ZONE_CONFIG.ZONE_STAY_JITTER;
-    return ZONE_CONFIG.ZONE_STAY_DURATION * (1 - j + Math.random() * 2 * j);
+    return zoneTiming("ZONE_STAY_DURATION") * (1 - j + Math.random() * 2 * j);
   }
   function zoneMatchPlayers() {
     return isCoopMatchActive ? players : [players[0]];
@@ -13283,11 +13360,12 @@
     let cx = 0, cz = 0;
     for (const p of ps) { cx += p.camera.position.x; cz += p.camera.position.z; }
     if (ps.length) { cx /= ps.length; cz /= ps.length; }
+    if (isPvpMatchActive) { const m = zoneMapRect(); cx = (m.minX + m.maxX) / 2; cz = (m.minZ + m.maxZ) / 2; }
     const c = zoneClampCenter(cx, cz);
     zoneState.initialized = true;
     zoneState.phase = "stay";
     zoneState.phaseTime = 0;
-    zoneState.phaseDuration = ZONE_CONFIG.INITIAL_ZONE_DELAY;
+    zoneState.phaseDuration = zoneTiming("INITIAL_ZONE_DELAY");
     zoneState.sizeName = "LARGE";
     zoneState.center = { x: c.x, z: c.z };
     zoneState.radius = zoneRadiusFor("LARGE");
@@ -13354,10 +13432,10 @@
     const z = zoneState;
     z.phaseTime += deltaSeconds;
     if (z.phase === "stay" && z.phaseTime >= z.phaseDuration) {
-      z.phase = "warning"; z.phaseTime = 0; z.phaseDuration = ZONE_CONFIG.ZONE_WARNING_DURATION;
+      z.phase = "warning"; z.phaseTime = 0; z.phaseDuration = zoneTiming("ZONE_WARNING_DURATION");
       pickNextZone();
     } else if (z.phase === "warning" && z.phaseTime >= z.phaseDuration) {
-      z.phase = "transition"; z.phaseTime = 0; z.phaseDuration = ZONE_CONFIG.ZONE_TRANSITION_DURATION;
+      z.phase = "transition"; z.phaseTime = 0; z.phaseDuration = zoneTiming("ZONE_TRANSITION_DURATION");
       z.from = { x: z.center.x, z: z.center.z, radius: z.radius };
     }
     if (z.phase === "transition") {
@@ -14376,7 +14454,7 @@
       return;
     }
     refs.ammoLoadedEl.textContent = slot.loadedAmmo;
-    refs.ammoReserveEl.textContent = slot.reserveAmmo;
+    refs.ammoReserveEl.textContent = isPvpMatchActive ? "∞" : slot.reserveAmmo;
   }
 
   // Aim down sights: player.input.isActionHeld("aim") is the raw held
@@ -16838,7 +16916,7 @@
       const effect = SKILL_TREE_NODES_BY_ID[id].effect;
       if (effect && effect.maxStaminaBonus) max += effect.maxStaminaBonus;
     }
-    return max;
+    return isPvpMatchActive ? max * PVP_STAMINA_MULTIPLIER : max;
   }
 
   // Applies to both the standing and walking regen rates.
@@ -16848,7 +16926,7 @@
       const effect = SKILL_TREE_NODES_BY_ID[id].effect;
       if (effect && effect.staminaRegenMultiplier) multiplier *= effect.staminaRegenMultiplier;
     }
-    return multiplier;
+    return isPvpMatchActive ? multiplier * PVP_STAMINA_REGEN_MULTIPLIER : multiplier;
   }
 
   // Applies to both regular and tactical sprint (Mid Distance).
@@ -17550,7 +17628,7 @@
   const INVENTORY_SYSTEM_ENABLED = true;
 
   function toggleInventory(player) {
-    if (!INVENTORY_SYSTEM_ENABLED) return;
+    if (!INVENTORY_SYSTEM_ENABLED || isPvpMatchActive) return;
     const wasOpen = player.isInventoryOpen;
     setInventoryOpen(player, !wasOpen);
     if (wasOpen && playerNeedsPointerLock(player)) canvas.requestPointerLock();
@@ -17687,7 +17765,7 @@
   // `source` (optional): {x, z} of whatever hit them, for the directional
   // damage feedback; null = no feedback (zone ticks); undefined = feedback
   // without a direction (falls, splash).
-  function takeDamage(player, amount, source) {
+  function takeDamage(player, amount, source, attacker = null) {
     if (player.isTurretTarget) { // a zombie hitting a deployed turret (see TURRETS)
       damageTurret(player.turret, amount);
       return;
@@ -17699,6 +17777,10 @@
     // and if the boss dies mid-grab, releaseBossGrab clears grabbedBy
     // the same moment, so they're never left stuck invulnerable.
     if (player.grabbedBy) return;
+    if (isPvpMatchActive) {
+      if (attacker === player) return; // never self
+      if (player.pvpAwaitingSpawn || player.pvpProtectedFor > 0) return; // spawn protection (zone included)
+    }
     if (source !== null) triggerDamageFx(player, amount, source);
     // Already down: health stays at 0, hits eat into the bleed-out clock instead.
     if (player.isDowned) {
@@ -17709,6 +17791,7 @@
     if (player.health <= 0) {
       player.health = 0;
       updateHealthUI(player);
+      if (isPvpMatchActive) pvpRecordKill(player, attacker, source);
       if (canPlayerBeDowned(player)) enterDownedState(player);
       else triggerDeath(player);
       return;
@@ -17731,7 +17814,7 @@
   const isPlayerUp = (p) => !p.isDead && !p.isDowned;
   const getDownedBleedoutSeconds = () => DOWNED_BLEEDOUT_SECONDS;
   function canPlayerBeDowned(player) {
-    return isCoopMatchActive && players.some((p) => p !== player && isPlayerUp(p));
+    return isCoopMatchActive && !isPvpMatchActive && players.some((p) => p !== player && isPlayerUp(p));
   }
 
   function enterDownedState(player) {
@@ -18003,6 +18086,7 @@
   }
 
   function triggerDeath(player) {
+    if (isPvpMatchActive) { pvpHandleDeath(player); return; }
     // Everything a Revive Player skill needs to bring them back as they
     // were (see reviveDeadPlayer): where they fell, and their weapon slots
     // before the drops below.
@@ -18495,7 +18579,7 @@
     resetPlayerSkills(player); // before the stamina refill below, so it refills to the base max
     player.skillPoints = TEMP_STARTING_SKILL_POINTS; // TEMPORARY (explicit request)
     if (inventoryElsFor(player).skillTreeBuilt) inventoryElsFor(player).skillPointsValue.textContent = player.skillPoints;
-    player.stamina = MAX_STAMINA;
+    player.stamina = getMaxStamina(player);
     player.isStaminaExhausted = false;
     updateStaminaUI(player);
     player.gunBobPhase = 0;
@@ -18629,6 +18713,9 @@
     // resets both players fully the next time a co-op match actually
     // starts, so there's nothing meaningful to clean up early.
     isCoopMatchActive = false;
+    isPvpMatchActive = false;
+    pvpMatch.started = pvpMatch.ended = false;
+    hidePvpUi();
     isSingleplayerMatchActive = false;
     isMatchPaused = false;
     isSingleplayerPaused = false;
@@ -18637,7 +18724,7 @@
     resetViewLayout();
     resetZone();
     document.body.classList.remove("coop-spectator-fullscreen", "coop-spectator-fullscreen-p1", "coop-spectator-fullscreen-p2");
-    document.body.classList.remove("quad-mode", "trio-mode", "spectating-p1", "spectating-p2", "spectating-p3", "spectating-p4");
+    document.body.classList.remove("pvp-mode", "quad-mode", "trio-mode", "spectating-p1", "spectating-p2", "spectating-p3", "spectating-p4");
     coopSpectatorScreenEls.forEach((el) => el.classList.remove("visible"));
     document.querySelectorAll(".downed-hud").forEach((el) => el.classList.remove("visible"));
     // A 3/4-player match ending: Players 3/4 leave the roster (back to
@@ -18759,7 +18846,7 @@
         return;
       }
 
-      if (!players[0].isDead) {
+      if (!players[0].isDead || isPvpMatchActive) {
         // See the comment above overlayPanels -- a loss always means the
         // pause menu, never the initial "click to play" panel.
         if (isCoopMatchActive) isMatchPaused = true;
@@ -19214,6 +19301,7 @@
   // Screen" for the one survivor; with 4 it steps to the next living
   // teammate to watch.
   function confirmCoopSpectatorPrompt(deadIndex) {
+    if (isPvpMatchActive) return;
     if (isThreePlusMatch()) giveScreenArea(deadIndex);
     else enterCoopSpectatorFullscreen(1 - deadIndex);
   }
@@ -19359,19 +19447,37 @@
   });
 
   document.querySelector('.mode-option[data-players="2"]').addEventListener("click", function () {
+    pvpSetupSelected = false;
     resetCoopSetup();
     showTitlePanel("coop-setup");
   });
 
   document.querySelector('.mode-option[data-players="3"]').addEventListener("click", function () {
+    pvpSetupSelected = false;
     resetQuadSetup(3);
     showTitlePanel("quad-setup");
   });
 
   document.querySelector('.mode-option[data-players="4"]').addEventListener("click", function () {
+    pvpSetupSelected = false;
     resetQuadSetup(4);
     showTitlePanel("quad-setup");
   });
+
+  // PVP Deathmatch: the same setup screens, flagged so startCoopMatch/startQuadMatch
+  // start a PVP match (see PVP DEATHMATCH).
+  document.querySelector('.mode-option[data-pvp-players="2"]').addEventListener("click", function () {
+    pvpSetupSelected = true;
+    resetCoopSetup();
+    showTitlePanel("coop-setup");
+  });
+  for (const n of [3, 4]) {
+    document.querySelector('.mode-option[data-pvp-players="' + n + '"]').addEventListener("click", function () {
+      pvpSetupSelected = true;
+      resetQuadSetup(n);
+      showTitlePanel("quad-setup");
+    });
+  }
 
   document.getElementById("player-count-back-button").addEventListener("click", function () {
     showTitlePanel("mode");
@@ -20396,6 +20502,7 @@
     // match. Belt-and-suspenders on top of clearing the coop-setup
     // screen's "active" state -- see those lines' own comment.
     if (isCoopMatchActive) return;
+    isPvpMatchActive = pvpSetupSelected;
 
     isCoopMatchActive = true;
     matchP1Scheme = coopSetup.p1Scheme;
@@ -20479,6 +20586,7 @@
     if (coopSetup.p1Scheme === "keyboard") {
       canvas.requestPointerLock();
     }
+    if (isPvpMatchActive) startPvpMatchExtras();
   }
 
   // Safety net for startCoopMatch's direct requestPointerLock() call --
@@ -20503,7 +20611,7 @@
       isCoopMatchActive &&
       matchP1Scheme === "keyboard" &&
       document.pointerLockElement !== canvas &&
-      !players[0].isDead
+      (!players[0].isDead || isPvpMatchActive)
     ) {
       document.addEventListener("click", retryCoopPointerLockOnce);
       document.addEventListener("keydown", retryCoopPointerLockOnce);
@@ -20516,7 +20624,7 @@
       isCoopMatchActive &&
       matchP1Scheme === "keyboard" &&
       document.pointerLockElement !== canvas &&
-      !players[0].isDead
+      (!players[0].isDead || isPvpMatchActive)
     ) {
       canvas.requestPointerLock();
     }
@@ -20987,7 +21095,31 @@
   // target that's actually behind a wall from the player's position.
   const aimAssistForwardScratch = new THREE.Vector3();
   const aimAssistToEnemyScratch = new THREE.Vector3();
+  // PVP: same cone/range/LOS rules, over the other living players (aim point = face height).
+  function findPvpAimAssistTarget(player) {
+    const origin = player.camera.position;
+    player.camera.getWorldDirection(aimAssistForwardScratch);
+    let best = null;
+    let bestAngle = AIM_ASSIST_SLOWDOWN_CONE_ANGLE;
+    for (const t of players) {
+      if (t === player || t.isDead || t.pvpAwaitingSpawn) continue;
+      const tp = t.camera.position;
+      const faceY = tp.y - 0.1;
+      aimAssistToEnemyScratch.set(tp.x, faceY, tp.z).sub(origin);
+      const distance = aimAssistToEnemyScratch.length();
+      if (distance < 0.001 || distance > AIM_ASSIST_SLOWDOWN_RANGE) continue;
+      aimAssistToEnemyScratch.divideScalar(distance);
+      const angle = aimAssistForwardScratch.angleTo(aimAssistToEnemyScratch);
+      if (angle >= bestAngle) continue;
+      if (!hasLineOfSight(origin.x, origin.z, tp.x, tp.z, 0.15,
+        isCampusMap ? targetStandingY(player) : undefined, isCampusMap ? targetStandingY(t) : undefined)) continue;
+      best = { enemyState: null, angle, pos: tp, faceY };
+      bestAngle = angle;
+    }
+    return best;
+  }
   function findAimAssistTarget(player) {
+    if (isPvpMatchActive) return findPvpAimAssistTarget(player);
     const origin = player.camera.position;
     player.camera.getWorldDirection(aimAssistForwardScratch);
     let best = null;
@@ -21108,8 +21240,8 @@
             const magnetismT = 1 - target.angle / AIM_ASSIST_MAGNETISM_CONE_ANGLE;
             const yawMaxStep = AIM_ASSIST_MAGNETISM_MAX_RATE * aimAssistScale * magnetismT * deltaSeconds;
             const pitchMaxStep = yawMaxStep * AIM_ASSIST_PITCH_STRENGTH;
-            const targetPos = target.enemyState.mesh.position;
-            const targetFaceY = getAimAssistTargetY(target.enemyState);
+            const targetPos = target.pos || target.enemyState.mesh.position;
+            const targetFaceY = target.faceY !== undefined ? target.faceY : getAimAssistTargetY(target.enemyState);
             const dx = targetPos.x - player.camera.position.x;
             const dz = targetPos.z - player.camera.position.z;
             const horizDist = Math.hypot(dx, dz);
@@ -21314,8 +21446,8 @@
       const player = players[index];
       const human = player.human;
       const rig = player.bodyRig;
-      human.root.visible = isCoopMatchActive;
-      player.teammateMarker.visible = isCoopMatchActive && !player.isDead;
+      human.root.visible = isCoopMatchActive && !(isPvpMatchActive && player.pvpIsPrematch);
+      player.teammateMarker.visible = isCoopMatchActive && !isPvpMatchActive && !player.isDead;
       if (!human.root.visible) {
         rig.lastHealth = player.health;
         rig.deadPos = null;
@@ -21615,7 +21747,7 @@
     quadSetup.slots = Array.from({ length: playerCount }, createQuadSlotState);
     quadSetup.slots.forEach((state, slot) => resetCustomization(state, slot > 0 ? quadSetup.slots[slot - 1] : undefined));
     quadSideEls.forEach((el, slot) => el.classList.toggle("hidden", slot >= playerCount));
-    quadHeadingEl.textContent = `${playerCount} Player Setup`;
+    quadHeadingEl.textContent = `${pvpSetupSelected ? "PVP: " : ""}${playerCount} Player Setup`;
     quadSetup.countdownRemaining = null;
     quadSetupInput.forEach((input) => {
       input.readyWasPressed = false;
@@ -21694,6 +21826,7 @@
   // or body.trio-mode (3), on top of coop-mode, lays out the HUD.
   function startQuadMatch() {
     if (isCoopMatchActive) return; // never restart a live match -- see startCoopMatch
+    isPvpMatchActive = pvpSetupSelected;
 
     const playerCount = quadSetup.slots.length;
     players.length = 2;
@@ -21736,6 +21869,443 @@
     overlay.classList.add("hidden");
     setCursorHidden(true);
     if (matchP1Scheme === "keyboard") canvas.requestPointerLock(); // same gesture-window reliance/fallback as startCoopMatch
+    if (isPvpMatchActive) startPvpMatchExtras();
+  }
+
+  // ------------------------------------------------------------------
+  // PVP DEATHMATCH (see PVP_PLAN.md / PVP_SPEC.md): a co-op match started
+  // with isPvpMatchActive set. Free for all, 30 minutes, most kills wins.
+  // Nobody is ever "downed": a player at 0 HP goes straight to their own
+  // viewport's weapon-select/respawn panel (pvpAwaitingSpawn, which also
+  // marks them isDead so every existing system treats them as out of play).
+  // ------------------------------------------------------------------
+  function pvpWeaponOrder() { return [...Object.keys(WEAPON_DEFS), "fists"]; }
+  function pvpWeaponLabel(id) { return id === "fists" ? "Fists" : WEAPON_DEFS[id].displayName; }
+  function pvpPlayerLabel(p) { return "P" + (players.indexOf(p) + 1); }
+
+  function pvpCreateEl(tag, className, parent, text) {
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text !== undefined) el.textContent = text;
+    if (parent) parent.appendChild(el);
+    return el;
+  }
+
+  function buildPvpUi() {
+    if (pvpUi.built) return;
+    pvpUi.built = true;
+    pvpUi.timerEl = pvpCreateEl("div", "", document.body, "");
+    pvpUi.timerEl.id = "pvp-timer";
+    pvpUi.killsEl = pvpCreateEl("div", "pvp-board", document.body);
+    pvpUi.killsEl.id = "pvp-kills";
+    for (let i = 0; i < 4; i++) {
+      const badge = pvpCreateEl("div", "pvp-badge", document.body);
+      badge.id = "pvp-badge-p" + (i + 1);
+      pvpUi.toasts[i] = pvpCreateEl("div", "pvp-toast", badge);
+      pvpUi.protects[i] = pvpCreateEl("div", "pvp-protect", badge, "Spawn protected");
+      pvpUi.badges[i] = badge;
+
+      const panel = pvpCreateEl("div", "pvp-panel", document.body);
+      panel.id = "pvp-panel-p" + (i + 1);
+      const parts = {
+        el: panel,
+        title: pvpCreateEl("h1", "", panel),
+        sub: pvpCreateEl("div", "pvp-panel-sub", panel),
+        list: pvpCreateEl("ul", "pvp-weapon-list", panel),
+        countdown: pvpCreateEl("div", "pvp-countdown", panel),
+        button: pvpCreateEl("button", "menu-button pvp-respawn", panel, "Respawn"),
+        hint: pvpCreateEl("div", "pvp-hint", panel),
+        items: [],
+      };
+      for (const id of pvpWeaponOrder()) {
+        const li = pvpCreateEl("li", "", parts.list, pvpWeaponLabel(id));
+        li.dataset.weaponId = id;
+        li.addEventListener("click", function (event) {
+          event.stopPropagation();
+          if (players[i] && players[i].pvpAwaitingSpawn) pvpSelectWeapon(players[i], id);
+        });
+        parts.items.push(li);
+      }
+      parts.button.addEventListener("click", function (event) {
+        event.stopPropagation();
+        if (players[i]) pvpTryRespawn(players[i]);
+      });
+      pvpUi.panels[i] = parts;
+    }
+
+    // P1 on keyboard+mouse drives the panel with the pointer lock still held:
+    // W/S/arrows/wheel pick, Enter/Space/click confirm.
+    const p1PanelActive = () =>
+      isPvpMatchActive && matchP1Scheme === "keyboard" && players[0] && players[0].pvpAwaitingSpawn && !isMatchPaused && !pvpMatch.ended;
+    document.addEventListener("keydown", function (event) {
+      if (!p1PanelActive()) return;
+      let handled = true;
+      if (event.code === "KeyW" || event.code === "ArrowUp") pvpStepWeapon(players[0], -1);
+      else if (event.code === "KeyS" || event.code === "ArrowDown") pvpStepWeapon(players[0], 1);
+      else if (event.code === "Enter" || event.code === "NumpadEnter" || event.code === "Space") pvpTryRespawn(players[0]);
+      else handled = false;
+      if (handled) { event.preventDefault(); event.stopPropagation(); }
+    }, true);
+    document.addEventListener("wheel", function (event) {
+      if (!p1PanelActive() || event.deltaY === 0) return;
+      pvpStepWeapon(players[0], event.deltaY > 0 ? 1 : -1);
+      event.preventDefault();
+    }, { passive: false });
+    document.addEventListener("mousedown", function (event) {
+      if (!p1PanelActive() || event.button !== 0 || document.pointerLockElement !== canvas) return;
+      pvpTryRespawn(players[0]);
+    }, true);
+
+    pvpResultsContinueEl.addEventListener("click", function (event) {
+      event.stopPropagation();
+      pvpReturnToTitle();
+    });
+  }
+
+  function hidePvpUi() {
+    if (pvpUi.built) {
+      pvpUi.killsEl.classList.remove("visible");
+      pvpUi.badges.forEach((el) => el.classList.remove("visible"));
+      pvpUi.panels.forEach((parts) => parts.el.classList.remove("visible"));
+      pvpUi.rows.length = 0;
+      pvpUi.killsEl.textContent = "";
+      pvpUi.lastTimerText = "";
+    }
+    pvpResultsEl.classList.remove("visible");
+    document.body.classList.remove("pvp-mode");
+  }
+
+  // One leaderboard row: face image + ": kills" (ZONE_PLAYER_COLORS accent).
+  function pvpMakeBoardRow(parent, index) {
+    const player = players[index];
+    const row = pvpCreateEl("div", "pvp-board-row", parent);
+    row.style.borderLeftColor = ZONE_PLAYER_COLORS[index % 4];
+    const face = pvpCreateEl("img", "pvp-board-face", row);
+    const def = player.faceKey && FACE_TEXTURE_DEFS[player.faceKey];
+    if (def) face.src = def.dataUri;
+    return { row, face, kills: pvpCreateEl("span", "pvp-board-kills", row, ": 0"), shown: 0, index };
+  }
+
+  function pvpSortedPlayerIndices() {
+    return players.map((p, i) => i).sort((a, b) => (players[b].pvpKills - players[a].pvpKills) || (players[a].pvpDeaths - players[b].pvpDeaths) || (a - b));
+  }
+
+  function updatePvpHud() {
+    if (!pvpUi.built) return;
+    // Timer: the DOM text is only touched when it changes.
+    const text = !pvpMatch.started ? "Waiting for players" : (() => {
+      const total = Math.ceil(pvpMatch.timeLeft);
+      return Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
+    })();
+    if (text !== pvpUi.lastTimerText) { pvpUi.lastTimerText = text; pvpUi.timerEl.textContent = text; }
+    // Kills box: shared (not per viewport), rows sorted by kills, leader highlighted.
+    if (pvpUi.rows.length !== players.length) {
+      pvpUi.killsEl.textContent = "";
+      pvpCreateEl("div", "pvp-board-title", pvpUi.killsEl, "Kills");
+      pvpUi.rows = players.map((p, i) => pvpMakeBoardRow(pvpUi.killsEl, i));
+    }
+    const order = pvpSortedPlayerIndices();
+    const top = players[order[0]].pvpKills;
+    order.forEach((idx, pos) => {
+      const r = pvpUi.rows[idx];
+      const kills = players[idx].pvpKills;
+      if (kills !== r.shown) {
+        r.shown = kills;
+        r.kills.textContent = ": " + kills;
+        r.kills.classList.add("tick");
+        setTimeout(() => r.kills.classList.remove("tick"), 250); // the brief number tick
+      }
+      r.row.classList.toggle("leader", top > 0 && kills === top);
+      if (pvpUi.killsEl.children[pos + 1] !== r.row) pvpUi.killsEl.appendChild(r.row);
+    });
+    pvpUi.killsEl.classList.add("visible");
+  }
+
+  function pvpToast(player, message) {
+    const i = players.indexOf(player);
+    if (!pvpUi.built || i < 0) return;
+    const el = pvpUi.toasts[i];
+    el.textContent = message;
+    el.classList.add("show");
+    clearTimeout(el._hideTimer);
+    el._hideTimer = setTimeout(() => el.classList.remove("show"), 2000);
+  }
+
+  // Selected-weapon highlight + all text for one player's panel.
+  function renderPvpPanel(player) {
+    const i = players.indexOf(player);
+    const parts = pvpUi.panels[i];
+    if (!parts) return;
+    parts.title.textContent = player.pvpIsPrematch ? "CHOOSE YOUR WEAPON" : "ELIMINATED";
+    parts.sub.textContent = player.pvpIsPrematch ? "" : player.pvpLastKilledBy ? "by " + pvpPlayerLabel(player.pvpLastKilledBy) : (player.pvpDeathCause || "");
+    parts.button.textContent = player.pvpIsPrematch ? "Deploy" : "Respawn";
+    for (const li of parts.items) li.classList.toggle("selected", li.dataset.weaponId === player.pvpWeaponId);
+    const isKeyboard = i === 0 && matchP1Scheme === "keyboard";
+    parts.hint.textContent = isKeyboard
+      ? "W/S or Wheel: weapon · Enter/Space/Click: " + (player.pvpIsPrematch ? "deploy" : "respawn")
+      : "D-pad/Stick: weapon · Square/Cross: " + (player.pvpIsPrematch ? "deploy" : "respawn");
+    const ready = player.pvpRespawnTimer <= 0;
+    parts.el.classList.toggle("ready", ready);
+    if (!ready) parts.countdown.textContent = "Respawn in " + Math.ceil(player.pvpRespawnTimer);
+  }
+
+  function showPvpPanel(player) {
+    const parts = pvpUi.panels[players.indexOf(player)];
+    if (!parts) return;
+    renderPvpPanel(player);
+    parts.el.classList.add("visible");
+  }
+  function hidePvpPanel(player) {
+    const parts = pvpUi.panels[players.indexOf(player)];
+    if (parts) parts.el.classList.remove("visible");
+  }
+
+  function pvpSelectWeapon(player, id) {
+    player.pvpWeaponId = id; // persists across deaths
+    renderPvpPanel(player);
+  }
+  function pvpStepWeapon(player, dir) {
+    const order = pvpWeaponOrder();
+    const at = Math.max(0, order.indexOf(player.pvpWeaponId));
+    pvpSelectWeapon(player, order[(at + dir + order.length) % order.length]);
+  }
+  function pvpTryRespawn(player) {
+    if (!player.pvpAwaitingSpawn || player.pvpRespawnTimer > 0 || pvpMatch.ended) return false;
+    pvpRespawnPlayer(player);
+    return true;
+  }
+
+  // Controller input for a player's panel (called from the per-player loop).
+  function updatePvpPanelInput(player, deltaSeconds) {
+    const pad = typeof player.input.getRawGamepad === "function" ? player.input.getRawGamepad() : null;
+    if (!pad) return;
+    const nav = player.pvpNav;
+    const pressed = pad.buttons.map((b) => b.pressed);
+    if (!nav.prevButtons) { // first frame on the panel: snapshot so a still-held button isn't read as a press
+      nav.prevButtons = pressed;
+      return;
+    }
+    const edge = (idx) => pressed[idx] && !nav.prevButtons[idx];
+    if (edge(12)) pvpStepWeapon(player, -1);
+    if (edge(13)) pvpStepWeapon(player, 1);
+    stepHeldStickAxis(nav.stick, pad.axes[1] || 0, deltaSeconds, (dir) => pvpStepWeapon(player, dir));
+    const confirm = edge(CONTROLS_NAV_REBIND_BUTTON_INDEX) || edge(0);
+    nav.prevButtons = pressed;
+    if (confirm) pvpTryRespawn(player);
+  }
+
+  function pvpEnterAwaitingSpawn(p, prematch) {
+    p.isDead = true;
+    p.pvpAwaitingSpawn = true;
+    p.pvpIsPrematch = prematch;
+    p.pvpRespawnTimer = prematch ? 0 : PVP_RESPAWN_DELAY_SECONDS;
+    p.pvpProtectedFor = 0;
+    p.pvpNav.prevButtons = null;
+    if (p.isSliding) endSlide(p);
+    cancelReload(p);
+    endMeleeSwing(p);
+    p.isAiming = false;
+    p.isSprinting = false;
+    p.isTacticalSprinting = false;
+    p.viewModelRoot.visible = false;
+    if (p.isInventoryOpen) setInventoryOpen(p, false);
+    showPvpPanel(p);
+  }
+
+  function startPvpMatchExtras() {
+    buildPvpUi();
+    document.body.classList.add("pvp-mode");
+    pvpMatch.timeLeft = PVP_MATCH_SECONDS;
+    pvpMatch.started = false;
+    pvpMatch.ended = false;
+    pvpMatch.resultsTimer = 0;
+    pvpResultsEl.classList.remove("visible");
+    initZone(); // after resetSharedWorldState's resetZone; the PVP centre is the map centre
+    for (const p of players) {
+      p.pvpKills = 0;
+      p.pvpDeaths = 0;
+      p.pvpWeaponId = p.pvpWeaponId || "pistol";
+      p.pvpLastKilledBy = null;
+      p.pvpDeathCause = "";
+      p.pvpProtectedFor = 0;
+      p.pvpNav = { stick: { isPastDeadzone: false, direction: 0, timeUntilNextStep: 0 }, prevButtons: null };
+      pvpEnterAwaitingSpawn(p, true);
+    }
+    pvpUi.rows.length = 0;
+    updatePvpHud();
+  }
+
+  function pvpRecordKill(victim, attacker, source) {
+    victim.pvpDeaths++;
+    victim.pvpLastKilledBy = attacker && attacker !== victim ? attacker : null;
+    victim.pvpDeathCause = source === null ? "Zone" : "Fall"; // no attacker: the storm (source null) or a fall (undefined)
+    if (victim.pvpLastKilledBy) {
+      attacker.pvpKills++;
+      pvpToast(attacker, "Eliminated " + pvpPlayerLabel(victim));
+    }
+    updatePvpHud();
+  }
+
+  function pvpHandleDeath(player) {
+    player.isDead = true;
+    if (player.carriedTurret) dropCarriedTurretOnDeath(player); // defensive only
+    pvpEnterAwaitingSpawn(player, false);
+    // Pointer lock stays held: a keyboard+mouse P1 drives the panel with it,
+    // and releasing it would freeze everyone (p1NeedsClick).
+  }
+
+  function pvpRespawnPlayer(player) {
+    resetPlayerState(player); // health, flags, stamina (G14), physics, view model, HUD
+    if (typeof player.input.forceRelease === "function") player.input.forceRelease("fire"); // the click/press that confirmed the respawn must not fire
+    const id = player.pvpWeaponId;
+    player.inventorySlots[0] = id === "fists" ? null : createWeaponSlotState(id);
+    if (player.inventorySlots[0] && !WEAPON_DEFS[id].gun.isMeleeOnly) player.inventorySlots[0].reserveAmmo = PVP_INFINITE_RESERVE;
+    player.inventorySlots[1] = null;
+    player.activeSlotIndex = 0;
+    setActiveViewModel(player); // re-raises the chosen weapon and syncs the ammo HUD (infinity symbol)
+    const spot = pickPvpSpawnPoint(player);
+    player.camera.position.set(spot.x, EYE_HEIGHT, spot.z);
+    player.campusGroundY = 0;
+    player.yaw = spot.yaw;
+    player.pitch = 0;
+    applyCameraRotation(player);
+    if (isCampusMap) campusWorld.updateVisibility(players.map((p) => p.camera.position));
+    player.pvpAwaitingSpawn = false;
+    player.pvpIsPrematch = false;
+    player.pvpProtectedFor = PVP_SPAWN_PROTECTION_SECONDS;
+    hidePvpPanel(player);
+    if (!pvpMatch.started && players.every((p) => !p.pvpIsPrematch)) { // the clock starts once everyone has deployed
+      pvpMatch.started = true;
+      updatePvpHud();
+    }
+  }
+
+  // Spawn point (see PVP_PLAN.md section 5): random candidates inside the
+  // current zone, cheapest rejections first, scored by distance from every
+  // living opponent; a point no opponent can see is always preferred.
+  function pickPvpSpawnPoint(player) {
+    const others = players.filter((p) => p !== player && !p.isDead && !p.pvpAwaitingSpawn);
+    const z = zoneState;
+    const rect = zoneMapRect();
+    const R = Math.max(10, z.radius - PVP_SPAWN.ZONE_EDGE_MARGIN);
+    let best = null;
+    let bestHidden = null;
+    for (let n = 0; n < PVP_SPAWN.CANDIDATES; n++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = R * Math.sqrt(Math.random());
+      const x = z.center.x + Math.cos(a) * r;
+      const zz = z.center.z + Math.sin(a) * r;
+      if (isCampusMap) {
+        if (!campusWorld.insidePlayableEdge(x, zz, 2)) continue;
+        if (!campusWorld.isWalkable(x, zz, PVP_SPAWN.CLEARANCE)) continue;
+      } else if (x < rect.minX || x > rect.maxX || zz < rect.minZ || zz > rect.maxZ) continue;
+      const inNext = !z.next || Math.hypot(x - z.next.x, zz - z.next.z) < z.next.radius - 4;
+      let minD = Infinity;
+      for (const o of others) minD = Math.min(minD, Math.hypot(o.camera.position.x - x, o.camera.position.z - zz));
+      if (minD < PVP_SPAWN.MIN_DISTANCE) continue;
+      let visible = 0;
+      for (const o of others) {
+        const ox = o.camera.position.x, oz = o.camera.position.z;
+        const blocked = isCampusMap
+          ? campusWorld.segmentBlocked(ox, oz, x, zz, 0, false, targetStandingY(o), 0)
+          : !hasLineOfSight(ox, oz, x, zz, 0);
+        if (!blocked) visible++;
+      }
+      const score = Math.min(minD, PVP_SPAWN.DISTANCE_CAP) + (inNext ? 20 : 0) - visible * PVP_SPAWN.VISIBLE_PENALTY + Math.random() * 5;
+      const cand = { x, z: zz, score };
+      if (visible === 0 && (!bestHidden || score > bestHidden.score)) bestHidden = cand;
+      if (!best || score > best.score) best = cand;
+    }
+    let pick = bestHidden || best;
+    if (!pick) {
+      const spawn = isCampusMap ? campusWorld.spawn : { x: 0, z: 0 };
+      pick = { x: spawn.x + (players.indexOf(player) - 1.5) * 2, z: spawn.z };
+    }
+    const yaw = Math.atan2(-(z.center.x - pick.x), -(z.center.z - pick.z)); // face the zone centre
+    return { x: pick.x, z: pick.z, yaw };
+  }
+
+  function updatePvpMatch(deltaSeconds) {
+    for (let i = 0; i < players.length; i++) {
+      const p = players[i];
+      if (p.pvpAwaitingSpawn) {
+        if (p.pvpRespawnTimer > 0) p.pvpRespawnTimer = Math.max(0, p.pvpRespawnTimer - deltaSeconds);
+        const parts = pvpUi.panels[i];
+        const ready = p.pvpRespawnTimer <= 0;
+        parts.el.classList.toggle("ready", ready);
+        if (!ready) {
+          const t = "Respawn in " + Math.ceil(p.pvpRespawnTimer);
+          if (parts.countdown.textContent !== t) parts.countdown.textContent = t;
+        }
+      }
+      if (p.pvpProtectedFor > 0) p.pvpProtectedFor = Math.max(0, p.pvpProtectedFor - deltaSeconds);
+      pvpUi.protects[i].classList.toggle("show", p.pvpProtectedFor > 0 && !p.isDead);
+    }
+    if (pvpMatch.started) {
+      pvpMatch.timeLeft -= deltaSeconds;
+      if (pvpMatch.timeLeft <= 0) {
+        pvpMatch.timeLeft = 0;
+        endPvpMatch();
+        return;
+      }
+    }
+    updatePvpHud();
+    // Panels/badges follow each player's viewport (handles resize and every layout).
+    for (let i = 0; i < players.length; i++) {
+      const rect = getPlayerViewportRect(i);
+      const key = rect.x + "," + rect.y + "," + rect.width + "," + rect.height;
+      const parts = pvpUi.panels[i];
+      if (parts.layoutKey !== key) {
+        parts.layoutKey = key;
+        parts.el.style.left = rect.x + "px";
+        parts.el.style.top = rect.y + "px";
+        parts.el.style.width = rect.width + "px";
+        parts.el.style.height = rect.height + "px";
+        pvpUi.badges[i].style.left = rect.x + rect.width - 8 + "px";
+        pvpUi.badges[i].style.top = rect.y + 40 + "px";
+      }
+      pvpUi.badges[i].classList.add("visible");
+    }
+  }
+
+  function endPvpMatch() {
+    if (pvpMatch.ended) return;
+    pvpMatch.ended = true;
+    pvpMatch.resultsTimer = PVP_RESULTS_AUTO_RETURN_SECONDS;
+    pvpUi.panels.forEach((parts) => parts.el.classList.remove("visible"));
+    pvpUi.badges.forEach((el) => el.classList.remove("visible"));
+    pvpUi.killsEl.classList.remove("visible");
+    const order = pvpSortedPlayerIndices();
+    const top = players[order[0]].pvpKills;
+    const winners = order.filter((i) => players[i].pvpKills === top);
+    const banner = document.getElementById("pvp-results-banner");
+    banner.textContent = winners.length === 1 ? pvpPlayerLabel(players[winners[0]]) + " WINS" : "DRAW";
+    const board = document.getElementById("pvp-results-board");
+    board.textContent = "";
+    pvpCreateEl("div", "pvp-board-title", board, "Kills");
+    for (const idx of order) {
+      const p = players[idx];
+      const r = pvpMakeBoardRow(board, idx);
+      r.kills.textContent = ": " + p.pvpKills;
+      const name = pvpCreateEl("span", "", null, pvpPlayerLabel(p));
+      name.style.color = ZONE_PLAYER_COLORS[idx % 4];
+      r.row.insertBefore(name, r.kills);
+      pvpCreateEl("span", "pvp-stat", r.row, "D " + p.pvpDeaths + " · K/D " + (p.pvpDeaths ? (p.pvpKills / p.pvpDeaths).toFixed(2) : p.pvpKills.toFixed(2)));
+      if (winners.length === 1 && winners[0] === idx) r.row.classList.add("winner");
+    }
+    document.getElementById("pvp-results-return").textContent = "Returning to title in " + PVP_RESULTS_AUTO_RETURN_SECONDS;
+    pvpResultsEl.classList.add("visible");
+    if (document.pointerLockElement === canvas) {
+      suppressNextPauseOnUnlock = true;
+      document.exitPointerLock();
+    }
+    setCursorHidden(false);
+  }
+
+  function pvpReturnToTitle() {
+    resetGame(); // also hides every PVP element (hidePvpUi)
+    titleScreenEl.classList.remove("hidden");
+    showTitlePanel("main");
   }
 
   // The selected category's option (see CHARACTER CUSTOMIZATION), and
@@ -22643,6 +23213,7 @@
   // isBurstFollowUp: a burst gun's later rounds, fired on their own by
   // updateFireCooldown rather than by a trigger pull (see gun.burst).
   function fireWeapon(player, isBurstFollowUp = false) {
+    if (isPvpMatchActive) player.pvpProtectedFor = 0; // firing gives up spawn protection
     const def = getActiveWeaponDef(player);
     if (!def || def.gun.isMeleeOnly) {
       // Fists have nothing to fire with -- left-click throws a punch
@@ -22731,6 +23302,7 @@
       applyHipFireSpread(player, raycaster, def.gun.hipSpreadAngle);
     }
 
+    if (isPvpMatchActive) { firePvpHitscan(player, def, slot); return; }
     let hits = raycastEnemies(raycaster);
     if (isCampusMap) hits = hits.filter((h) => !worldBlocksShot(player.camera.position, h.point, targetStandingY(player), h.object.userData.enemyRef?.campusGroundY || 0));
     hits = filterHitsByBarricades(raycaster, hits);
@@ -22787,6 +23359,68 @@
   const PELLET_BODY_HIT_MARGIN = 0.1; // game units added to the body radius
   const pelletBodyHitPoint = new THREE.Vector3();
 
+  // PVP: every other living, spawned player whose body cylinder `ray` enters
+  // within maxDistance, nearest first, after floor-aware world blocking
+  // (worldBlocksShot: walls, floor slabs, vehicles) and barricade planks.
+  function findPvpPlayerHits(shooter, ray, maxDistance) {
+    const out = [];
+    const { origin, direction } = ray;
+    const a = direction.x * direction.x + direction.z * direction.z;
+    if (a < 1e-8) return out;
+    for (const target of players) {
+      if (target === shooter || target.isDead || target.pvpAwaitingSpawn) continue;
+      const pos = target.camera.position;
+      const ox = origin.x - pos.x, oz = origin.z - pos.z;
+      const b = 2 * (ox * direction.x + oz * direction.z);
+      const c = ox * ox + oz * oz - PVP_PLAYER_HIT_RADIUS * PVP_PLAYER_HIT_RADIUS;
+      const disc = b * b - 4 * a * c;
+      if (disc < 0) continue;
+      const t = c <= 0 ? 0 : (-b - Math.sqrt(disc)) / (2 * a);
+      if (t < 0 || t > maxDistance) continue;
+      const y = origin.y + direction.y * t;
+      const feetY = pos.y - target.currentEyeHeight; // camera.y = eye + jumpOffset + groundY
+      if (y < feetY || y > pos.y + 0.15) continue; // crouch/slide shrink it automatically
+      const point = new THREE.Vector3(origin.x + direction.x * t, y, origin.z + direction.z * t);
+      if (isCampusMap && worldBlocksShot(origin, point, targetStandingY(shooter), targetStandingY(target))) continue;
+      out.push({ target, distance: t, point, isHeadshot: y >= pos.y - PVP_HEAD_BAND });
+    }
+    if (barricadePlankMeshes.length && out.length) {
+      if (raycaster.ray !== ray) raycaster.ray.copy(ray);
+      const wood = raycaster.intersectObjects(barricadePlankMeshes, false);
+      if (wood.length) return out.filter((h) => h.distance < wood[0].distance).sort((p, q) => p.distance - q.distance);
+    }
+    return out.sort((p, q) => p.distance - q.distance);
+  }
+
+  // Applies one PVP hit: directional damage feedback on the victim, kill credit
+  // via takeDamage's attacker, and the attacker's own hit marker.
+  function damagePvpPlayer(attacker, target, amount, isHeadshot) {
+    takeDamage(target, amount, { x: attacker.camera.position.x, z: attacker.camera.position.z }, attacker);
+    showHitMarker(attacker, isHeadshot);
+  }
+
+  // PVP hitscan (every non-pellet gun): first player hit, or several for
+  // the sniper's penetration.
+  function firePvpHitscan(player, def, slot) {
+    const fxPower = (FX_WEAPON[slot.weaponId] || { power: 1 }).power;
+    const hits = findPvpPlayerHits(player, raycaster.ray, Infinity);
+    if (hits.length === 0) { spawnWorldImpact(raycaster.ray.origin, raycaster.ray.direction, fxPower); return; }
+    spawnFleshImpact(hits[0].point, raycaster.ray.direction, fxPower);
+    const fractions = def.gun.penetrationDamageFractions;
+    if (fractions) {
+      let anyHeadshot = false;
+      for (let i = 0; i < hits.length && i < fractions.length; i++) {
+        const damage = def.gun.damage * fractions[i] * (hits[i].isHeadshot ? def.gun.headshotMultiplier : 1);
+        damagePvpPlayer(player, hits[i].target, damage, hits[i].isHeadshot);
+        anyHeadshot = anyHeadshot || hits[i].isHeadshot;
+      }
+      playSniperHitAudio(anyHeadshot);
+      return;
+    }
+    const damage = hits[0].isHeadshot && def.gun.headshotDamage !== undefined ? def.gun.headshotDamage : def.gun.damage;
+    damagePvpPlayer(player, hits[0].target, damage, hits[0].isHeadshot);
+  }
+
   // Nearest enemy body cylinder the ray enters, as { enemyState, distance }, or null.
   function findNearestEnemyBodyHit(ray) {
     const { origin, direction } = ray;
@@ -22815,11 +23449,21 @@
   function fireShotgunPellets(player, pellets) {
     const spreadAngle = pellets.spreadAngle * (player.isAiming ? pellets.adsSpreadMultiplier : 1);
     const damageByEnemy = new Map(); // enemyState -> { damage, point }
+    const pvpDamageByPlayer = new Map(); // PVP: player -> { damage }
 
     raycaster.far = Infinity; // melee borrows this same raycaster with a limited range -- always restore it here
     for (let i = 0; i < pellets.count; i++) {
       raycaster.setFromCamera(screenCenter, player.camera);
       applyHipFireSpread(player, raycaster, spreadAngle);
+      if (isPvpMatchActive) {
+        const h = findPvpPlayerHits(player, raycaster.ray, Infinity)[0];
+        if (!h) { spawnWorldImpact(raycaster.ray.origin, raycaster.ray.direction, 0.6); continue; }
+        if (i < 3) spawnFleshImpact(h.point, raycaster.ray.direction, 0.6);
+        const e = pvpDamageByPlayer.get(h.target);
+        const d = getShotgunPelletDamage(pellets, h.distance);
+        if (e) e.damage += d; else pvpDamageByPlayer.set(h.target, { damage: d });
+        continue;
+      }
       let hits = raycastEnemies(raycaster);
       let bodyHit = findNearestEnemyBodyHit(raycaster.ray);
       if (isCampusMap) {
@@ -22859,6 +23503,7 @@
       else damageByEnemy.set(enemyState, { damage: pelletDamage, point });
     }
 
+    for (const [target, entry] of pvpDamageByPlayer) damagePvpPlayer(player, target, entry.damage, false);
     for (const [enemyState, entry] of damageByEnemy) {
       damageEnemy(enemyState, entry.damage, entry.point);
     }
@@ -23026,6 +23671,7 @@
   function advanceReload(player, deltaSeconds) {
     const slot = getActiveSlot(player);
     if (!slot) return;
+    if (isPvpMatchActive) slot.reserveAmmo = PVP_INFINITE_RESERVE; // infinite reserve; the magazine still empties
     const def = getActiveWeaponDef(player);
 
     if (!slot.isReloading) return;
@@ -23211,6 +23857,7 @@
   // maxDurability. Returns whether it just broke, so a caller mid-swing
   // can stop driving an animation for a weapon that's no longer there.
   function wearWeaponDurability(player, isShove) {
+    if (isPvpMatchActive) return false; // PVP: the bat never breaks (it is the player's only slot)
     const slot = getActiveSlot(player);
     if (!slot || !WEAPON_DEFS[slot.weaponId].gun.maxDurability) return false;
     if (isShove) {
@@ -23230,6 +23877,7 @@
 
   function performMelee(player) {
     if (player.meleeCooldownRemaining > 0) return;
+    if (isPvpMatchActive) player.pvpProtectedFor = 0; // swinging gives up spawn protection
 
     const def = getActiveWeaponDef(player);
     const isBat = !!(def && def.id === "bat");
@@ -23282,6 +23930,18 @@
   function resolveMeleeHit(player, damage, range, isBat) {
     raycaster.setFromCamera(screenCenter, player.camera);
     raycaster.far = range;
+    if (isPvpMatchActive) { // PVP: the shared player-hit helper (floor/wall aware) instead of enemies
+      const pvpHit = findPvpPlayerHits(player, raycaster.ray, range)[0];
+      raycaster.far = Infinity;
+      if (pvpHit) {
+        damagePvpPlayer(player, pvpHit.target, damage, false);
+        if (isBat) playRandomClip(["bat_hit_01", "bat_hit_02"], { volume: 1.5 });
+        else playClip("melee_hit_01", { volume: 1.4 });
+      } else {
+        playClip("melee_miss_01", { volume: isBat ? 1.8 : 1.4 });
+      }
+      return !!pvpHit;
+    }
     const hits = raycastEnemies(raycaster);
     raycaster.far = Infinity; // restore -- fireWeapon shares this same raycaster
 
@@ -23359,6 +24019,30 @@
     player.camera.getWorldDirection(batSweepForwardScratch);
     batSweepForwardScratch.y = 0;
     batSweepForwardScratch.normalize();
+
+    if (isPvpMatchActive) { // PVP: sweep the other players instead of enemies
+      const pvpTargets = [];
+      for (const target of players) {
+        if (target === player || target.isDead || target.pvpAwaitingSpawn) continue;
+        const dx = target.camera.position.x - player.camera.position.x;
+        const dz = target.camera.position.z - player.camera.position.z;
+        const distance = Math.hypot(dx, dz);
+        if (distance > BAT_MELEE_RANGE) continue;
+        if (distance > 0 && (batSweepForwardScratch.x * dx + batSweepForwardScratch.z * dz) / distance < 0) continue;
+        if (Math.abs(targetStandingY(target) - targetStandingY(player)) >= 1.5) continue;
+        if (!hasLineOfSight(player.camera.position.x, player.camera.position.z, target.camera.position.x, target.camera.position.z, 0,
+          isCampusMap ? targetStandingY(player) : undefined, isCampusMap ? targetStandingY(target) : undefined)) continue;
+        pvpTargets.push({ target, distance });
+      }
+      if (pvpTargets.length === 0) {
+        playClip("melee_miss_01", { volume: 1.8 });
+        return;
+      }
+      pvpTargets.sort((a, b) => a.distance - b.distance);
+      for (const t of pvpTargets.slice(0, BAT_SWEEP_MAX_TARGETS)) damagePvpPlayer(player, t.target, BAT_SWEEP_DAMAGE, false);
+      playClip("bat_hit_03", { volume: 1.5 });
+      return;
+    }
 
     const targets = [];
     for (const enemyState of enemies) {
@@ -24015,6 +24699,28 @@
       }
     }
 
+    if (isPvpMatchActive) { // PVP: the same arc test against the other players
+      for (const target of players) {
+        if (sweep.hitEnemies.size >= KATANA_MAX_TARGETS) break;
+        if (target === player || target.isDead || target.pvpAwaitingSpawn || sweep.hitEnemies.has(target)) continue;
+        const tx = target.camera.position.x;
+        const tz = target.camera.position.z;
+        const dx = tx - camX;
+        const dz = tz - camZ;
+        const distance = Math.hypot(dx, dz);
+        const radius = PVP_PLAYER_HIT_RADIUS;
+        if (distance - radius > sweep.range) continue;
+        if (Math.abs(targetStandingY(target) - targetStandingY(player)) >= 1.5) continue;
+        const bearing = Math.atan2(dx * rightX + dz * rightZ, dx * forward.x + dz * forward.z);
+        const halfWidth = distance > radius ? Math.asin(radius / distance) : Math.PI;
+        if (bearing + halfWidth < minYaw || bearing - halfWidth > maxYaw) continue;
+        if (!hasLineOfSight(camX, camZ, tx, tz, 0, isCampusMap ? targetStandingY(player) : undefined, isCampusMap ? targetStandingY(target) : undefined)) continue;
+        sweep.hitEnemies.add(target);
+        playKatanaImpactAudio();
+        damagePvpPlayer(player, target, sweep.damage, false);
+      }
+    }
+
     if (progress >= KATANA_WINDUP_FRACTION + KATANA_SLASH_FRACTION) sweep.isDone = true;
   }
 
@@ -24185,7 +24891,7 @@
   // or having just let go of sprint while that speed is still carrying).
   function tryStartSlide(player) {
     if (player.isSliding || player.slideCooldown > 0 || player.isDead || !player.isGrounded || player.grabbedBy) return;
-    if (!player.unlockedSkillIds.has("sliding")) return; // gated behind the Sliding skill
+    if (!isPvpMatchActive && !player.unlockedSkillIds.has("sliding")) return; // gated behind the Sliding skill (always on in PVP)
     if (playerNeedsPointerLock(player) && document.pointerLockElement !== canvas) return;
 
     player.camera.getWorldDirection(forwardVector);
@@ -24193,7 +24899,7 @@
     forwardVector.normalize();
 
     const forwardSpeed = player.velocity.dot(forwardVector);
-    if (forwardSpeed < SLIDE_TRIGGER_SPEED) return;
+    if (forwardSpeed < SLIDE_TRIGGER_SPEED * pvpMoveSpeedMultiplier()) return;
     if (player.stamina < SLIDE_MIN_STAMINA) return;
 
     player.stamina = Math.max(0, player.stamina - getSlideStaminaCost(player));
@@ -24207,7 +24913,7 @@
     // front. See getSlideDecayDuration.
     player.slideDecayDuration = getSlideDecayDuration(player);
     const durationScale = player.slideDecayDuration / SLIDE_DECAY_DURATION;
-    player.slidePeakSpeed = WALK_SPEED + (SLIDE_PEAK_SPEED - WALK_SPEED) * durationScale * durationScale;
+    player.slidePeakSpeed = (WALK_SPEED + (SLIDE_PEAK_SPEED - WALK_SPEED) * durationScale * durationScale) * pvpMoveSpeedMultiplier();
 
     player.isSliding = true;
     player.slideElapsed = 0;
@@ -24696,6 +25402,7 @@
     // Heavy weapons slow you a little (gun.moveSpeedMultiplier -- the sniper).
     const heldDef = getActiveWeaponDef(player);
     if (heldDef && heldDef.gun.moveSpeedMultiplier && !isDowned) maxSpeed *= heldDef.gun.moveSpeedMultiplier;
+    maxSpeed *= pvpMoveSpeedMultiplier();
 
     // Smoothly lerp eye height toward the standing or crouching target.
     // Sliding shares the crouched pose, so this also covers sliding --
@@ -24716,7 +25423,7 @@
       // mid-slide can't change a slide already in progress.
       const t = Math.min(1, player.slideElapsed / player.slideDecayDuration);
       const eased = 1 - (1 - t) * (1 - t);
-      const targetSpeed = player.slidePeakSpeed - (player.slidePeakSpeed - WALK_SPEED) * eased;
+      const targetSpeed = player.slidePeakSpeed - (player.slidePeakSpeed - WALK_SPEED * pvpMoveSpeedMultiplier()) * eased;
 
       // Limited steering: nudge the slide's direction toward the wish
       // direction without touching its speed, so it can be aimed slightly
@@ -26197,6 +26904,7 @@
   }
 
   function updateWaveManager(deltaSeconds) {
+    if (isPvpMatchActive) return; // PVP: no waves (see PVP DEATHMATCH)
     // Paused (not just "no new spawns" but the whole state machine frozen)
     // while the death screen is up, same as updateEnemies above -- and
     // same co-op-aware gate: a solo-dead player doesn't stop the wave for
@@ -26693,8 +27401,8 @@
     // (weaponSlot1/2) and scroll-wheel cycling of its own.
     if (player.input.wasActionJustPressed("switchWeapon")) cycleActiveSlot(player, 1);
     if (player.input.wasActionJustPressed("melee")) performMelee(player);
-    if (player.input.wasActionJustPressed("dropItem")) dropActiveSlotItem(player);
-    if (player.input.wasActionJustPressed("interact")) interact(player);
+    if (!isPvpMatchActive && player.input.wasActionJustPressed("dropItem")) dropActiveSlotItem(player);
+    if (!isPvpMatchActive && player.input.wasActionJustPressed("interact")) interact(player);
     if (player.input.wasActionJustPressed("fire")) {
       fireWeapon(player);
     } else if (player.input.isActionHeld("fire")) {
@@ -26782,7 +27490,15 @@
   // the next slice of this same step.
   function updateCoopMatchFrame(deltaSeconds) {
     tickViewportLayout(deltaSeconds);
-    pollCoopMatchPauseGamepads();
+    if (!(isPvpMatchActive && pvpMatch.ended)) pollCoopMatchPauseGamepads();
+    if (isPvpMatchActive && pvpMatch.ended) {
+      pvpMatch.resultsTimer -= deltaSeconds;
+      if (pvpMatch.resultsTimer <= 0) {
+        pvpReturnToTitle();
+        return;
+      }
+      document.getElementById("pvp-results-return").textContent = "Returning to title in " + Math.ceil(pvpMatch.resultsTimer);
+    }
 
     // Extra defensive re-hide (user-reported, intermittent -- "pretty
     // often" with two controller players): a both-controller match never
@@ -26825,7 +27541,7 @@
     // reaching across into the other player's half of this shared flag.
     const p1NeedsClick =
       matchP1Scheme === "keyboard" && document.pointerLockElement !== canvas && !players[0].isInventoryOpen;
-    const isFrozen = isMatchPaused || p1NeedsClick || reviveSelection !== null; // the Revive Player pick-one screen pauses everyone
+    const isFrozen = isMatchPaused || p1NeedsClick || reviveSelection !== null || (isPvpMatchActive && pvpMatch.ended); // the Revive Player pick-one screen pauses everyone
 
     for (const player of players) {
       // Same slide-loop mute/resume fix as singleplayer, per player --
@@ -26914,6 +27630,7 @@
         }
 
         processEdgeTriggeredActions(player);
+        if (isPvpMatchActive && player.pvpAwaitingSpawn) updatePvpPanelInput(player, deltaSeconds);
         updateMovement(player, deltaSeconds);
         if (player.isDowned) {
           // Crawling (see DOWNED STATE): weapon state is left exactly as it
@@ -26962,7 +27679,8 @@
     // the inventory-open case back OUT of its own isPlayerFrozen), so
     // there's nothing to exclude -- a genuine pause is the one and only
     // thing that stops it.
-    if (!isMatchPaused && !reviveSelection) {
+    if (!isMatchPaused && !reviveSelection && !(isPvpMatchActive && pvpMatch.ended)) {
+      if (isPvpMatchActive) updatePvpMatch(deltaSeconds);
       updateDownedPlayers(deltaSeconds); // the authoritative bleed-out clock (see DOWNED STATE)
       updateEnemies(deltaSeconds);
       updateWaveManager(deltaSeconds);
@@ -27042,6 +27760,11 @@
         ...document.querySelectorAll("#player-count-options .mode-option:not(.mode-option-disabled)"),
         document.getElementById("player-count-back-button"),
       ],
+    },
+    {
+      key: "pvp-results",
+      isActive: () => !!pvpResultsEl && pvpResultsEl.classList.contains("visible"),
+      getEls: () => [pvpResultsContinueEl],
     },
     {
       key: "overlay-settings",
@@ -27244,6 +27967,7 @@
   let backButtonWasPressed = false;
 
   function getControllerBackTarget() {
+    if (pvpResultsEl && pvpResultsEl.classList.contains("visible")) return pvpResultsContinueEl;
     if (titlePanels.mode.classList.contains("active")) return document.getElementById("mode-back-button");
     if (titlePanels.setup.classList.contains("active")) return document.getElementById("setup-back-button");
     if (titlePanels["player-count"].classList.contains("active")) return document.getElementById("player-count-back-button");
@@ -27636,7 +28360,7 @@
   // hooks drive the frame-cost benchmark (tests/perf-test.js, #perftest),
   // and #envtest exposes them with no test script, for driving the
   // environment by hand (time of day, weather) from devtools.
-  if (/spawntest|perftest|envtest/.test(window.location.hash)) {
+  if (/spawntest|perftest|envtest|pvptest/.test(window.location.hash)) {
     window.__gameTestHooks = {
       players, enemies, EYE_HEIGHT,
       get campusWorld() { return campusWorld; },
@@ -27687,6 +28411,7 @@
         players.length = 0;
         players.push(...allPlayers.slice(0, Math.max(2, n)));
         isCoopMatchActive = n > 1;
+        isPvpMatchActive = false;
         coopFullscreenSurvivorIndex = null;
         document.body.classList.toggle("coop-mode", n > 1);
         document.body.classList.toggle("quad-mode", n === 4);
@@ -27713,11 +28438,34 @@
       get sunRayStrength() { return sunRayStrength; },
       // Customization (setup screens), for checking the previews by hand.
       humanSystem, p1ModelPreview, coopSetup, updateCoopSetupUI,
+      // PVP smoke test (#pvptest, tests/pvp-test.js).
+      startPvpForTest(n) {
+        resetGame();
+        pvpSetupSelected = true;
+        if (n === 2) {
+          resetCoopSetup();
+          coopSetup.p1Scheme = "controller";
+          coopSetup.p1GamepadIndex = 0;
+          coopSetup.p2GamepadIndex = 1;
+          startCoopMatch();
+        } else {
+          resetQuadSetup(n);
+          quadSetup.p1Scheme = "controller";
+          quadSetup.slots.forEach((slot, i) => { slot.gamepadIndex = i; });
+          startQuadMatch();
+        }
+        pvpSetupSelected = false;
+      },
+      pvpRespawnPlayer, pickPvpSpawnPoint, findPvpPlayerHits, updatePvpMatch, endPvpMatch, pvpMatch, pvpTryRespawn,
+      pvpSelectWeapon, tryStartSlide, targetStandingY, hudRefsFor, updateCoopMatchFrame, resetGame, getMaxStamina,
+      toggleInventory, PVP_SPAWN, PVP_INFINITE_RESERVE, PVP_RESPAWN_DELAY_SECONDS,
+      get isPvpMatchActive() { return isPvpMatchActive; },
+      get isCoopMatchActive() { return isCoopMatchActive; },
       haltLoop: false, // true stops animate() so only the benchmark renders
     };
     if (!/envtest/.test(window.location.hash)) {
       const script = document.createElement("script");
-      script.src = /perftest/.test(window.location.hash) ? "tests/perf-test.js" : "tests/campus-spawn-test.js";
+      script.src = /perftest/.test(window.location.hash) ? "tests/perf-test.js" : /pvptest/.test(window.location.hash) ? "tests/pvp-test.js" : "tests/campus-spawn-test.js";
       document.body.appendChild(script);
     }
   }

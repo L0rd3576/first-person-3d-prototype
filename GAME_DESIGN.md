@@ -2494,6 +2494,8 @@ and runs the vertical divider down the bottom half only.
   - **UI:** a list of the four categories under each preview (below the model on the co-op screen, scaled with it; under each column's smaller model on the 3/4-player screen) -- the selected one highlighted in the menus' gold with its left/right arrows, the others dimmed with none. The old head-height face arrows are gone (the list's arrows replace them). The preview updates on every change.
   - **In the match:** every player's in-game body gets their face, headgear, shirt and pants when the match starts (2-player and 3/4-player), so everyone sees them in split screen.
 
+- **2026-10-13** — Added PVP free-for-all deathmatch (2-4 player split-screen) behind `isPvpMatchActive`; see "PVP Deathmatch" below.
+
 ## Dynamic zone, minimap, screen-area handoff
 - One `zoneState` (index.html, `ZONE_CONFIG` holds every tunable) cycles stay -> warning -> transition. First warning after `INITIAL_ZONE_DELAY`; the next zone (size and place vary, min/max relocation distance) shows white on the minimap during the warning, then the boundary glides to it. Outside players get a grace period, then ramping damage through `takeDamage`. Zombies/spawning/nav never read the zone.
 - One shared minimap (top-left by default, `MINIMAP_POSITION`) for all split-screen players; static building layer drawn once from `campusWorld.minimapFootprints()`.
@@ -2503,3 +2505,13 @@ and runs the vertical divider down the bottom half only.
 - A zombie whose target stands on a parked car it can't hit from the ground (>~1.1 m up) claims an edge slot on that car (`campusWorld.carAt` / `carClimbSlots`, built from the car hitbox data), walks there on the normal grid route, then runs a scripted approach -> climb -> roof -> descend traversal (`stepCarClimb`, tunables in `CAR_CLIMB_CONFIG`). The climb pose is `zombieSystem.setClimb` in zombie-model.js, driven by the same progress value as the body so they stay in sync.
 - Up to `CAR_CLIMB_MAX_ZOMBIES_PER_CAR` at once; a zombie that can't get up times out (`CAR_CLIMB_ATTEMPT_TIMEOUT`), tries another side, then resumes normal behaviour; climbing zombies count as "busy" for the stuck recycler.
 - Spawns are also kept on the playable side of the border-row wall line (`campusWorld.insidePlayableEdge`), not just inside the bounds rectangle.
+
+## PVP Deathmatch
+- Entry: Multiplayer -> player-count screen -> "PVP: 2/3/4 Players" (same setup screens, `pvpSetupSelected`). It is a co-op match plus `isPvpMatchActive`; every PVP difference is gated on that flag, so PVE/co-op paths are unchanged.
+- Rules: full campus map, no zombies/waves/pickups/turrets/crafting/inventory/skills (vehicles stay). Free for all, `PVP_MATCH_SECONDS` = 30 min, most kills wins; shared "Kills" box (face + `: N`, sorted, top centre) during play and enlarged on the results screen, then back to the title (Continue or 20 s).
+- Movement/stamina: speed x`PVP_MOVE_SPEED_MULTIPLIER` (1.15), slide always available, max stamina and regen x2.
+- Zone: existing zone system with `PVP_ZONE_TIMING` (60 s first delay, 45 s stay, 20 s warning, 30 s shrink); damage unchanged.
+- Damage: every weapon hits other players through `findPvpPlayerHits` (cylinder test, floor/wall/vehicle/barricade aware) or the floor-aware area checks (bat sweep, katana); never self; no downed state, 0 HP = dead; kill credit to the attacker (zone/fall deaths count as a death only).
+- Death/respawn: own viewport shows a weapon selector (all weapons + fists) and a `PVP_RESPAWN_DELAY_SECONDS` (5 s) countdown; the Respawn button appears when it ends. The same panel is the pre-match selector (no wait; the clock starts once everyone has deployed). Loadout: only the chosen weapon, full magazine, infinite reserve (shown as the infinity symbol), full health, `PVP_SPAWN_PROTECTION_SECONDS` (2 s, ended early by attacking).
+- Spawn rule (`pickPvpSpawnPoint`): `PVP_SPAWN.CANDIDATES` random points inside the current zone, walkable ground floor, at least `MIN_DISTANCE` from every living opponent and preferably out of their line of sight (score = distance, penalty per opponent who can see it); best hidden point, else best score.
+- Test: `HASH=#pvptest node tests/run-perf.js pvp.json` (`tests/pvp-test.js`).
