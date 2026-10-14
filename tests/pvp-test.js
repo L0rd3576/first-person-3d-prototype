@@ -343,6 +343,63 @@
     H.resetGame();
     check("21 PVE unaffected: max health 100, speed x1", H.getMaxHealth(H.players[0]) === 100 && H.pvpMoveSpeedMultiplier() === 1, H.getMaxHealth(H.players[0]) + "/" + H.pvpMoveSpeedMultiplier());
     H.setPvpSetting("health", 100); H.setPvpSetting("speed", 100);
+
+    // 22. controller aim assist works in PVP (slowdown + magnetism toward the other players)
+    {
+      H.startPvpForTest(2);
+      const [ca, cb] = H.players;
+      H.players.forEach((p) => H.pvpRespawnPlayer(p));
+      cb.pvpProtectedFor = 0;
+      const realGetGamepads = navigator.getGamepads;
+      const pad = { axes: [0, 0, 0, 0], buttons: [] };
+      navigator.getGamepads = () => [pad, null, null, null];
+      const prevScale = H.getAimAssistScale();
+      H.setAimAssistScale(0.4 * 0.6); // default 60% slider
+      const aim = (yawOff) => { // face cb from ca, yawOff radians away
+        const dx = cb.camera.position.x - ca.camera.position.x, dz = cb.camera.position.z - ca.camera.position.z;
+        const yaw = Math.atan2(-dx, -dz) + yawOff;
+        const pitch = Math.atan2(cb.camera.position.y - 0.1 - ca.camera.position.y, Math.hypot(dx, dz));
+        ca.yaw = yaw; ca.pitch = pitch;
+        ca.camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, "YXZ"));
+        ca.camera.updateMatrixWorld(true);
+      };
+      let placed = false;
+      for (let k = 0; k < 16 && !placed; k++) {
+        const ang = (k / 16) * Math.PI * 2;
+        cb.camera.position.set(ca.camera.position.x + Math.sin(ang) * 8, ca.camera.position.y, ca.camera.position.z + Math.cos(ang) * 8);
+        aim(0);
+        placed = !!H.findAimAssistTarget(ca);
+      }
+      check("22 aim assist finds the other player in PVP", placed);
+      if (placed) {
+        aim(0.04); // ~2.3 deg off: inside the magnetism cone, stick centred
+        const near = ca.input.pollLookDelta(1 / 60, ca);
+        check("22 magnetism pulls yaw toward target with stick centred", near.dYaw !== 0 && Math.sign(near.dYaw) === 1 && Math.abs(near.dYaw) < 0.04, JSON.stringify(near));
+        pad.axes[2] = 0.8; // right stick pushed: slowdown vs. no target
+        const withTarget = ca.input.pollLookDelta(1 / 60, ca);
+        aim(1.0); // 57 deg off: no target
+        const without = ca.input.pollLookDelta(1 / 60, ca);
+        check("22 slowdown reduces look speed near target", Math.abs(withTarget.dYaw) < Math.abs(without.dYaw), Math.abs(withTarget.dYaw) + " vs " + Math.abs(without.dYaw));
+        pad.axes[2] = 0;
+        aim(0.04);
+        H.setAimAssistScale(0);
+        const off = ca.input.pollLookDelta(1 / 60, ca);
+        check("22 slider 0% disables aim assist", off.dYaw === 0 && off.dPitch === 0, JSON.stringify(off));
+        H.setAimAssistScale(0.4 * 0.6);
+        cb.isDead = true;
+        check("22 dead players are not targeted", !H.findAimAssistTarget(ca));
+        cb.isDead = false;
+        cb.pvpAwaitingSpawn = true;
+        check("22 players awaiting spawn are not targeted", !H.findAimAssistTarget(ca));
+        cb.pvpAwaitingSpawn = false;
+        cb.camera.position.set(ca.camera.position.x + 40, ca.camera.position.y, ca.camera.position.z);
+        aim(0);
+        check("22 no assist beyond range", !H.findAimAssistTarget(ca));
+      }
+      navigator.getGamepads = realGetGamepads;
+      H.setAimAssistScale(prevScale);
+      H.resetGame();
+    }
   }
 
   try { run(); } catch (e) { check("exception", false, e && e.stack || e); }
