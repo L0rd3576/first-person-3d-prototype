@@ -396,6 +396,18 @@
         aim(0);
         check("22 no assist beyond range", !H.findAimAssistTarget(ca));
       }
+      // 23. minimap draws round buildings (Nelson Hall) -- regression
+      if (H.isCampusMap && H.campusWorld) {
+        const tower = H.campusWorld.minimapFootprints().find((c) => c.shape === "cylinder" && c.radius >= 2);
+        check("23 a round building exists in the minimap footprints", !!tower);
+        if (tower) {
+          H.zoneUi.layerKey = null; H.ensureZoneStaticLayer();
+          const m = H.zoneMapRect(), k = H.zoneUi.layerPxPerM;
+          const px = Math.round((tower.cx - m.minX) * k), py = Math.round((tower.cz - m.minZ) * k);
+          const d = H.zoneUi.layer.getContext("2d").getImageData(px, py, 1, 1).data;
+          check("23 minimap layer shows the tower fill (not ground green)", d[0] === 0x8b && d[1] === 0x91 && d[2] === 0x99, d[0] + "," + d[1] + "," + d[2]);
+        }
+      }
       navigator.getGamepads = realGetGamepads;
       H.setAimAssistScale(prevScale);
       H.resetGame();

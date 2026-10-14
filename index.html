@@ -13660,7 +13660,14 @@
     if (isCampusMap && campusWorld && campusWorld.minimapFootprints) {
       g.fillStyle = "#8b9199";
       for (const c of campusWorld.minimapFootprints()) {
-        if (c.shape === "cylinder") continue; // trunks/poles: too small to read
+        if (c.shape === "cylinder") {
+          // Trunks/poles are too small to read, but round buildings (Nelson Hall's tower) must show.
+          if (!(c.radius >= 2)) continue;
+          g.beginPath();
+          g.arc((c.cx - m.minX) * pxPerM, (c.cz - m.minZ) * pxPerM, c.radius * pxPerM, 0, Math.PI * 2);
+          g.fill();
+          continue;
+        }
         g.save();
         g.translate((c.cx - m.minX) * pxPerM, (c.cz - m.minZ) * pxPerM);
         g.rotate(-c.yaw);
@@ -20068,8 +20075,8 @@
   function resetCustomization(c, other) {
     c.faceKey = null;
     c.helmetKey = "bag";
-    c.shirtKey = pickCustomizeKey(humanSystem.shirtKeys, other && other.shirtKey);
-    c.pantsKey = pickCustomizeKey(humanSystem.pantsKeys, other && other.pantsKey);
+    c.shirtKey = pickCustomizeKey(humanSystem.shirtRandomKeys, other && other.shirtKey);
+    c.pantsKey = pickCustomizeKey(humanSystem.pantsRandomKeys, other && other.pantsKey);
     c.category = 0;
   }
   function customizationValue(c, category) {
@@ -28860,7 +28867,7 @@
         pvpSetupSelected = false;
       },
       pvpSettings, PVP_SETTINGS_DEFAULT, setPvpSetting, openPvpSettings, closePvpSettings, isPvpSettingsOpen, getMaxHealth, pvpMoveSpeedMultiplier, PVP_DAMAGE_TABLE, PVP_HIT_ZONES, pvpHitZone, pvpGunDamage, updateHealthUI,
-      findAimAssistTarget, setAimAssistScale(v) { aimAssistScale = v; }, getAimAssistScale() { return aimAssistScale; }, pvpRecordKill, fallDamageAmount, stepPvpMode, setPvpSetup, PVP_MATCH_SECONDS, PVP_GUN_GAME_LADDER, PVP_HEAL_ON_KILL, pvpUi, renderer,
+      ensureZoneStaticLayer, zoneUi, zoneMapRect, get campusWorld() { return campusWorld; }, get isCampusMap() { return isCampusMap; }, findAimAssistTarget, setAimAssistScale(v) { aimAssistScale = v; }, getAimAssistScale() { return aimAssistScale; }, pvpRecordKill, fallDamageAmount, stepPvpMode, setPvpSetup, PVP_MATCH_SECONDS, PVP_GUN_GAME_LADDER, PVP_HEAL_ON_KILL, pvpUi, renderer,
       get pvpMode() { return pvpMode; },
       pvpRespawnPlayer, pickPvpSpawnPoint, findPvpPlayerHits, updatePvpMatch, endPvpMatch, pvpMatch, pvpTryRespawn,
       pvpSelectWeapon, tryStartSlide, targetStandingY, hudRefsFor, updateCoopMatchFrame, resetGame, getMaxStamina,
