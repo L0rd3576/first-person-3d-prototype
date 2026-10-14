@@ -101,7 +101,7 @@
       check("5 victim dead not downed", b.isDead && !b.isDowned && b.pvpAwaitingSpawn);
       check("5 heal on kill +50", a.health >= 80 && a.health <= 100, a.health);
       const feedLines = () => Array.from(document.querySelectorAll("#pvp-killfeed .pvp-feed-line"));
-      check("5 kill feed line", feedLines().length === 1 && /pistol/i.test(feedLines()[0].textContent) && feedLines()[0].querySelectorAll("img").length === 2, feedLines().map((l) => l.textContent).join("|"));
+      check("5 kill feed line", feedLines().length === 1 && /pistol/i.test(feedLines()[0].querySelector("img.pvp-feed-gun").alt) && feedLines()[0].querySelectorAll("img").length === 3 && getComputedStyle(feedLines()[0].querySelector("img.pvp-feed-gun")).filter.includes("brightness(0)"), feedLines().map((l) => l.textContent).join("|"));
       check("5 kill feed top-right", getComputedStyle(document.getElementById("pvp-killfeed")).right === "10px" && getComputedStyle(document.getElementById("pvp-killfeed")).top === "10px");
       check("5 kill credit", a.pvpKills === 1 && b.pvpDeaths === 1, "k=" + a.pvpKills + " d=" + b.pvpDeaths);
       check("5 panel says by P1", document.querySelector("#pvp-panel-p2 .pvp-panel-sub").textContent === "by P1", document.querySelector("#pvp-panel-p2 .pvp-panel-sub").textContent);

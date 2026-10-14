@@ -1898,6 +1898,8 @@
   .pvp-feed-line { display: flex; align-items: center; gap: 5px; padding: 2px 7px 2px 5px; background: rgba(0,0,0,0.42); color: #fff; border-radius: 4px; opacity: 1; transition: opacity 0.6s; white-space: nowrap; }
   .pvp-feed-line.fade { opacity: 0; }
   .pvp-feed-line img { width: 16px; height: 16px; border-radius: 50%; object-fit: cover; background: #222; flex: none; }
+  /* Blacked-out weapon silhouette (same SVGs as the crafting menu); thin light halo keeps it readable on the dark feed. */
+  .pvp-feed-line img.pvp-feed-gun { width: 30px; height: 20px; border-radius: 0; object-fit: contain; background: none; filter: brightness(0) drop-shadow(0 0 1px rgba(255,255,255,0.95)) drop-shadow(0 0 1px rgba(255,255,255,0.7)); }
   .pvp-feed-weapon { opacity: 0.85; font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; }
   .pvp-feed-label { opacity: 0.85; font-size: 11px; }
   body.pvp-mode .coop-ammo-reserve.pvp-inf, body.pvp-mode #ammo-reserve.pvp-inf { font-size: 1.55em; line-height: 0.8; vertical-align: -0.1em; opacity: 0.85; }
@@ -3417,7 +3419,11 @@
   const PVP_STAMINA_MULTIPLIER = 2;       // max stamina
   const PVP_STAMINA_REGEN_MULTIPLIER = 2; // same refill time as PVE ("regen proportionally")
   const PVP_INFINITE_RESERVE = 9999;      // shown as the infinity symbol
-  const PVP_PLAYER_HIT_RADIUS = 0.35 + 0.1; // PLAYER_RADIUS + margin, like PELLET_BODY_HIT_MARGIN
+  // Player bodies are drawn a bit taller and wider (PVE co-op and PVP); the PVP hit volume follows.
+  const PLAYER_BODY_SCALE_Y = 1.07;
+  const PLAYER_BODY_SCALE_XZ = 1.15;
+  const PVP_PLAYER_HIT_RADIUS = (0.35 + 0.1) * PLAYER_BODY_SCALE_XZ; // PLAYER_RADIUS + margin, scaled with the body
+  const PVP_PLAYER_HIT_TOP_MARGIN = 0.27; // above the eye (was 0.15) -- head sits higher on the taller body
   // PVP hit zones (a player-vs-player shot lands in exactly one). Heights are fractions of the
   // victim's current eye height above their feet (standing 1.7 m: head >= 1.50 m, neck 1.44-1.50,
   // shoulders to 1.38, groin ~0.8), so crouching/sliding shrinks them with the body; LATERAL values
@@ -16079,6 +16085,25 @@
       '<ellipse cx="18" cy="46" rx="5" ry="3" transform="rotate(-40 18 46)"/>' +  // guard
       '<polygon points="4,60 15,47 18,50 7,63" fill="#6b1d1d"/>'                  // wrapped grip
     ),
+    // Same style as the icons above, for weapons the crafting menu has no
+    // SVG for (1911, bat, fists) -- used by the PVP kill feed.
+    pistol: weaponIconDataUri(
+      '<rect x="8" y="18" width="46" height="9" rx="1.5"/>' +        // slide
+      '<rect x="10" y="15.5" width="2.5" height="2.5"/>' +           // front sight
+      '<rect x="48" y="15.5" width="4" height="2.5"/>' +             // rear sight
+      '<rect x="12" y="27" width="38" height="5"/>' +                // frame
+      '<polygon points="34,32 50,32 55,52 40,52"/>' +                // grip
+      '<path d="M24 32 V38 Q24 41 27 41 H35" fill="none"/>'          // trigger guard
+    ),
+    bat: weaponIconDataUri(
+      '<path d="M8 56 L14 50 L50 14 Q56 8 58 10 Q60 12 54 18 L18 54 Z"/>' + // barrel
+      '<rect x="3" y="53" width="9" height="9" rx="3" transform="rotate(-45 7.5 57.5)"/>' // knob
+    ),
+    fists: weaponIconDataUri(
+      '<rect x="14" y="22" width="36" height="26" rx="8"/>' +        // fist
+      '<path d="M22 22 V30 M30 22 V30 M38 22 V30 M46 22 V30" fill="none"/>' + // fingers
+      '<rect x="22" y="48" width="22" height="8" rx="2"/>'           // wrist
+    ),
   };
 
   // Basic Turret recipe icon: tripod, housing, barrel.
@@ -21562,6 +21587,7 @@
     player.appearance = humanSystem.randomAppearance(index > 0 ? allPlayers[index - 1].appearance : undefined);
     const human = humanSystem.createCharacter(player.appearance, faceKey, PLAYER_BODY_LAYER[index]);
     human.root.visible = false;
+    human.root.scale.set(PLAYER_BODY_SCALE_XZ, PLAYER_BODY_SCALE_Y, PLAYER_BODY_SCALE_XZ); // slightly taller/wider body
     scene.add(human.root);
     player.human = human;
     player.bodyMesh = human.root;
@@ -22356,7 +22382,15 @@
     };
     if (killer) {
       face(killer);
-      pvpCreateEl("span", "pvp-feed-weapon", line, pvpWeaponLabel(weaponId));
+      const gun = GUN_ICON_URIS[weaponId];
+      if (gun) {
+        const icon = pvpCreateEl("img", "pvp-feed-gun", line);
+        icon.src = gun;
+        icon.alt = pvpWeaponLabel(weaponId);
+        icon.title = icon.alt;
+      } else {
+        pvpCreateEl("span", "pvp-feed-weapon", line, pvpWeaponLabel(weaponId));
+      }
       face(victim);
     } else {
       face(victim);
@@ -23728,7 +23762,7 @@
       if (t < 0 || t > maxDistance) continue;
       const y = origin.y + direction.y * t;
       const feetY = pos.y - target.currentEyeHeight; // camera.y = eye + jumpOffset + groundY
-      if (y < feetY || y > pos.y + 0.15) continue; // crouch/slide shrink it automatically
+      if (y < feetY || y > pos.y + PVP_PLAYER_HIT_TOP_MARGIN) continue; // crouch/slide shrink it automatically
       const point = new THREE.Vector3(origin.x + direction.x * t, y, origin.z + direction.z * t);
       if (isCampusMap && worldBlocksShot(origin, point, targetStandingY(shooter), targetStandingY(target))) continue;
       const zone = pvpHitZone(target, point, y - feetY);
