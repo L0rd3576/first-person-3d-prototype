@@ -2146,6 +2146,7 @@
   #title-setup h2,
   #title-mode h2,
   #title-player-count h2,
+  #title-game-type h2,
   #title-custom h2 {
     font-size: 28px;
     margin: 0 0 20px 0;
@@ -2173,6 +2174,7 @@
   }
   #mode-options,
   #player-count-options,
+  #game-type-options,
   #custom-options {
     display: flex;
     flex-direction: column;
@@ -2679,7 +2681,7 @@
      connected yet, so all four boxes stay lined up. */
   .quad-setup-model {
     position: relative;
-    height: 33vh; /* (was 46vh -- room for the customization list under it) */
+    height: 29.5vh; /* (was 46vh, then 33vh -- room for the customization list under it, now five rows) */
     aspect-ratio: 240 / 340;
   }
   .quad-setup-model.hidden {
@@ -2815,10 +2817,18 @@
       <div class="mode-option" data-players="4">
         <div class="mode-name">4 Players</div>
       </div>
-      <div class="player-count-divider">PVP Deathmatch</div>
-      <div class="mode-option" data-pvp-players="2"><div class="mode-name">PVP: 2 Players</div></div>
-      <div class="mode-option" data-pvp-players="3"><div class="mode-name">PVP: 3 Players</div></div>
-      <div class="mode-option" data-pvp-players="4"><div class="mode-name">PVP: 4 Players</div></div>
+    </div>
+  </div>
+  <div id="title-game-type" class="title-panel">
+    <button id="game-type-back-button" class="corner-back-button">&larr; Back</button>
+    <h2>Choose Game Type</h2>
+    <div id="game-type-options">
+      <div class="mode-option" data-game-type="pve">
+        <div class="mode-name">PVE</div>
+      </div>
+      <div class="mode-option" data-game-type="pvp">
+        <div class="mode-name">PVP</div>
+      </div>
     </div>
   </div>
   <div id="title-setup" class="title-panel">
@@ -19517,6 +19527,7 @@
     main: document.getElementById("title-main"),
     mode: document.getElementById("title-mode"),
     "player-count": document.getElementById("title-player-count"),
+    "game-type": document.getElementById("title-game-type"),
     custom: document.getElementById("title-custom"),
     setup: document.getElementById("title-setup"),
     "coop-setup": document.getElementById("title-coop-setup"),
@@ -19573,22 +19584,29 @@
     showTitlePanel("player-count");
   });
 
-  document.querySelector('.mode-option[data-players="2"]').addEventListener("click", function () {
-    setPvpSetup(false);
-    resetCoopSetup();
-    showTitlePanel("coop-setup");
-  });
+  // The count only picks the player count; PVE / PVP is chosen on the next screen (#title-game-type).
+  let selectedPlayerCount = 2;
+  for (const n of [2, 3, 4]) {
+    document.querySelector('.mode-option[data-players="' + n + '"]').addEventListener("click", function () {
+      selectedPlayerCount = n;
+      showTitlePanel("game-type");
+    });
+  }
 
-  document.querySelector('.mode-option[data-players="3"]').addEventListener("click", function () {
-    setPvpSetup(false);
-    resetQuadSetup(3);
-    showTitlePanel("quad-setup");
-  });
-
-  document.querySelector('.mode-option[data-players="4"]').addEventListener("click", function () {
-    setPvpSetup(false);
-    resetQuadSetup(4);
-    showTitlePanel("quad-setup");
+  function openSetupForPlayerCount(pvp) {
+    setPvpSetup(pvp);
+    if (selectedPlayerCount === 2) {
+      resetCoopSetup();
+      showTitlePanel("coop-setup");
+    } else {
+      resetQuadSetup(selectedPlayerCount);
+      showTitlePanel("quad-setup");
+    }
+  }
+  document.querySelector('.mode-option[data-game-type="pve"]').addEventListener("click", () => openSetupForPlayerCount(false));
+  document.querySelector('.mode-option[data-game-type="pvp"]').addEventListener("click", () => openSetupForPlayerCount(true));
+  document.getElementById("game-type-back-button").addEventListener("click", function () {
+    showTitlePanel("player-count");
   });
 
   // PVP: the same setup screens, flagged so startCoopMatch/startQuadMatch
@@ -19662,19 +19680,6 @@
     if (pressed && !pvpSettingsSquareWasPressed && !isPvpSettingsOpen()) openPvpSettings();
     pvpSettingsSquareWasPressed = pressed;
   }
-  document.querySelector('.mode-option[data-pvp-players="2"]').addEventListener("click", function () {
-    setPvpSetup(true);
-    resetCoopSetup();
-    showTitlePanel("coop-setup");
-  });
-  for (const n of [3, 4]) {
-    document.querySelector('.mode-option[data-pvp-players="' + n + '"]').addEventListener("click", function () {
-      setPvpSetup(true);
-      resetQuadSetup(n);
-      showTitlePanel("quad-setup");
-    });
-  }
-
   document.getElementById("player-count-back-button").addEventListener("click", function () {
     showTitlePanel("mode");
   });
@@ -20043,27 +20048,27 @@
   // ------------------------------------------------------------------
   // CHARACTER CUSTOMIZATION (explicit request): what each player on a
   // multiplayer setup screen has picked -- face, headgear, shirt and
-  // pants, four separate selections (faceKey / helmetKey / shirtKey /
-  // pantsKey) -- plus `category`, which of those their right stick is on.
+  // pants and shoes, five separate selections (faceKey / helmetKey / shirtKey /
+  // pantsKey / shoeKey; shoeKey starts null = the outfit's own shoe) -- plus `category`, which of those their right stick is on.
   // Shared by the co-op (2-player) and 3/4-player screens:
   //   - right stick up/down (W/S for a keyboard+mouse P1) moves between
   //     the categories, one step per push -- the stick has to come back
-  //     toward the middle before the next -- stopping at FACE and PANTS;
+  //     toward the middle before the next -- stopping at FACE and SHOES;
   //   - right stick left/right (A/D, or the arrows) cycles the selected
   //     category's options exactly as it cycled faces before (hold to
   //     repeat, looping at either end);
   //   - clicking a category (keyboard+mouse) selects it.
   // Every category starts on FACE. The list under each preview shows all
-  // four, the selected one highlighted with its arrows. The preview (and
+  // five, the selected one highlighted with its arrows. The preview (and
   // later the in-game body) only swaps the part that changed: setFace,
   // setHelmet, setClothing (player-model.js).
   // ------------------------------------------------------------------
-  const CUSTOMIZE_CATEGORIES = ["face", "headgear", "shirt", "pants"];
-  const CUSTOMIZE_LABELS = { face: "Face", headgear: "Headgear", shirt: "Shirt", pants: "Pants" };
+  const CUSTOMIZE_CATEGORIES = ["face", "headgear", "shirt", "pants", "shoes"];
+  const CUSTOMIZE_LABELS = { face: "Face", headgear: "Headgear", shirt: "Shirt", pants: "Pants", shoes: "Shoes" };
   const CUSTOMIZE_CATEGORY_RELEASE = 0.35; // stick back under this before the next category step
 
   function createCustomization() {
-    return { faceKey: null, helmetKey: "bag", shirtKey: null, pantsKey: null, category: 0 };
+    return { faceKey: null, helmetKey: "bag", shirtKey: null, pantsKey: null, shoeKey: null, category: 0 };
   }
   function pickCustomizeKey(keys, avoid) {
     let key;
@@ -20077,12 +20082,14 @@
     c.helmetKey = "bag";
     c.shirtKey = pickCustomizeKey(humanSystem.shirtRandomKeys, other && other.shirtKey);
     c.pantsKey = pickCustomizeKey(humanSystem.pantsRandomKeys, other && other.pantsKey);
+    c.shoeKey = null; // the outfit's own shoe: adopted from the character in applyCustomizationToCharacter
     c.category = 0;
   }
   function customizationValue(c, category) {
     if (category === "face") return c.faceKey ? `${SORTED_FACE_KEYS.indexOf(c.faceKey) + 1} / ${SORTED_FACE_KEYS.length}` : "";
     if (category === "headgear") return humanSystem.helmetName(c.helmetKey);
     if (category === "shirt") return c.shirtKey ? humanSystem.shirtName(c.shirtKey) : "";
+    if (category === "shoes") return c.shoeKey ? humanSystem.shoeName(c.shoeKey) : "";
     return c.pantsKey ? humanSystem.pantsName(c.pantsKey) : "";
   }
   const stepKey = (keys, key, direction) => keys[(keys.indexOf(key) + direction + keys.length) % keys.length];
@@ -20094,6 +20101,7 @@
     if (category === "face") c.faceKey = cyclePlayerFaceKey(c.faceKey, direction);
     else if (category === "headgear") c.helmetKey = stepKey(humanSystem.helmetKeys, c.helmetKey, direction);
     else if (category === "shirt") c.shirtKey = stepKey(humanSystem.shirtKeys, c.shirtKey, direction);
+    else if (category === "shoes") c.shoeKey = stepKey(humanSystem.shoeKeys, c.shoeKey, direction);
     else c.pantsKey = stepKey(humanSystem.pantsKeys, c.pantsKey, direction);
     playClip("menu_click_01", { volume: 0.5 }); // the face picker's click
     return true;
@@ -20117,6 +20125,8 @@
   function applyCustomizationToCharacter(character, c) {
     humanSystem.setHelmet(character, c.helmetKey);
     if (c.shirtKey && c.pantsKey) humanSystem.setClothing(character, c.shirtKey, c.pantsKey);
+    if (!c.shoeKey) c.shoeKey = character.appearance.outfitShoeStyle || "sneakersWhite";
+    humanSystem.setShoes(character, c.shoeKey);
   }
   // Right stick up/down: one category step per push.
   function stepCategoryStick(state, value, step) {
@@ -20403,7 +20413,7 @@
   });
 
   document.getElementById("coop-setup-back-button").addEventListener("click", function () {
-    showTitlePanel("player-count");
+    showTitlePanel("game-type");
   });
 
   // Un-readies and un-assigns a side immediately if its gamepad
@@ -21876,7 +21886,7 @@
   // generalized to more slots: Player 1 picks Keyboard + Mouse or
   // Controller, everyone else is always
   // controller, and every player gets the customization list (right stick
-  // up/down picks FACE / HEADGEAR / SHIRT / PANTS, left/right its option)
+  // up/down picks FACE / HEADGEAR / SHIRT / PANTS / SHOES, left/right its option)
   // plus ready-up. Gamepads are
   // claimed the same way -- first pad to send input takes the first slot
   // still waiting (P1 first if they're on controller). Everyone ready
@@ -22734,7 +22744,7 @@
   });
 
   document.getElementById("quad-setup-back-button").addEventListener("click", function () {
-    showTitlePanel("player-count");
+    showTitlePanel("game-type");
   });
 
   window.addEventListener("gamepaddisconnected", function (event) {
@@ -28163,6 +28173,14 @@
       ],
     },
     {
+      key: "title-game-type",
+      isActive: () => !titleScreenEl.classList.contains("hidden") && titlePanels["game-type"].classList.contains("active"),
+      getEls: () => [
+        ...document.querySelectorAll("#game-type-options .mode-option"),
+        document.getElementById("game-type-back-button"),
+      ],
+    },
+    {
       key: "pvp-results",
       isActive: () => !!pvpResultsEl && pvpResultsEl.classList.contains("visible"),
       getEls: () => [pvpResultsContinueEl],
@@ -28373,6 +28391,7 @@
     if (titlePanels.mode.classList.contains("active")) return document.getElementById("mode-back-button");
     if (titlePanels.setup.classList.contains("active")) return document.getElementById("setup-back-button");
     if (titlePanels["player-count"].classList.contains("active")) return document.getElementById("player-count-back-button");
+    if (titlePanels["game-type"].classList.contains("active")) return document.getElementById("game-type-back-button");
     if (titlePanels.custom.classList.contains("active")) return document.getElementById("custom-back-button");
     if (titlePanels["coop-setup"].classList.contains("active")) return document.getElementById("coop-setup-back-button");
     if (titlePanels["quad-setup"].classList.contains("active")) return document.getElementById("quad-setup-back-button");
@@ -28846,7 +28865,7 @@
       updateSurfaceEffects, environmentState, fxDecals, shellCasings, fxaaMaterial,
       get sunRayStrength() { return sunRayStrength; },
       // Customization (setup screens), for checking the previews by hand.
-      humanSystem, p1ModelPreview, coopSetup, updateCoopSetupUI,
+      humanSystem, p1ModelPreview, coopSetup, updateCoopSetupUI, quadSetup, updateQuadSetupUI, resetQuadSetup, resetCoopSetup, applyCustomizationToCharacter, cycleCustomization, resetCustomization, createCustomization, CUSTOMIZE_CATEGORIES,
       // PVP smoke test (#pvptest, tests/pvp-test.js).
       startPvpForTest(n, mode) {
         resetGame();

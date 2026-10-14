@@ -18,6 +18,33 @@
     H.setMap("campus");
     const P = H.players;
 
+    // 00. menu flow: player count -> game type (PVE / PVP) -> setup screen, Back through every step
+    const panelActive = (id) => document.getElementById(id).classList.contains("active");
+    const click = (sel) => document.querySelector(sel).click();
+    check("00 player-count screen has no PVP rows", !document.querySelector("[data-pvp-players]") && document.querySelectorAll("#player-count-options .mode-option").length === 3);
+    click('.mode-option[data-mode="multiplayer"]');
+    check("00 multiplayer opens the player count", panelActive("title-player-count"));
+    click('.mode-option[data-players="3"]');
+    check("00 a count opens the game-type screen", panelActive("title-game-type") && !panelActive("title-player-count"));
+    click("#game-type-back-button");
+    check("00 game-type back -> player count", panelActive("title-player-count"));
+    click('.mode-option[data-players="2"]'); click('.mode-option[data-game-type="pvp"]');
+    check("00 2 players + PVP -> coop setup, pvp-flagged", panelActive("title-coop-setup") && document.getElementById("title-coop-setup").classList.contains("pvp-setup"));
+    click("#coop-setup-back-button");
+    check("00 coop setup back -> game type", panelActive("title-game-type"));
+    click('.mode-option[data-game-type="pve"]');
+    check("00 2 players + PVE -> coop setup, not pvp", panelActive("title-coop-setup") && !document.getElementById("title-coop-setup").classList.contains("pvp-setup"));
+    click("#coop-setup-back-button"); click("#game-type-back-button");
+    click('.mode-option[data-players="4"]'); click('.mode-option[data-game-type="pvp"]');
+    check("00 4 players + PVP -> quad setup, pvp-flagged", panelActive("title-quad-setup") && document.getElementById("title-quad-setup").classList.contains("pvp-setup"));
+    check("00 quad setup lists five categories", document.querySelectorAll("#title-quad-setup .customize-list")[0].querySelectorAll(".customize-row").length === 5);
+    click("#quad-setup-back-button");
+    check("00 quad setup back -> game type", panelActive("title-game-type"));
+    click('.mode-option[data-game-type="pve"]');
+    check("00 4 players + PVE -> quad setup, not pvp", panelActive("title-quad-setup") && !document.getElementById("title-quad-setup").classList.contains("pvp-setup"));
+    click("#quad-setup-back-button"); click("#game-type-back-button"); click("#player-count-back-button");
+    check("00 player count back -> mode screen", panelActive("title-mode"));
+
     // 0. setup-screen mode picker (difficulty row is replaced in PVP)
     H.setPvpSetup(true);
     check("0 default mode deathmatch", H.pvpMode === "deathmatch", H.pvpMode);

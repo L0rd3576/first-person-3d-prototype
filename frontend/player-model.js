@@ -106,6 +106,7 @@
     // spec: { bone, parent, child, a, b, u, v, rings: [[t, ru, rv, du, dv]], radial,
     //         capStart, capEnd, blend: [s, e], extra(t, ang) -> weights,
     //         radius(t, ang, x, y, z) -> extra meters, color(t, ang, point) -> THREE.Color }
+    //   flip: wind the faces the other way (for tubes whose axis x v points along u, e.g. the feet)
     //   capSplit: the caps get their own copy of the ring (flat-shaded, see addTube)
     //   angles: optional [ang] (or fn(t) -> [ang]) replacing the evenly spaced ring
     //     vertices (duplicate angles make hard color edges); open: don't join the
@@ -150,7 +151,8 @@
         const a0 = starts[r], a1 = starts[r + 1];
         for (let k = 0; k < (spec.open ? radial - 1 : radial); k++) {
           const k1 = (k + 1) % radial;
-          g.index.push(a0 + k, a1 + k, a0 + k1, a0 + k1, a1 + k, a1 + k1);
+          if (spec.flip) g.index.push(a0 + k, a0 + k1, a1 + k, a0 + k1, a1 + k1, a1 + k);
+          else g.index.push(a0 + k, a1 + k, a0 + k1, a0 + k1, a1 + k, a1 + k1);
         }
       }
       const cap = (ri, reverse) => {
@@ -176,7 +178,7 @@
           const k1 = (k + 1) % radial;
           // Wound to face out of the tube, matching its sides (the start cap
           // faces back along the tube, the end cap forward).
-          if (reverse) g.index.push(c, s + k, s + k1);
+          if (reverse !== !!spec.flip) g.index.push(c, s + k, s + k1);
           else g.index.push(c, s + k1, s + k);
         }
       };
@@ -248,7 +250,7 @@
     //   kind: how it's cut (see buildBodyGeometry), color, under (the
     //   shirt under a jacket/vest), pattern: a CLOTH PATTERNS id.
     // ------------------------------------------------------------------
-    const PATTERN = { none: 0, plaid: 1, camo: 2, hiVis: 3, zipper: 4, buttonUp: 5, kneePads: 6, crease: 7, msum: 8 };
+    const PATTERN = { none: 0, plaid: 1, camo: 2, hiVis: 3, zipper: 4, buttonUp: 5, kneePads: 6, crease: 7, msum: 8, singlet: 9, gloss: 10 };
     const MSUM_RED = 0xc8102e;
     const SHIRTS = {
       tee: { name: "T-Shirt", kind: "tee", color: 0xe9e6de },
@@ -259,8 +261,8 @@
       militaryJacket: { name: "Military Jacket", kind: "jacket", color: 0x5f6947, under: 0x3a3f2e, pattern: PATTERN.camo },
       rainJacket: { name: "Rain Jacket", kind: "rainjacket", color: 0xf0c020, pattern: PATTERN.zipper },
       // Added skins. `naked`: bare skin (the character's own tone), never a random pick.
-      suitTie: { name: "Suit Coat & Tie", kind: "suit", color: 0x17181c, under: 0xf4f3ee, tie: 0x7a1022 },
-      msumJersey: { name: "MSUM Jersey", kind: "jersey", color: MSUM_RED, pattern: PATTERN.msum },
+      suitTie: { name: "Suit Coat", kind: "suit", color: 0x17181c, under: 0xf4f3ee, tie: 0x7a1022 },
+      msumJersey: { name: "MSUM Jersey", kind: "jersey", color: MSUM_RED, pattern: PATTERN.singlet },
       naked: { name: "Naked", kind: "naked", color: 0xffffff, naked: true },
     };
     const PANTS = {
@@ -270,7 +272,7 @@
       work: { name: "Work Pants", kind: "work", color: 0x8b7048, pattern: PATTERN.kneePads },
       athletic: { name: "Athletic Pants", kind: "athletic", color: 0x2b2d31, accent: 0xf2f2f2 },
       shorts: { name: "Shorts", kind: "shorts", color: 0x9c8a66 },
-      msumShorts: { name: "MSUM Shorts", kind: "msumshorts", color: MSUM_RED, accent: 0xf6f6f2 },
+      msumShorts: { name: "MSUM Shorts", kind: "msumshorts", color: MSUM_RED },
       naked: { name: "Naked", kind: "naked", color: 0xffffff, naked: true },
     };
     const SHIRT_KEYS = Object.keys(SHIRTS);
@@ -321,6 +323,7 @@
       const outfit = OUTFITS[outfitIndex];
       const buildKey = pick(["lean", "athletic", "athletic", "strong"]);
       const jacket = outfit.shirt[0] === "jacket";
+      const shoe = vary(outfit.shoes[1]);
       return {
         outfitIndex,
         buildKey,
@@ -335,9 +338,164 @@
         pants: vary(outfit.pants[1]),
         accent: new THREE.Color(outfit.pants[2] !== undefined ? outfit.pants[2] : 0xf2f2f2),
         shoeKind: outfit.shoes[0],
-        shoe: vary(outfit.shoes[1]),
+        shoe,
+        // The shoe key it matches, and the outfit's own shoe to go back to (the setup screens' Shoes row starts there).
+        shoeStyle: outfitShoeKey(outfit.shoes[0], outfit.shoes[1]),
+        outfitShoeStyle: outfitShoeKey(outfit.shoes[0], outfit.shoes[1]),
+        outfitShoeKind: outfit.shoes[0],
+        outfitShoe: shoe.clone(),
         seed: Math.random() * 1000,
       };
+    }
+
+
+    // ------------------------------------------------------------------
+    // SHOES (explicit request, picked on the setup screens): one per foot, baked into the body geometry
+    // like the clothing. kind -> how it's built (see addShoe), color -> the upper (sandals: the straps).
+    // `hidden` ones are only reachable through an outfit's own shoe (so existing looks stay).
+    // ------------------------------------------------------------------
+    const SHOES = {
+      sneakersWhite: { name: "Sneakers (white)", kind: "sneakers", color: 0xf2f2ee },
+      sneakersBlack: { name: "Sneakers (black)", kind: "sneakers", color: 0x1f1f1f },
+      running: { name: "Running Shoes", kind: "running", color: 0xc8102e },
+      boots: { name: "Boots", kind: "boots", color: 0x5a3a22 },
+      combat: { name: "Combat Boots", kind: "combat", color: 0x1c1c1e },
+      dress: { name: "Dress Shoes", kind: "dress", color: 0x141416 },
+      sandals: { name: "Sandals", kind: "sandals", color: 0x3a2a20 },
+      barefoot: { name: "Barefoot", kind: "barefoot", color: 0xffffff, barefoot: true },
+      sneakersGray: { name: "Sneakers (gray)", kind: "sneakers", color: 0x6d7076, hidden: true },
+    };
+    const SHOE_KEYS = Object.keys(SHOES).filter((k) => !SHOES[k].hidden);
+    const SHOE_RANDOM_KEYS = SHOE_KEYS.filter((k) => !SHOES[k].barefoot);
+    // The shoe key an outfit's [kind, color] is closest to (random outfits only use sneakers and boots).
+    function outfitShoeKey(kind, hex) {
+      if (kind === "boots") return "boots";
+      const c = new THREE.Color(hex), lum = (c.r + c.g + c.b) / 3;
+      return lum > 0.5 ? "sneakersWhite" : lum < 0.2 ? "sneakersBlack" : "sneakersGray";
+    }
+
+    // One foot: `o` is the bits of buildBodyGeometry's leg code it needs. Foot-axis tubes run heel -> toe
+    // with u = X, v = Y, which winds the other way from the body's tubes, hence `flip`.
+    function addShoe(g, o) {
+      const { ft, side, J, lod, ap, shoeKind: k, tall, bareFoot, skinC, shade } = o;
+      const sandals = k === "sandals", dress = k === "dress", running = k === "running", combat = k === "combat";
+      const x = J[ft].x, z0 = J[ft].z;
+      const fr = lod.detail ? 12 : lod.foot;
+      const toeZ = running ? 0.215 : dress ? 0.225 : combat ? 0.21 : 0.205;
+      const heel = new THREE.Vector3(x, 0, z0 - 0.065);
+      const toe = new THREE.Vector3(x + 0.01 * side, 0, z0 + toeZ);
+      const ss = k === "boots" ? 1.08 : 1;
+      // upper (or the bare foot): rings [t, half width, half height, 0, height of the center]
+      const UPPER = {
+        sneakers: [[0, 0.038, 0.034, 0, 0.05], [0.3, 0.046, 0.046, 0, 0.058], [0.72, 0.049, 0.03, 0, 0.044], [1, 0.037, 0.022, 0, 0.036]],
+        boots: [[0, 0.038 * ss, 0.034 * ss, 0, 0.05], [0.3, 0.046 * ss, 0.046 * ss, 0, 0.058], [0.72, 0.049 * ss, 0.03 * ss, 0, 0.044], [1, 0.037, 0.022, 0, 0.036]],
+        combat: [[0, 0.045, 0.042, 0, 0.062], [0.3, 0.056, 0.056, 0, 0.074], [0.72, 0.058, 0.042, 0, 0.064], [1, 0.046, 0.032, 0, 0.054]],
+        running: [[0, 0.031, 0.026, 0, 0.044], [0.3, 0.038, 0.034, 0, 0.049], [0.72, 0.039, 0.021, 0, 0.036], [1, 0.027, 0.014, 0, 0.028]],
+        dress: [[0, 0.034, 0.03, 0, 0.046], [0.3, 0.041, 0.036, 0, 0.049], [0.62, 0.042, 0.026, 0, 0.04], [0.88, 0.034, 0.019, 0, 0.033], [1, 0.021, 0.012, 0, 0.026]],
+        sandals: [[0, 0.03, 0.03, 0, 0.043], [0.3, 0.04, 0.038, 0, 0.05], [0.7, 0.042, 0.022, 0, 0.037], [1, 0.034, 0.015, 0, 0.029]],
+        barefoot: [[0, 0.03, 0.03, 0, 0.03], [0.3, 0.04, 0.038, 0, 0.037], [0.7, 0.042, 0.022, 0, 0.024], [1, 0.034, 0.015, 0, 0.016]],
+      }[k] || [];
+      addTube(g, {
+        bone: ft, parent: o.sh, a: heel, b: toe, u: X, v: Y, radial: fr, flip: true,
+        rings: UPPER, blend: [0.15, 0], capStart: true, capEnd: true, capBulge: 0.016,
+        color: () => {
+          if (bareFoot) return skinC();
+          if (dress) g.nextPattern = PATTERN.gloss;
+          return shade(ap.shoe, 0.015);
+        },
+      });
+      // the sole: its own piece so the colors never smear into each other
+      const SOLE = {
+        sneakers: [[0, 0.041, 0.011, 0, 0.011], [0.3, 0.049, 0.011, 0, 0.011], [0.72, 0.052, 0.011, 0, 0.011], [1, 0.039, 0.009, 0, 0.01]],
+        boots: [[0, 0.041 * ss, 0.011, 0, 0.011], [0.3, 0.049 * ss, 0.011, 0, 0.011], [0.72, 0.052 * ss, 0.011, 0, 0.011], [1, 0.039, 0.009, 0, 0.01]],
+        combat: [[0, 0.049, 0.021, 0, 0.021], [0.3, 0.06, 0.018, 0, 0.018], [0.72, 0.063, 0.018, 0, 0.018], [1, 0.05, 0.016, 0, 0.016]],
+        running: [[0, 0.035, 0.018, 0, 0.018], [0.3, 0.042, 0.0135, 0, 0.0135], [0.72, 0.044, 0.0125, 0, 0.0125], [1, 0.031, 0.011, 0, 0.011]],
+        dress: [[0, 0.036, 0.012, 0, 0.012], [0.2, 0.043, 0.012, 0, 0.012], [0.34, 0.044, 0.0045, 0, 0.0045], [0.8, 0.045, 0.0045, 0, 0.0045], [1, 0.024, 0.004, 0, 0.004]],
+        sandals: [[0, 0.033, 0.0125, 0, 0.0125], [0.3, 0.043, 0.0125, 0, 0.0125], [0.72, 0.045, 0.0125, 0, 0.0125], [1, 0.035, 0.011, 0, 0.011]],
+      }[k];
+      if (SOLE) {
+        const soleColor = new THREE.Color(k === "sneakers" ? 0xf1f0ea : running ? 0xf6f6f2 : combat ? 0x111112 : dress ? 0x0b0b0c : sandals ? 0x4a3a2c : 0x2a2220);
+        addTube(g, {
+          bone: ft, parent: o.sh, a: heel.clone().add(new THREE.Vector3(0, 0, -0.008)), b: toe.clone().add(new THREE.Vector3(0, 0, 0.014)), u: X, v: Y, radial: fr, flip: true,
+          rings: SOLE, blend: [0.15, 0], capStart: true, capEnd: true, capBulge: 0.01,
+          color: () => soleColor,
+        });
+      }
+      // the ankle collar: closes the shoe around the leg and bends with the shin (boots get a tall shaft)
+      const top = k === "boots" ? 0.2 : combat ? 0.27 : running ? 0.095 : dress || bareFoot ? 0.1 : 0.125;
+      const COLLAR = {
+        boots: [[0, 0.046 * ss, 0.056 * ss], [0.7, 0.043 * ss, 0.05 * ss], [1, 0.041 * ss, 0.047 * ss]],
+        combat: [[0, 0.056, 0.066], [0.5, 0.054, 0.061], [1, 0.056, 0.06]],
+        running: [[0, 0.04, 0.05], [0.7, 0.037, 0.044], [1, 0.035, 0.041]],
+        dress: [[0, 0.039, 0.049], [0.7, 0.036, 0.043], [1, 0.035, 0.04]],
+        sandals: [[0, 0.041, 0.05, 0, 0.02], [0.6, 0.0375, 0.0435, 0, 0.031], [1, 0.0365, 0.0395, 0, 0.035]],
+        barefoot: [[0, 0.041, 0.05, 0, 0.02], [0.6, 0.0375, 0.0435, 0, 0.031], [1, 0.0365, 0.0395, 0, 0.035]],
+      }[k] || [[0, 0.046, 0.056], [0.7, 0.043, 0.05], [1, 0.041, 0.047]];
+      addTube(g, {
+        bone: ft, child: o.sh, a: new THREE.Vector3(x, 0.04, z0 - 0.02), b: new THREE.Vector3(x, top, z0 - 0.005),
+        u: X, v: Z, radial: fr, rings: COLLAR, blend: [0, 0.6],
+        color: (t) => {
+          if (bareFoot) return skinC();
+          if (dress) g.nextPattern = PATTERN.gloss;
+          return t > 0.85 && !tall ? shade(ap.shoe).multiplyScalar(0.8) : shade(ap.shoe, 0.015);
+        },
+      });
+      if (!lod.detail) return;
+      // ---- details: laces, straps (skipped on the far LODs)
+      const lerpRing = (t) => ringLerp(UPPER, t);
+      const topAt = (t) => { // the top of the vamp at t along the foot
+        const r = lerpRing(t);
+        return new THREE.Vector3(x + 0.01 * side * t, r[4] + r[2], heel.z + (toe.z - heel.z) * t);
+      };
+      const bar = (c, w, r, color) => addTube(g, { // a lace bar across the foot (along x)
+        bone: ft, a: new THREE.Vector3(c.x - w, c.y, c.z), b: new THREE.Vector3(c.x + w, c.y, c.z), u: Z, v: Y, radial: 5,
+        rings: [[0, r, r], [1, r, r]], capStart: true, capEnd: true, color: () => shade(color, 0.02),
+      });
+      const strip = (t0, t1, w, color) => { // a flat strip along the top of the vamp
+        const A = topAt(t0), Bp = topAt(t1);
+        addTube(g, {
+          bone: ft, a: A, b: Bp, u: X, v: Y, radial: 6, flip: true,
+          rings: [[0, w, 0.0035], [1, w, 0.0035]], capStart: true, capEnd: true, color: () => shade(color, 0.02),
+        });
+      };
+      if (bareFoot) { // toes: five little capsules at the front of the foot (big toe on the inner side)
+        const ty = UPPER[UPPER.length - 1][4] - 0.002;
+        [[0.026, 0.0105, 0.016], [0.0135, 0.0078, 0.012], [0.001, 0.0072, 0.008], [-0.011, 0.0068, 0.004], [-0.021, 0.0062, 0]].forEach(([inner, r, extra]) => {
+          const cx = toe.x - side * inner, cy = ty - (inner < -0.005 ? 0.003 : 0);
+          addTube(g, {
+            bone: ft, a: new THREE.Vector3(cx, cy, toe.z - 0.03), b: new THREE.Vector3(cx, cy, toe.z + 0.01 + extra), u: X, v: Y, radial: 6, flip: true,
+            rings: [[0, r, r * 0.85], [1, r * 0.95, r * 0.8]], capEnd: true, capBulge: r * 0.6, color: () => skinC().multiplyScalar(0.96),
+          });
+        });
+      }
+      if (running) {
+        const white = new THREE.Color(0xf6f6f2);
+        strip(0.3, 0.66, 0.012, white);
+        for (let i = 0; i < 4; i++) bar(topAt(0.32 + i * 0.09), 0.021, 0.0032, white);
+      } else if (dress) {
+        const lace = new THREE.Color(0x2a2a2e);
+        for (let i = 0; i < 3; i++) bar(topAt(0.34 + i * 0.07), 0.017, 0.0028, lace);
+      } else if (combat) {
+        const lace = new THREE.Color(0x3d3d42);
+        // up the front of the instep and the shaft: crossbars
+        const zf = (y) => z0 - 0.02 + (y - 0.04) / (0.27 - 0.04) * 0.015 + 0.058;
+        for (const y of [0.1, 0.13, 0.16, 0.19, 0.22]) bar(new THREE.Vector3(x, y, zf(y) + 0.001), 0.022, 0.0034, lace);
+      } else if (sandals) {
+        const strap = new THREE.Color(ap.shoe);
+        // two straps over the foot and one around the ankle
+        for (const [t, w] of [[0.42, 0.007], [0.7, 0.0055]]) {
+          const r = lerpRing(t);
+          const zc = heel.z + (toe.z - heel.z) * t;
+          addTube(g, {
+            bone: ft, a: new THREE.Vector3(x + 0.01 * side * t, 0, zc - w), b: new THREE.Vector3(x + 0.01 * side * t, 0, zc + w), u: X, v: Y, radial: Math.max(10, lod.foot + 2), flip: true,
+            rings: [[0, r[1] + 0.004, r[2] + 0.004, 0, r[4]], [1, r[1] + 0.004, r[2] + 0.004, 0, r[4]]], color: () => shade(strap, 0.02),
+          });
+        }
+        addTube(g, {
+          bone: ft, child: o.sh, a: new THREE.Vector3(x, 0.036, z0 - 0.02), b: new THREE.Vector3(x, 0.05, z0 - 0.018), u: X, v: Z, radial: lod.foot + 2,
+          rings: [[0, 0.0425, 0.0525], [1, 0.042, 0.0515]], blend: [0, 0.5], color: () => shade(strap, 0.02),
+        });
+      }
     }
 
     // Cheap value noise (fabric/skin mottling).
@@ -365,21 +523,23 @@
       const bareTop = kind === "naked", suit = kind === "suit", jersey = kind === "jersey";
       const suitDetail = suit && lod.detail; // open jacket, lapels, white shirt, tie
       const bareLegs = ap.pantsKind === "naked";
-      const shortSleeves = kind === "tee" || kind === "vest" || jersey;
-      const sleeveLen = bareTop ? 0 : jersey ? 0.5 : shortSleeves ? 0.42 : 1.1; // fraction of the upper arm (1.1 = full length, wrist cuff on forearm)
-      const torsoLoose = { naked: 0, tee: 0.006, jersey: 0.011, longsleeve: 0.006, sweatshirt: 0.014, hoodie: 0.018, jacket: 0.024, suit: 0.024,
+      const shortSleeves = kind === "tee" || kind === "vest";
+      const sleeveLen = bareTop || jersey ? 0 : shortSleeves ? 0.42 : 1.1; // fraction of the upper arm (1.1 = full length, wrist cuff on forearm)
+      const torsoLoose = { naked: 0, tee: 0.006, jersey: 0.007, longsleeve: 0.006, sweatshirt: 0.014, hoodie: 0.018, jacket: 0.024, suit: 0.024,
         flannel: 0.01, workshirt: 0.01, vest: 0.02, rainjacket: 0.026 }[kind];
       const jacketTop = kind === "jacket" || kind === "vest" || suit; // `outer` is the garment, `shirt` what's under it
       const outerColor = jacketTop ? ap.outer : ap.shirt;
       const pantsLoose = { naked: 0, jeans: 0.006, cargo: 0.013, athletic: 0.01, shorts: 0.012, msumshorts: 0.009, suit: 0.004, work: 0.014 }[ap.pantsKind];
       const shortsCut = ap.pantsKind === "shorts" ? 0.72 : ap.pantsKind === "msumshorts" ? 0.4 : 0; // where on the thigh the hem is (0 = full length)
-      const stripedLegs = ap.pantsKind === "athletic" || ap.pantsKind === "msumshorts";
+      const stripedLegs = ap.pantsKind === "athletic";
       const beltColor = new THREE.Color(0x2a2420);
       const skinC = () => shade(ap.skin, 0.012);
       const WHITE = 0xf4f3ee;
       // Cloth patterns (see CLOTH PATTERNS): tagged per vertex as the
       // shirt / pants colors are handed out.
-      const shirtCloth = (color, amount) => { if (bareTop) return skinC(); g.nextPattern = ap.shirtPattern || 0; return shade(color, amount); };
+      // (the singlet's pattern id carries the body height so its cut-outs match the garment, see the shader)
+      const shirtPatternId = ap.shirtPattern === PATTERN.singlet ? PATTERN.singlet + (H - 1) * 2 : ap.shirtPattern || 0;
+      const shirtCloth = (color, amount) => { if (bareTop) return skinC(); g.nextPattern = shirtPatternId; return shade(color, amount); };
       const sleeveCloth = (color, amount) => { if (bareTop) return skinC(); g.nextPattern = kind === "vest" ? 0 : ap.shirtPattern || 0; return shade(color, amount); };
       const pantsCloth = (color, amount) => { if (bareLegs) return skinC(); g.nextPattern = ap.pantsPattern || 0; return shade(color, amount); };
       const trimColor = (hex, amount = 0.015) => shade(cTmp.set(hex), amount);
@@ -446,7 +606,6 @@
         radius: (t) => pantsLoose - (shirtOverHips && t > 0.3 ? 0.014 * Math.min(1, (t - 0.3) / 0.3) : 0),
         color: (t) => {
           if (bareLegs) return skinC();
-          if (t > 0.86 && ap.pantsKind === "msumshorts") return trimColor(WHITE);
           if (t > 0.86 && ap.pantsKind === "shorts") return pantsCloth(ap.pants).multiplyScalar(0.86);
           return t > 0.86 && ap.pantsKind !== "athletic" ? beltColor : pantsCloth(ap.pants);
         },
@@ -461,16 +620,22 @@
         addTube(g, {
           bone: B.spine, parent: B.hips, child: B.chest, a: at(abdBottom), b: at(1.28), u: X, v: Z, radial: lod.torso,
           // The athletic taper: narrowest at the natural waist, widening to the chest.
-          rings: withEdges(toRings(abdList, abdBottom, 1.28), jersey ? [0.07] : hemT ? [hemT] : []),
+          rings: withEdges(toRings(abdList, abdBottom, 1.28), hemT ? [hemT] : []),
           blend: [0.25, 0.25],
           radius: (t) => torsoLoose + (!bareTop && t < 0.09 ? 0.004 : 0),
           color: (t, ang, p) => {
             if (hemT && t < hemT) return shirtCloth(outerColor, 0.02).multiplyScalar(0.85); // ribbed hem
-            if (jersey && t < 0.07) return trimColor(WHITE); // hem trim
             if (kind === "hoodie" && p.z > 0.06 && t > 0.3 && t < 0.72 && Math.abs(p.x) < 0.1) return shirtCloth(outerColor).multiplyScalar(0.88); // kangaroo pocket
             return shirtCloth(outerColor);
           },
         });
+        // Singlet: bare skin chest under it (armholes and the neckline are cut out of the singlet in the shader)
+        if (jersey) {
+          addTube(g, {
+            bone: B.chest, parent: B.spine, a: at(1.23), b: at(1.515), u: X, v: Z, radial: lod.torso,
+            rings: toRings(chestBody, 1.23, 1.515), capEnd: true, blend: [0.2, 0], extra: clavExtra, color: () => skinC(),
+          });
+        }
         // Chest: broad shoulders sloping into the neck (trapezius)
         addTube(g, {
           bone: B.chest, parent: B.spine, a: at(1.23), b: at(1.515), u: X, v: Z, radial: lod.torso,
@@ -480,6 +645,7 @@
           radius: (t) => (t < 0.95 ? torsoLoose : torsoLoose * 0.5),
           color: (t) => {
             if (shortSleeves && t > 0.97) return shade(ap.skin, 0.012); // crew neck opening
+            if (jersey) return shirtCloth(outerColor);
             return shirtCloth(outerColor);
           },
         });
@@ -513,14 +679,6 @@
           color: (t, ang) => shirtCloth(outerColor).multiplyScalar(Math.sin(ang) > 0.85 ? 0.6 : 1),
         });
       }
-      if (lod.detail && jersey) { // ribbed white collar round the neck
-        addTube(g, {
-          bone: B.chest, child: B.neck, a: at(1.475), b: at(1.525), u: X, v: Z, radial: 14,
-          rings: [[0, 0.088, 0.083, 0, -0.004], [0.3, 0.086, 0.081, 0, -0.005], [1, 0.07, 0.066, 0, -0.006]], blend: [0, 0.4],
-          color: (t) => trimColor(WHITE).multiplyScalar(t > 0.9 ? 0.9 : 1),
-        });
-      }
-
       for (const side of [1, -1]) {
         const L = side > 0;
         const cl = L ? B.clavL : B.clavR, ua = L ? B.upperArmL : B.upperArmR, fa = L ? B.forearmL : B.forearmR, hd = L ? B.handL : B.handR;
@@ -608,56 +766,34 @@
           color: (t, ang) => {
             if (bare || (shorts && t >= shortsCut)) return skinC();
             if (stripedLegs && inStripe(ang, outerAng)) return cTmp.copy(ap.accent);
-            if (shorts && t >= shortsCut - hemBand) return (ap.pantsKind === "msumshorts" ? trimColor(WHITE) : pantsCloth(ap.pants).multiplyScalar(0.88)); // hem
+            if (shorts && t >= shortsCut - hemBand) return pantsCloth(ap.pants).multiplyScalar(0.88); // hem
             if (ap.pantsKind === "cargo" && t > 0.42 && t < 0.66 && Math.cos(ang) * side > 0.55) return pantsCloth(ap.pants).multiplyScalar(0.9);
             return pantsCloth(ap.pants);
           },
         });
         // Shin: calf; pant hem over the shoe (or boot shaft).
-        const boots = ap.shoeKind === "boots";
+        const shoeKind = ap.shoeKind;
+        const tall = shoeKind === "boots" || shoeKind === "combat"; // boots: the shaft covers the lower shin
+        const bareFoot = shoeKind === "barefoot" || shoeKind === "sandals"; // skin showing, no socks
+        const shaftT = shoeKind === "combat" ? 0.62 : 0.75;
+        const shaftR = shoeKind === "combat" ? 0.021 : 0.016;
         const bareShin = shorts || bare; // skin down to the shoe (shorts: white sock top)
-        const sock = shorts;
+        const sock = shorts && !bareFoot;
         addTube(g, {
           bone: sh, parent: th, child: ft, a: J[sh].clone().add(new THREE.Vector3(0, 0.03, 0)), b: J[ft].clone().add(new THREE.Vector3(0, -0.01, 0.02)), u: X, v: Z, radial: lod.limb,
           angles: ap.pantsKind === "athletic" ? legAngles : undefined,
           rings: withEdges([[0, 0.051 * gl, 0.055 * gl], [0.28, 0.054 * gl, 0.062 * gl, 0, -0.012], [0.8, 0.036 * gl, 0.038 * gl], [0.94, 0.034 * gl, 0.036 * gl], [1, 0.034 * gl, 0.036 * gl]],
-            boots ? [0.75] : sock ? [0.82] : [], 0.01),
+            tall ? [shaftT] : sock ? [0.82] : [], 0.01),
           blend: [0.2, 0.15],
-          radius: (t) => (bareShin ? (boots && t >= 0.75 ? 0.012 : sock && t >= 0.82 ? 0.004 : 0) : boots && t >= 0.75 ? 0.016 : pantsLoose + (t > 0.85 ? 0.006 : 0)),
+          radius: (t) => (bareShin ? (tall && t >= shaftT ? shaftR - 0.004 : sock && t >= 0.82 ? 0.004 : 0) : tall && t >= shaftT ? shaftR : pantsLoose + (t > 0.85 ? 0.006 : 0)),
           color: (t, ang) => {
-            if (boots && t >= 0.75) return shade(ap.shoe);
+            if (tall && t >= shaftT) return shade(ap.shoe);
             if (bareShin) return sock && t >= 0.82 ? trimColor(WHITE) : skinC(); // socks
             if (ap.pantsKind === "athletic" && inStripe(ang, outerAng)) return cTmp.copy(ap.accent);
             return pantsCloth(ap.pants);
           },
         });
-        // Shoe: a one-color upper (rounded toe), a separate sole underneath
-        // (its own piece, so the colors never smear into each other), and
-        // an ankle collar that closes the shoe around the leg and bends with
-        // the shin. Boots get a taller collar.
-        const heel = new THREE.Vector3(J[ft].x, 0, J[ft].z - 0.065);
-        const toe = new THREE.Vector3(J[ft].x + 0.01 * side, 0, J[ft].z + 0.205);
-        const soleColor = new THREE.Color(ap.shoeKind === "sneakers" ? 0xf1f0ea : 0x2a2220);
-        const ss = boots ? 1.08 : 1;
-        addTube(g, {
-          bone: ft, parent: sh, a: heel, b: toe, u: X, v: Y, radial: lod.foot,
-          rings: [[0, 0.038 * ss, 0.034 * ss, 0, 0.05], [0.3, 0.046 * ss, 0.046 * ss, 0, 0.058], [0.72, 0.049 * ss, 0.03 * ss, 0, 0.044], [1, 0.037, 0.022, 0, 0.036]],
-          blend: [0.15, 0], capStart: true, capEnd: true, capBulge: 0.016,
-          color: () => shade(ap.shoe, 0.015),
-        });
-        addTube(g, {
-          bone: ft, parent: sh, a: heel.clone().add(new THREE.Vector3(0, 0, -0.008)), b: toe.clone().add(new THREE.Vector3(0, 0, 0.014)), u: X, v: Y, radial: lod.foot,
-          rings: [[0, 0.041 * ss, 0.011, 0, 0.011], [0.3, 0.049 * ss, 0.011, 0, 0.011], [0.72, 0.052 * ss, 0.011, 0, 0.011], [1, 0.039, 0.009, 0, 0.01]],
-          blend: [0.15, 0], capStart: true, capEnd: true, capBulge: 0.01,
-          color: () => soleColor,
-        });
-        addTube(g, {
-          bone: ft, child: sh, a: new THREE.Vector3(J[ft].x, 0.04, J[ft].z - 0.02), b: new THREE.Vector3(J[ft].x, boots ? 0.2 : 0.125, J[ft].z - 0.005),
-          u: X, v: Z, radial: lod.foot + 2,
-          rings: [[0, 0.046 * ss, 0.056 * ss], [0.7, 0.043 * ss, 0.05 * ss], [1, 0.041 * ss, 0.047 * ss]],
-          blend: [0, 0.6],
-          color: (t) => (t > 0.85 && !boots ? shade(ap.shoe).multiplyScalar(0.8) : shade(ap.shoe, 0.015)),
-        });
+        addShoe(g, { ft, sh, side, J, lod, ap, shoeKind, tall, bareFoot, skinC, shade, trimColor });
       }
 
       // ---- Suit coat & tie (detail LODs): an open black jacket with lapels
@@ -724,17 +860,19 @@
           rings: [[0, 0.083, 0.078, 0, -0.004], [0.5, 0.074, 0.07, 0, -0.005], [1, 0.066, 0.064, 0, -0.006]], blend: [0, 0.4],
           color: () => trimColor(WHITE, 0.012),
         });
-        // the tie: a knot at the collar and a flat blade hanging down the shirt front
-        const tieZ = (y) => frontZ(y) + 0.004;
-        const blade = [[1.46, 0.016], [1.44, 0.012], [1.36, 0.019], [1.24, 0.024], [1.14, 0.027], [1.09, 0.024], [1.075, 0.012]];
+        // the tie: a knot at the collar and a flat blade hanging down the shirt front. It is the top
+        // layer: the tubes run upward (so their faces point outward) and sit proud of the shirt
+        // (the shirt's front facets are flat, so the blade needs a few mm of gap, not a z-fight).
+        const tieZ = (y) => frontZ(y) + 0.007;
+        const blade = [[1.075, 0.012], [1.09, 0.024], [1.14, 0.027], [1.24, 0.024], [1.36, 0.019], [1.44, 0.012], [1.46, 0.016]];
         addTube(g, {
-          bone: B.chest, child: B.spine, a: at(1.46), b: at(1.075), u: X, v: Z, radial: 8, blend: [0, 0.6],
-          rings: blade.map(([y, w]) => [(1.46 - y) / (1.46 - 1.075), w, 0.0045, 0, tieZ(y)]), capEnd: true,
+          bone: B.chest, parent: B.spine, a: at(1.075), b: at(1.46), u: X, v: Z, radial: 8, blend: [0.6, 0],
+          rings: blade.map(([y, w]) => [(y - 1.075) / (1.46 - 1.075), w, 0.005, 0, tieZ(y)]), capStart: true,
           color: (t, ang) => shade(ap.tie, 0.02).multiplyScalar(0.92 + 0.12 * Math.max(0, Math.sin(ang * 2))),
         });
         addTube(g, {
-          bone: B.chest, a: at(1.5), b: at(1.45), u: X, v: Z, radial: 10,
-          rings: [[0, 0.016, 0.011, 0, tieZ(1.5) + 0.006], [0.45, 0.023, 0.016, 0, tieZ(1.5) + 0.01], [1, 0.015, 0.012, 0, tieZ(1.5) + 0.006]],
+          bone: B.chest, a: at(1.45), b: at(1.5), u: X, v: Z, radial: 10,
+          rings: [[0, 0.015, 0.012, 0, tieZ(1.45) + 0.004], [0.55, 0.023, 0.016, 0, tieZ(1.5) + 0.008], [1, 0.016, 0.011, 0, tieZ(1.5) + 0.004]],
           capStart: true, capEnd: true, color: () => shade(ap.tie, 0.02).multiplyScalar(1.12),
         });
       }
@@ -1446,6 +1584,7 @@
           "}",
           MSUM_GLSL,
         ].join("\n"))
+        .replace("#include <roughnessmap_fragment>", ["#include <roughnessmap_fragment>", "if (abs(vClothPattern - 10.0) < 0.2) roughnessFactor = 0.22;"].join("\n"))
         .replace("#include <color_fragment>", [
           "#include <color_fragment>",
           "{",
@@ -1484,7 +1623,16 @@
           "    diffuseColor.rgb *= 1.0 - 0.3 * step(abs(q.y - 0.5), 0.075) * step(0.02, q.z);",
           "  } else if (cp > 6.5 && cp < 7.5) {", // suit pants: a pressed crease down each leg
           "    diffuseColor.rgb *= 1.0 + 0.14 * step(abs(abs(q.x) - 0.095), 0.004) * step(0.02, q.z);",
-          "  } else if (cp > 7.5) {", // MSUM jersey: MSUM in white strokes across the chest (front only)
+          "  } else if (cp > 7.5 && cp < 9.5) {", // MSUM jersey / singlet: MSUM in white strokes across the chest (front only)
+          "    if (cp > 8.5) {", // singlet: the id carries the body height; cut the armholes and the scooped neckline
+          "      q.y /= 1.0 + (vClothPattern - 9.0) * 0.5;",
+          "      float ax = abs(q.x);",
+          "      float u = (1.46 - q.y) / 0.16;",
+          "      float xb = u < 1.0 ? 0.115 + 0.085 * pow(max(u, 0.0), 1.4) : 0.2 + (u - 1.0) * 0.5;",
+          "      float nx = clamp(ax / 0.078, 0.0, 1.0);",
+          "      float yn = q.z > 0.0 ? 1.385 + 0.09 * nx * nx : 1.445 + 0.03 * nx * nx;",
+          "      if (ax > xb || (ax < 0.078 && q.y > yn)) discard;",
+          "    }",
           "    vec2 tp = vec2(q.x - MSUM_X0, q.y - MSUM_Y0);",
           "    if (q.z > 0.0 && tp.x > -0.02 && tp.x < MSUM_W + 0.02 && tp.y > -0.02 && tp.y < MSUM_H + 0.02) {",
           "      float d = msumDist(vec2(tp.x / MSUM_W, tp.y / MSUM_H));",
@@ -1637,14 +1785,13 @@
     // weapon stay as they are. Each outfit's geometry is kept (a few per
     // character) so flipping back and forth on the setup screen is instant.
     const CLOTHING_CACHE_SIZE = 6;
-    function setClothing(character, shirtKey, pantsKey) {
+    // (the shoes are part of the key too: setShoes goes through the same cache)
+    const bodyKeyOf = (a) => (a.shirtStyle || "?") + "|" + (a.pantsStyle || "?") + "|" + (a.shirtKind + a.pantsKind) + "|" + (a.shoeStyle || "?") + a.shoe.getHexString();
+    function swapBody(character, ap) {
       const current = character.appearance;
-      const ap = dressAppearance(current, shirtKey, pantsKey);
-      if (current.shirtStyle === ap.shirtStyle && current.pantsStyle === ap.pantsStyle) return;
       const cache = character.clothing || (character.clothing = new Map());
-      const keyOf = (a) => (a.shirtStyle || "?") + "|" + (a.pantsStyle || "?") + "|" + (a.shirtKind + a.pantsKind);
-      if (!cache.has(keyOf(current))) cache.set(keyOf(current), character.meshes.map((m) => m.geometry));
-      const key = keyOf(ap);
+      if (!cache.has(bodyKeyOf(current))) cache.set(bodyKeyOf(current), character.meshes.map((m) => m.geometry));
+      const key = bodyKeyOf(ap);
       let geometries = cache.get(key);
       if (geometries) cache.delete(key); // (re-inserted below: most recent last)
       else geometries = LOD_SPECS.map((lod) => buildBodyGeometry(ap, lod));
@@ -1656,6 +1803,32 @@
         cache.delete(oldKey);
         old.forEach((geometry) => geometry.dispose());
       }
+    }
+    function setClothing(character, shirtKey, pantsKey) {
+      const current = character.appearance;
+      const ap = dressAppearance(current, shirtKey, pantsKey);
+      if (current.shirtStyle === ap.shirtStyle && current.pantsStyle === ap.pantsStyle) return;
+      swapBody(character, ap);
+    }
+
+    // A copy of `ap` in that shoe (one of SHOE_KEYS). The outfit's own shoe keeps its exact color.
+    function shoeAppearance(ap, key) {
+      const info = SHOES[key] || SHOES.sneakersWhite;
+      if (!SHOES[key]) key = "sneakersWhite";
+      const own = key === ap.outfitShoeStyle && ap.outfitShoe;
+      return {
+        ...ap,
+        shoeStyle: key,
+        shoeKind: own ? ap.outfitShoeKind : info.kind,
+        shoe: own ? ap.outfitShoe.clone() : info.barefoot ? ap.skin.clone() : new THREE.Color(info.color),
+      };
+    }
+    // Changes the shoes (see SHOES), swapping only the body geometry like setClothing.
+    function setShoes(character, key) {
+      const current = character.appearance;
+      const ap = shoeAppearance(current, key);
+      if (current.shoeStyle === ap.shoeStyle) return;
+      swapBody(character, ap);
     }
 
     function setFace(character, key) {
@@ -2220,7 +2393,11 @@
       setFace,
       setHelmet,
       setClothing,
+      setShoes,
       dressAppearance,
+      shoeKeys: SHOE_KEYS,
+      shoeRandomKeys: SHOE_RANDOM_KEYS,
+      shoeName: (key) => (SHOES[key] || SHOES.sneakersWhite).name,
       helmetKeys: HELMET_KEYS,
       helmetName: (key) => (HELMETS[key] || HELMETS[DEFAULT_HELMET]).name,
       shirtKeys: SHIRT_KEYS,
