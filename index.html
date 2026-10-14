@@ -1871,6 +1871,7 @@
   #pvp-results-board .pvp-board-face { width: 34px; height: 34px; }
   #pvp-results-board .pvp-board-row { gap: 12px; padding: 4px 8px 4px 6px; }
   #pvp-results-board .pvp-board-row.winner { background: rgba(255,210,77,0.28); }
+  .pvp-board-weapon { opacity: 0.7; font-size: 10px; margin-left: auto; padding-left: 8px; }
   .pvp-stat { margin-left: auto; font-size: 14px; opacity: 0.75; }
   .pvp-badge { position: fixed; z-index: 12; display: none; transform: translateX(-100%); font: bold 16px Arial, Helvetica, sans-serif; color: #fff; text-shadow: 0 1px 3px #000; text-align: right; pointer-events: none; }
   .pvp-badge.visible { display: block; }
@@ -1882,14 +1883,24 @@
   .pvp-panel.visible { display: flex; }
   .pvp-panel h1 { margin: 0; font-size: clamp(18px, 4vh, 40px); }
   .pvp-panel-sub { font-size: clamp(12px, 2vh, 18px); min-height: 1.2em; opacity: 0.85; }
-  .pvp-weapon-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(90px, 1fr)); gap: 4px; }
-  .pvp-weapon-list li { padding: 4px 10px; border: 2px solid rgba(255,255,255,0.4); border-radius: 4px; background: rgba(255,255,255,0.08); text-align: center; font-size: clamp(11px, 1.8vh, 16px); cursor: pointer; }
-  .pvp-weapon-list li.selected { border-color: #ffd24d; background: rgba(255,210,77,0.25); }
+  .pvp-weapon-list { list-style: none; margin: 0; padding: 0 4px 0 0; display: flex; flex-direction: column; gap: 3px; width: min(240px, 80%); flex: 0 1 auto; min-height: 0; max-height: 46%; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.4) transparent; }
+  .pvp-weapon-list.hidden { display: none; }
+  .pvp-weapon-list li { flex: none; padding: 4px 12px; border: 2px solid rgba(255,255,255,0.3); border-radius: 4px; background: rgba(255,255,255,0.07); text-align: left; font-size: clamp(11px, 1.8vh, 16px); cursor: pointer; }
+  .pvp-weapon-list li:hover { background: rgba(255,255,255,0.14); }
+  .pvp-weapon-list li.selected { border-color: #ffd24d; background: rgba(255,210,77,0.25); font-weight: bold; }
   .pvp-countdown { font: bold clamp(20px, 5vh, 44px) Arial, Helvetica, sans-serif; min-height: 1.2em; }
   .pvp-panel .pvp-respawn { display: none; }
   .pvp-panel.ready .pvp-respawn { display: block; }
   .pvp-panel.ready .pvp-countdown { display: none; }
   .pvp-hint { font-size: 12px; opacity: 0.75; }
+  #pvp-killfeed { position: fixed; top: 10px; right: 10px; z-index: 12; display: none; flex-direction: column; align-items: flex-end; gap: 3px; pointer-events: none; font: 12px Arial, Helvetica, sans-serif; }
+  body.pvp-mode #pvp-killfeed { display: flex; }
+  .pvp-feed-line { display: flex; align-items: center; gap: 5px; padding: 2px 7px 2px 5px; background: rgba(0,0,0,0.42); color: #fff; border-radius: 4px; opacity: 1; transition: opacity 0.6s; white-space: nowrap; }
+  .pvp-feed-line.fade { opacity: 0; }
+  .pvp-feed-line img { width: 16px; height: 16px; border-radius: 50%; object-fit: cover; background: #222; flex: none; }
+  .pvp-feed-weapon { opacity: 0.85; font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; }
+  .pvp-feed-label { opacity: 0.85; font-size: 11px; }
+  body.pvp-mode .coop-ammo-reserve.pvp-inf, body.pvp-mode #ammo-reserve.pvp-inf { font-size: 1.55em; line-height: 0.8; vertical-align: -0.1em; opacity: 0.85; }
   #pvp-results { position: fixed; inset: 0; z-index: 30; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: rgba(0,0,0,0.8); color: #fff; font-family: Arial, Helvetica, sans-serif; }
   #pvp-results.visible { display: flex; }
   /* Shared by the death screen's restart button and the pause/controls
@@ -2726,6 +2737,29 @@
   #quad-difficulty-options {
     margin-bottom: 0;
   }
+  /* PVP setup: the mode picker replaces the difficulty row (title-coop-setup / title-quad-setup get .pvp-setup). */
+  #coop-pvp-mode-options, #quad-pvp-mode-options, #coop-setup-mode-label, #quad-setup-mode-label { display: none; }
+  .pvp-setup #coop-pvp-mode-options, .pvp-setup #quad-pvp-mode-options { display: flex; align-items: stretch; gap: 12px; margin-bottom: 24px; }
+  .pvp-setup #quad-pvp-mode-options { margin-bottom: 0; }
+  .pvp-setup #coop-setup-mode-label, .pvp-setup #quad-setup-mode-label { display: block; font-size: 16px; font-weight: bold; letter-spacing: 1px; margin-bottom: 8px; }
+  .pvp-setup #coop-setup-difficulty-label, .pvp-setup #quad-setup-difficulty-label,
+  .pvp-setup #coop-difficulty-options, .pvp-setup #quad-difficulty-options { display: none; }
+  .pvp-mode-option { display: flex; flex-direction: column; align-items: flex-start; min-width: 170px; padding: 14px 20px; font-family: Arial, Helvetica, sans-serif; color: #fff; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.5); border-radius: 6px; cursor: pointer; pointer-events: auto; }
+  .pvp-mode-option:hover { background: rgba(255,255,255,0.2); }
+  .pvp-mode-option.active { border-color: #ffdc64; box-shadow: 0 0 8px rgba(255, 220, 100, 0.6); }
+  .pvp-mode-option .pvp-mode-desc { margin-top: 4px; font-size: 12px; opacity: 0.75; }
+  .pvp-settings-open { display: none; margin-top: 14px; }
+  .pvp-setup .pvp-settings-open { display: inline-block; pointer-events: auto; }
+  .pvp-settings-hint { margin-left: 6px; opacity: 0.6; }
+  /* PVP setup "Settings" panel (health / speed sliders); above the title screen (z 40). */
+  #pvp-settings-panel { position: fixed; inset: 0; z-index: 45; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.7); font-family: Arial, Helvetica, sans-serif; color: #fff; user-select: none; }
+  #pvp-settings-panel.visible { display: flex; }
+  .pvp-settings-box { display: flex; flex-direction: column; gap: 18px; padding: 26px 34px; min-width: 420px; background: rgba(20,20,24,0.92); border: 2px solid rgba(255,255,255,0.35); border-radius: 8px; }
+  .pvp-settings-box h2 { margin: 0 0 4px; text-align: center; letter-spacing: 1px; }
+  .pvp-settings-row { display: grid; grid-template-columns: 130px 1fr 64px; align-items: center; gap: 14px; padding: 4px 6px; border-radius: 6px; }
+  .pvp-settings-row input[type="range"] { width: 100%; }
+  .pvp-settings-row span { text-align: right; font-weight: bold; }
+  .pvp-settings-buttons { display: flex; justify-content: center; gap: 14px; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -2859,6 +2893,12 @@
         </div>
       </div>
       <div id="coop-setup-countdown"></div>
+      <div id="coop-setup-mode-label">Mode</div>
+      <div id="coop-pvp-mode-options">
+        <div class="pvp-mode-option" data-pvp-mode="deathmatch"><div class="difficulty-name">Deathmatch</div><div class="pvp-mode-desc">Most kills wins</div></div>
+        <div class="pvp-mode-option" data-pvp-mode="gungame"><div class="difficulty-name">Gun Game</div><div class="pvp-mode-desc">Kill your way up the weapon ladder</div></div>
+      </div>
+      <button type="button" id="coop-pvp-settings-button" class="menu-button pvp-settings-open">Settings <span class="pvp-settings-hint">&#9633;</span></button>
       <div id="coop-setup-difficulty-label">Difficulty</div>
       <div id="coop-difficulty-options">
         <div class="difficulty-option" data-difficulty="normal">
@@ -2951,6 +2991,12 @@
         </div>
       </div>
       <div id="quad-setup-status"></div>
+      <div id="quad-setup-mode-label">Mode</div>
+      <div id="quad-pvp-mode-options">
+        <div class="pvp-mode-option" data-pvp-mode="deathmatch"><div class="difficulty-name">Deathmatch</div><div class="pvp-mode-desc">Most kills wins</div></div>
+        <div class="pvp-mode-option" data-pvp-mode="gungame"><div class="difficulty-name">Gun Game</div><div class="pvp-mode-desc">Kill your way up the weapon ladder</div></div>
+      </div>
+      <button type="button" id="quad-pvp-settings-button" class="menu-button pvp-settings-open">Settings <span class="pvp-settings-hint">&#9633;</span></button>
       <div id="quad-setup-difficulty-label">Difficulty</div>
       <div id="quad-difficulty-options">
         <div class="difficulty-option" data-difficulty="normal">
@@ -3088,6 +3134,25 @@
           </div>
         </li>
       </ul>
+    </div>
+  </div>
+</div>
+<div id="pvp-settings-panel">
+  <div class="pvp-settings-box">
+    <h2>PVP Settings</h2>
+    <div class="pvp-settings-row">
+      <label for="pvp-health-slider">Player health</label>
+      <input type="range" id="pvp-health-slider" min="25" max="300" step="25" value="100" />
+      <span id="pvp-health-value">100</span>
+    </div>
+    <div class="pvp-settings-row">
+      <label for="pvp-speed-slider">Player speed</label>
+      <input type="range" id="pvp-speed-slider" min="50" max="200" step="5" value="100" />
+      <span id="pvp-speed-value">100%</span>
+    </div>
+    <div class="pvp-settings-buttons">
+      <button type="button" id="pvp-settings-reset" class="menu-button">Reset to default</button>
+      <button type="button" id="pvp-settings-done" class="menu-button">Done</button>
     </div>
   </div>
 </div>
@@ -3335,22 +3400,49 @@
   // Reset in resetGame and the setSplitScreen test hook, next to isCoopMatchActive.
   let isPvpMatchActive = false;
   let pvpSetupSelected = false;           // set by the player-count screen's PVP options, read by startCoopMatch/startQuadMatch
-  const PVP_MATCH_SECONDS = 30 * 60;
+  const PVP_MATCH_SECONDS = 15 * 60;
+  const PVP_HEAL_ON_KILL = 50;            // HP restored to the killer on every kill (clamped to max health)
+  const PVP_FALL_DAMAGE_MULTIPLIER = 0.5; // fall damage in PVP only
+  // Gun Game ladder (13 levels): the killer advances one level per kill. A kill on the last level wins.
+  const PVP_GUN_GAME_LADDER = ["pistol", "glock", "shotgun", "smg", "ak47", "sniper", "ak47", "smg", "shotgun", "glock", "pistol", "katana", "bat"];
+  const PVP_KILL_FEED_MAX = 5;
+  const PVP_KILL_FEED_SECONDS = 5;
+  let pvpMode = "deathmatch";             // setup-screen choice: "deathmatch" | "gungame" (copied to pvpMatch.mode at start)
   const PVP_RESPAWN_DELAY_SECONDS = 5;
   const PVP_SPAWN_PROTECTION_SECONDS = 2;
   const PVP_MOVE_SPEED_MULTIPLIER = 1.15;
+  // Setup-screen "Settings" (read live by getMaxHealth / pvpMoveSpeedMultiplier; they persist for the matches launched from the setup screen).
+  const PVP_SETTINGS_DEFAULT = { health: 100, speed: 100 }; // max/starting HP; % of the PVP speed above
+  const pvpSettings = { ...PVP_SETTINGS_DEFAULT };
   const PVP_STAMINA_MULTIPLIER = 2;       // max stamina
   const PVP_STAMINA_REGEN_MULTIPLIER = 2; // same refill time as PVE ("regen proportionally")
   const PVP_INFINITE_RESERVE = 9999;      // shown as the infinity symbol
   const PVP_PLAYER_HIT_RADIUS = 0.35 + 0.1; // PLAYER_RADIUS + margin, like PELLET_BODY_HIT_MARGIN
-  const PVP_HEAD_BAND = 0.25;             // metres below eye height that count as head
+  // PVP hit zones (a player-vs-player shot lands in exactly one). Heights are fractions of the
+  // victim's current eye height above their feet (standing 1.7 m: head >= 1.50 m, neck 1.44-1.50,
+  // shoulders to 1.38, groin ~0.8), so crouching/sliding shrinks them with the body; LATERAL values
+  // are metres off the victim's centre line (the rig's arms hang at ~0.14-0.24, see player-model.js).
+  const PVP_HIT_ZONES = { HEAD_MIN: 0.88, NECK_MIN: 0.845, NECK_HALF_WIDTH: 0.12, SHOULDER_MIN: 0.81, GROIN_MIN: 0.47, ARM_LATERAL_MIN: 0.16 };
+  // Damage per bullet by weapon and zone. Zones: head, neck, torso (chest, belly, shoulders, groin), arms, legs.
+  // Only the sniper tells body zones apart; every other gun is head vs body. The shotgun's `pellet` is the
+  // per-pellet base (the usual distance falloff applies) and its `head` entry is a multiplier (pellets
+  // have no head bonus). Melee (bat / katana / fists / gun-bash) keeps its WEAPON_DEFS values in PVP.
+  const pvpBodyDamage = (body, head) => ({ head, neck: body, torso: body, arms: body, legs: body });
+  const PVP_DAMAGE_TABLE = {
+    pistol: pvpBodyDamage(25, 50),
+    glock: pvpBodyDamage(34, 50),
+    smg: pvpBodyDamage(25, 34),
+    ak47: pvpBodyDamage(37, 50),
+    sniper: { head: 200, neck: 100, torso: 100, arms: 60, legs: 60 },
+    shotgun: { pellet: 11.5, head: 1 },
+  };
   const PVP_RESULTS_AUTO_RETURN_SECONDS = 20;
   const PVP_ZONE_TIMING = { INITIAL_ZONE_DELAY: 60, ZONE_STAY_DURATION: 45, ZONE_WARNING_DURATION: 20, ZONE_TRANSITION_DURATION: 30 };
   const PVP_SPAWN = { CANDIDATES: 90, MIN_DISTANCE: 25, ZONE_EDGE_MARGIN: 8, CLEARANCE: 0.8, DISTANCE_CAP: 150, VISIBLE_PENALTY: 60 };
-  const pvpMatch = { timeLeft: 0, started: false, ended: false, resultsTimer: 0 };
-  function pvpMoveSpeedMultiplier() { return isPvpMatchActive ? PVP_MOVE_SPEED_MULTIPLIER : 1; }
+  const pvpMatch = { timeLeft: 0, started: false, ended: false, resultsTimer: 0, mode: "deathmatch", clock: 0 };
+  function pvpMoveSpeedMultiplier() { return isPvpMatchActive ? PVP_MOVE_SPEED_MULTIPLIER * pvpSettings.speed / 100 : 1; }
   // PVP DOM state (built lazily by buildPvpUi; declared here so resetGame can reach it at any time).
-  const pvpUi = { built: false, timerEl: null, killsEl: null, rows: [], panels: [], badges: [], toasts: [], protects: [], lastTimerText: "" };
+  const pvpUi = { built: false, timerEl: null, killsEl: null, feedEl: null, feed: [], rows: [], panels: [], badges: [], toasts: [], protects: [], lastTimerText: "" };
   const pvpResultsEl = document.getElementById("pvp-results");
   const pvpResultsContinueEl = document.getElementById("pvp-results-continue");
   const STAMINA_REGEN_STANDING_PER_SECOND = 14;
@@ -3381,6 +3473,7 @@
   // Fall damage (see updateMovement's gravity block): a jump peaks at
   // ~1.4 m, so only real drops (e.g. off the top of the bleachers) hurt.
   const FALL_DAMAGE_SAFE_HEIGHT = 3.5;  // meters fallen before any damage
+  const fallDamageAmount = (fallHeight) => Math.round((fallHeight - FALL_DAMAGE_SAFE_HEIGHT) * FALL_DAMAGE_PER_METER * (isPvpMatchActive ? PVP_FALL_DAMAGE_MULTIPLIER : 1));
   const FALL_DAMAGE_PER_METER = 5;      // HP per meter past the safe height (4 m bleacher top -> 3, 10 m -> 33)
 
   // Physics-based horizontal movement (Quake-style accelerate/friction
@@ -7347,7 +7440,7 @@
       if (
         event.target.closest(".menu-button, .corner-back-button") ||
         event.target.closest(".mode-option:not(.mode-option-disabled)") ||
-        event.target.closest(".difficulty-option") ||
+        event.target.closest(".difficulty-option, .pvp-mode-option") ||
         event.target.closest(".inventory-tab-button, .crafting-recipe-slot") ||
         event.target.closest(".crafting-craft-button:not(:disabled)")
       ) {
@@ -14455,6 +14548,7 @@
     }
     refs.ammoLoadedEl.textContent = slot.loadedAmmo;
     refs.ammoReserveEl.textContent = isPvpMatchActive ? "∞" : slot.reserveAmmo;
+    refs.ammoReserveEl.classList.toggle("pvp-inf", isPvpMatchActive);
   }
 
   // Aim down sights: player.input.isActionHeld("aim") is the raw held
@@ -16890,7 +16984,7 @@
   }
 
   function getMaxHealth(player) {
-    let max = MAX_HEALTH;
+    let max = isPvpMatchActive ? pvpSettings.health : MAX_HEALTH;
     for (const id of player.unlockedSkillIds) {
       const effect = SKILL_TREE_NODES_BY_ID[id].effect;
       if (effect && effect.maxHealthBonus) max += effect.maxHealthBonus;
@@ -18551,7 +18645,7 @@
   const TEMP_STARTING_SKILL_POINTS = 0;
   const TEMP_STARTING_SCRAP = 0;
   function resetPlayerState(player) {
-    player.health = MAX_HEALTH;
+    player.health = isPvpMatchActive ? getMaxHealth(player) : MAX_HEALTH;
     player.isDead = false;
     player.isDowned = false; // see DOWNED STATE
     player.downedTimeLeft = 0;
@@ -19427,6 +19521,7 @@
   // .difficulty-option/currentDifficulty/updateDifficultyOptionButtons
   // with title-setup's own copy rather than a second, separate state).
   document.querySelector('.mode-option[data-mode="singleplayer"]').addEventListener("click", function () {
+    pvpSetupSelected = false;
     resetSingleplayerSetup();
     showTitlePanel("setup");
   });
@@ -19447,33 +19542,102 @@
   });
 
   document.querySelector('.mode-option[data-players="2"]').addEventListener("click", function () {
-    pvpSetupSelected = false;
+    setPvpSetup(false);
     resetCoopSetup();
     showTitlePanel("coop-setup");
   });
 
   document.querySelector('.mode-option[data-players="3"]').addEventListener("click", function () {
-    pvpSetupSelected = false;
+    setPvpSetup(false);
     resetQuadSetup(3);
     showTitlePanel("quad-setup");
   });
 
   document.querySelector('.mode-option[data-players="4"]').addEventListener("click", function () {
-    pvpSetupSelected = false;
+    setPvpSetup(false);
     resetQuadSetup(4);
     showTitlePanel("quad-setup");
   });
 
-  // PVP Deathmatch: the same setup screens, flagged so startCoopMatch/startQuadMatch
-  // start a PVP match (see PVP DEATHMATCH).
+  // PVP: the same setup screens, flagged so startCoopMatch/startQuadMatch
+  // start a PVP match (see PVP DEATHMATCH). In PVP the difficulty row is
+  // replaced by a Mode picker (Deathmatch / Gun Game): clickable, and the
+  // left stick steps it through stepDifficulty (which defers to stepPvpMode).
+  const pvpModeOptionEls = document.querySelectorAll(".pvp-mode-option");
+  const PVP_MODE_ORDER = ["deathmatch", "gungame"];
+  function updatePvpModeButtons() {
+    pvpModeOptionEls.forEach((el) => el.classList.toggle("active", el.dataset.pvpMode === pvpMode));
+  }
+  function setPvpSetup(on) {
+    pvpSetupSelected = on;
+    document.getElementById("title-coop-setup").classList.toggle("pvp-setup", on);
+    document.getElementById("title-quad-setup").classList.toggle("pvp-setup", on);
+    if (!on && typeof closePvpSettings === "function") closePvpSettings();
+    if (on) { pvpMode = "deathmatch"; updatePvpModeButtons(); }
+  }
+  function stepPvpMode(direction) {
+    const next = Math.max(0, Math.min(PVP_MODE_ORDER.length - 1, PVP_MODE_ORDER.indexOf(pvpMode) + direction));
+    if (PVP_MODE_ORDER[next] === pvpMode) return;
+    pvpMode = PVP_MODE_ORDER[next];
+    updatePvpModeButtons();
+    playClip("menu_click_01");
+  }
+  pvpModeOptionEls.forEach((el) => el.addEventListener("click", function () {
+    pvpMode = el.dataset.pvpMode;
+    updatePvpModeButtons();
+  }));
+
+  // PVP Settings panel (Player health / Player speed). The sliders are plain range inputs, so the
+  // generic controller menu nav (MENU_NAV_SCREENS "pvp-settings") drives them with the stick and
+  // the keyboard arrows work natively; Square on a PVP setup screen opens it, X / Esc / Done close it.
+  const PVP_SETTING_LIMITS = { health: { min: 25, max: 300, step: 25 }, speed: { min: 50, max: 200, step: 5 } };
+  const pvpSettingsPanelEl = document.getElementById("pvp-settings-panel");
+  const pvpSettingSliderEls = { health: document.getElementById("pvp-health-slider"), speed: document.getElementById("pvp-speed-slider") };
+  const pvpSettingValueEls = { health: document.getElementById("pvp-health-value"), speed: document.getElementById("pvp-speed-value") };
+  const isPvpSettingsOpen = () => pvpSettingsPanelEl.classList.contains("visible");
+  function syncPvpSettingsUI() {
+    for (const key of Object.keys(pvpSettings)) {
+      pvpSettingSliderEls[key].value = String(pvpSettings[key]);
+      pvpSettingValueEls[key].textContent = pvpSettings[key] + (key === "speed" ? "%" : "");
+    }
+  }
+  function setPvpSetting(key, value) {
+    const lim = PVP_SETTING_LIMITS[key];
+    pvpSettings[key] = Math.max(lim.min, Math.min(lim.max, Math.round(value / lim.step) * lim.step));
+    syncPvpSettingsUI();
+  }
+  for (const key of Object.keys(PVP_SETTING_LIMITS)) {
+    pvpSettingSliderEls[key].addEventListener("input", () => setPvpSetting(key, Number(pvpSettingSliderEls[key].value)));
+  }
+  function openPvpSettings() { syncPvpSettingsUI(); pvpSettingsPanelEl.classList.add("visible"); }
+  function closePvpSettings() { pvpSettingsPanelEl.classList.remove("visible"); }
+  document.getElementById("pvp-settings-done").addEventListener("click", closePvpSettings);
+  document.getElementById("pvp-settings-reset").addEventListener("click", () => {
+    for (const key of Object.keys(PVP_SETTINGS_DEFAULT)) setPvpSetting(key, PVP_SETTINGS_DEFAULT[key]);
+  });
+  document.getElementById("coop-pvp-settings-button").addEventListener("click", openPvpSettings);
+  document.getElementById("quad-pvp-settings-button").addEventListener("click", openPvpSettings);
+  // Capture phase: while the panel is up the setup screens' own key handlers (Enter = ready, A/D, W/S) must not see keys.
+  document.addEventListener("keydown", function (event) {
+    if (!isPvpSettingsOpen()) return;
+    if (event.code === "Escape") closePvpSettings();
+    event.stopImmediatePropagation();
+  }, true);
+  let pvpSettingsSquareWasPressed = false;
+  function pollPvpSettingsOpenButton() { // called each frame from the PVP setup screens' branch of animate()
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const pressed = pads.some((pad) => pad && pad.buttons[CONTROLS_NAV_REBIND_BUTTON_INDEX] && pad.buttons[CONTROLS_NAV_REBIND_BUTTON_INDEX].pressed);
+    if (pressed && !pvpSettingsSquareWasPressed && !isPvpSettingsOpen()) openPvpSettings();
+    pvpSettingsSquareWasPressed = pressed;
+  }
   document.querySelector('.mode-option[data-pvp-players="2"]').addEventListener("click", function () {
-    pvpSetupSelected = true;
+    setPvpSetup(true);
     resetCoopSetup();
     showTitlePanel("coop-setup");
   });
   for (const n of [3, 4]) {
     document.querySelector('.mode-option[data-pvp-players="' + n + '"]').addEventListener("click", function () {
-      pvpSetupSelected = true;
+      setPvpSetup(true);
       resetQuadSetup(n);
       showTitlePanel("quad-setup");
     });
@@ -19624,6 +19788,7 @@
 
   const DIFFICULTY_ORDER = ["normal", "hard", "legendary"]; // left-to-right visual order, for the left-stick step below
   function stepDifficulty(direction) {
+    if (pvpSetupSelected) { stepPvpMode(direction); return; } // PVP setup shows the mode picker instead
     const currentIndex = DIFFICULTY_ORDER.indexOf(currentDifficulty.id);
     const nextIndex = Math.max(0, Math.min(DIFFICULTY_ORDER.length - 1, currentIndex + direction));
     if (nextIndex === currentIndex) return;
@@ -21874,12 +22039,12 @@
 
   // ------------------------------------------------------------------
   // PVP DEATHMATCH (see PVP_PLAN.md / PVP_SPEC.md): a co-op match started
-  // with isPvpMatchActive set. Free for all, 30 minutes, most kills wins.
+  // with isPvpMatchActive set. Free for all, 15 minutes: Deathmatch (most kills) or Gun Game (weapon ladder).
   // Nobody is ever "downed": a player at 0 HP goes straight to their own
   // viewport's weapon-select/respawn panel (pvpAwaitingSpawn, which also
   // marks them isDead so every existing system treats them as out of play).
   // ------------------------------------------------------------------
-  function pvpWeaponOrder() { return [...Object.keys(WEAPON_DEFS), "fists"]; }
+  function pvpWeaponOrder() { return Object.keys(WEAPON_DEFS); }
   function pvpWeaponLabel(id) { return id === "fists" ? "Fists" : WEAPON_DEFS[id].displayName; }
   function pvpPlayerLabel(p) { return "P" + (players.indexOf(p) + 1); }
 
@@ -21898,6 +22063,8 @@
     pvpUi.timerEl.id = "pvp-timer";
     pvpUi.killsEl = pvpCreateEl("div", "pvp-board", document.body);
     pvpUi.killsEl.id = "pvp-kills";
+    pvpUi.feedEl = pvpCreateEl("div", "", document.body);
+    pvpUi.feedEl.id = "pvp-killfeed";
     for (let i = 0; i < 4; i++) {
       const badge = pvpCreateEl("div", "pvp-badge", document.body);
       badge.id = "pvp-badge-p" + (i + 1);
@@ -21911,18 +22078,20 @@
         el: panel,
         title: pvpCreateEl("h1", "", panel),
         sub: pvpCreateEl("div", "pvp-panel-sub", panel),
+        info: pvpCreateEl("div", "pvp-panel-sub", panel),
         list: pvpCreateEl("ul", "pvp-weapon-list", panel),
         countdown: pvpCreateEl("div", "pvp-countdown", panel),
         button: pvpCreateEl("button", "menu-button pvp-respawn", panel, "Respawn"),
         hint: pvpCreateEl("div", "pvp-hint", panel),
         items: [],
       };
+      parts.list.style.position = "relative"; // so li.offsetTop is list-relative (auto-scroll)
       for (const id of pvpWeaponOrder()) {
         const li = pvpCreateEl("li", "", parts.list, pvpWeaponLabel(id));
         li.dataset.weaponId = id;
         li.addEventListener("click", function (event) {
           event.stopPropagation();
-          if (players[i] && players[i].pvpAwaitingSpawn) pvpSelectWeapon(players[i], id);
+          if (players[i] && players[i].pvpAwaitingSpawn && !pvpIsGunGame()) pvpSelectWeapon(players[i], id);
         });
         parts.items.push(li);
       }
@@ -21970,6 +22139,8 @@
       pvpUi.rows.length = 0;
       pvpUi.killsEl.textContent = "";
       pvpUi.lastTimerText = "";
+      pvpClearKillFeed();
+      pvpSetBodyGlow(false);
     }
     pvpResultsEl.classList.remove("visible");
     document.body.classList.remove("pvp-mode");
@@ -21983,11 +22154,20 @@
     const face = pvpCreateEl("img", "pvp-board-face", row);
     const def = player.faceKey && FACE_TEXTURE_DEFS[player.faceKey];
     if (def) face.src = def.dataUri;
-    return { row, face, kills: pvpCreateEl("span", "pvp-board-kills", row, ": 0"), shown: 0, index };
+    return { row, face, kills: pvpCreateEl("span", "pvp-board-kills", row, ": " + pvpScoreText(player)), shown: pvpScoreText(player), index };
   }
 
+  const pvpIsGunGame = () => pvpMatch.mode === "gungame";
+  // What the board shows for a player: kills (Deathmatch) or "level/total" (Gun Game).
+  function pvpScoreText(p) { return pvpIsGunGame() ? (p.pvpLevel + 1) + "/" + PVP_GUN_GAME_LADDER.length : String(p.pvpKills); }
+  // Board order. Gun Game: level, then kills, then whoever reached the level first.
+  function pvpCompare(a, b) {
+    const pa = players[a], pb = players[b];
+    if (pvpIsGunGame()) return (pb.pvpLevel - pa.pvpLevel) || (pb.pvpKills - pa.pvpKills) || (pa.pvpLevelAt - pb.pvpLevelAt) || (a - b);
+    return (pb.pvpKills - pa.pvpKills) || (pa.pvpDeaths - pb.pvpDeaths) || (a - b);
+  }
   function pvpSortedPlayerIndices() {
-    return players.map((p, i) => i).sort((a, b) => (players[b].pvpKills - players[a].pvpKills) || (players[a].pvpDeaths - players[b].pvpDeaths) || (a - b));
+    return players.map((p, i) => i).sort(pvpCompare);
   }
 
   function updatePvpHud() {
@@ -22001,21 +22181,23 @@
     // Kills box: shared (not per viewport), rows sorted by kills, leader highlighted.
     if (pvpUi.rows.length !== players.length) {
       pvpUi.killsEl.textContent = "";
-      pvpCreateEl("div", "pvp-board-title", pvpUi.killsEl, "Kills");
+      pvpCreateEl("div", "pvp-board-title", pvpUi.killsEl, pvpIsGunGame() ? "Level" : "Kills");
       pvpUi.rows = players.map((p, i) => pvpMakeBoardRow(pvpUi.killsEl, i));
     }
     const order = pvpSortedPlayerIndices();
-    const top = players[order[0]].pvpKills;
+    const topPlayer = players[order[0]];
     order.forEach((idx, pos) => {
       const r = pvpUi.rows[idx];
-      const kills = players[idx].pvpKills;
-      if (kills !== r.shown) {
-        r.shown = kills;
-        r.kills.textContent = ": " + kills;
+      const shown = pvpScoreText(players[idx]);
+      if (shown !== r.shown) {
+        r.shown = shown;
+        r.kills.textContent = ": " + shown;
         r.kills.classList.add("tick");
         setTimeout(() => r.kills.classList.remove("tick"), 250); // the brief number tick
       }
-      r.row.classList.toggle("leader", top > 0 && kills === top);
+      const p = players[idx];
+      const isLeader = pvpIsGunGame() ? p.pvpLevel > 0 && p.pvpLevel === topPlayer.pvpLevel : topPlayer.pvpKills > 0 && p.pvpKills === topPlayer.pvpKills;
+      r.row.classList.toggle("leader", isLeader);
       if (pvpUi.killsEl.children[pos + 1] !== r.row) pvpUi.killsEl.appendChild(r.row);
     });
     pvpUi.killsEl.classList.add("visible");
@@ -22036,14 +22218,18 @@
     const i = players.indexOf(player);
     const parts = pvpUi.panels[i];
     if (!parts) return;
-    parts.title.textContent = player.pvpIsPrematch ? "CHOOSE YOUR WEAPON" : "ELIMINATED";
+    const gun = pvpIsGunGame();
+    parts.title.textContent = player.pvpIsPrematch ? (gun ? "GUN GAME" : "CHOOSE YOUR WEAPON") : "ELIMINATED";
+    parts.list.classList.toggle("hidden", gun);
+    parts.info.textContent = gun ? "Level " + (player.pvpLevel + 1) + "/" + PVP_GUN_GAME_LADDER.length + " · " + pvpWeaponLabel(PVP_GUN_GAME_LADDER[player.pvpLevel]) : "";
     parts.sub.textContent = player.pvpIsPrematch ? "" : player.pvpLastKilledBy ? "by " + pvpPlayerLabel(player.pvpLastKilledBy) : (player.pvpDeathCause || "");
     parts.button.textContent = player.pvpIsPrematch ? "Deploy" : "Respawn";
     for (const li of parts.items) li.classList.toggle("selected", li.dataset.weaponId === player.pvpWeaponId);
     const isKeyboard = i === 0 && matchP1Scheme === "keyboard";
+    const act = player.pvpIsPrematch ? "deploy" : "respawn";
     parts.hint.textContent = isKeyboard
-      ? "W/S or Wheel: weapon · Enter/Space/Click: " + (player.pvpIsPrematch ? "deploy" : "respawn")
-      : "D-pad/Stick: weapon · Square/Cross: " + (player.pvpIsPrematch ? "deploy" : "respawn");
+      ? (gun ? "" : "W/S or Wheel: weapon · ") + "Enter/Space/Click: " + act
+      : (gun ? "" : "D-pad/Stick: weapon · ") + "Square/Cross: " + act;
     const ready = player.pvpRespawnTimer <= 0;
     parts.el.classList.toggle("ready", ready);
     if (!ready) parts.countdown.textContent = "Respawn in " + Math.ceil(player.pvpRespawnTimer);
@@ -22063,8 +22249,16 @@
   function pvpSelectWeapon(player, id) {
     player.pvpWeaponId = id; // persists across deaths
     renderPvpPanel(player);
+    const parts = pvpUi.panels[players.indexOf(player)];
+    const li = parts && parts.items.find((el) => el.dataset.weaponId === id);
+    if (li) { // keep the selected row inside the scrolling list
+      const list = parts.list;
+      if (li.offsetTop < list.scrollTop) list.scrollTop = li.offsetTop - 2;
+      else if (li.offsetTop + li.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = li.offsetTop + li.offsetHeight - list.clientHeight + 2;
+    }
   }
   function pvpStepWeapon(player, dir) {
+    if (pvpIsGunGame()) return; // no picker in Gun Game
     const order = pvpWeaponOrder();
     const at = Math.max(0, order.indexOf(player.pvpWeaponId));
     pvpSelectWeapon(player, order[(at + dir + order.length) % order.length]);
@@ -22119,7 +22313,12 @@
     pvpMatch.started = false;
     pvpMatch.ended = false;
     pvpMatch.resultsTimer = 0;
+    pvpMatch.mode = pvpMode;
+    pvpMatch.clock = 0;
+    pvpMatch.pendingWinner = null;
     pvpResultsEl.classList.remove("visible");
+    pvpClearKillFeed();
+    pvpSetBodyGlow(true);
     initZone(); // after resetSharedWorldState's resetZone; the PVP centre is the map centre
     for (const p of players) {
       p.pvpKills = 0;
@@ -22127,6 +22326,8 @@
       p.pvpWeaponId = p.pvpWeaponId || "pistol";
       p.pvpLastKilledBy = null;
       p.pvpDeathCause = "";
+      p.pvpLevel = 0;   // Gun Game ladder index
+      p.pvpLevelAt = 0; // match clock when the current level was reached (tie-break)
       p.pvpProtectedFor = 0;
       p.pvpNav = { stick: { isPastDeadzone: false, direction: 0, timeUntilNextStep: 0 }, prevButtons: null };
       pvpEnterAwaitingSpawn(p, true);
@@ -22135,15 +22336,126 @@
     updatePvpHud();
   }
 
+  function pvpFaceSrc(p) {
+    const def = p.faceKey && FACE_TEXTURE_DEFS[p.faceKey];
+    return def ? def.dataUri : "";
+  }
+  function pvpCurrentWeaponId(p) {
+    const slot = p.inventorySlots[p.activeSlotIndex];
+    return slot ? slot.weaponId : "fists";
+  }
+
+  // Top-right kill feed: killer face, weapon, victim face (zone/fall/self: victim + a label).
+  function pvpAddKillFeed(killer, victim, weaponId, cause) {
+    if (!pvpUi.feedEl) return;
+    const line = pvpCreateEl("div", "pvp-feed-line", null);
+    const face = (p) => {
+      const img = pvpCreateEl("img", "", line);
+      img.src = pvpFaceSrc(p);
+      img.style.border = "2px solid " + ZONE_PLAYER_COLORS[players.indexOf(p) % 4];
+    };
+    if (killer) {
+      face(killer);
+      pvpCreateEl("span", "pvp-feed-weapon", line, pvpWeaponLabel(weaponId));
+      face(victim);
+    } else {
+      face(victim);
+      pvpCreateEl("span", "pvp-feed-label", line, cause === "Fall" ? "Fell" : cause === "Zone" ? "Zone" : "Self");
+    }
+    pvpUi.feedEl.appendChild(line);
+    pvpUi.feed.push({ el: line, age: 0 });
+    while (pvpUi.feed.length > PVP_KILL_FEED_MAX) pvpUi.feed.shift().el.remove();
+  }
+  function pvpUpdateKillFeed(deltaSeconds) {
+    for (const entry of pvpUi.feed) {
+      entry.age += deltaSeconds;
+      if (entry.age > PVP_KILL_FEED_SECONDS - 0.6) entry.el.classList.add("fade");
+    }
+    while (pvpUi.feed.length && pvpUi.feed[0].age >= PVP_KILL_FEED_SECONDS) pvpUi.feed.shift().el.remove();
+  }
+  function pvpClearKillFeed() {
+    for (const entry of pvpUi.feed) entry.el.remove();
+    pvpUi.feed.length = 0;
+  }
+
+  // Soft glow so players read at a distance, in fog and at night: a clone of
+  // the shared body material (emissive in the player colour mixed with warm
+  // white, a fresnel rim on top, and at most half the fog), applied to the
+  // body meshes only while a PVP match is on. PVE keeps humanSystem.bodyMaterial.
+  function pvpMakeGlowMaterial(index) {
+    const base = humanSystem.bodyMaterial;
+    const mat = base.clone();
+    mat.emissive.set(ZONE_PLAYER_COLORS[index % 4]).lerp(new THREE.Color(1, 0.85, 0.6), 0.5).multiplyScalar(0.2);
+    mat.customProgramCacheKey = () => "pvpGlow";
+    mat.onBeforeCompile = (shader, renderer) => {
+      base.onBeforeCompile(shader, renderer);
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <emissivemap_fragment>", [
+          "#include <emissivemap_fragment>",
+          "{",
+          "  float pvpRim = pow(1.0 - clamp(abs(dot(normalize(vNormal), normalize(vViewPosition))), 0.0, 1.0), 2.5);",
+          "  totalEmissiveRadiance += emissive * pvpRim * 2.5;",
+          "}",
+        ].join("\n"))
+        .replace("#include <fog_fragment>", [
+          "#ifdef USE_FOG",
+          "  float pvpFog = smoothstep(fogNear, fogFar, fogDepth) * 0.5;",
+          "  gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, pvpFog);",
+          "#endif",
+        ].join("\n"));
+    };
+    return mat;
+  }
+  function pvpSetBodyGlow(on) {
+    allPlayers.forEach((p, i) => {
+      if (!p.human) return;
+      if (on && !p.pvpGlowMaterial) p.pvpGlowMaterial = pvpMakeGlowMaterial(i);
+      for (const mesh of p.human.meshes) mesh.material = on ? p.pvpGlowMaterial : humanSystem.bodyMaterial;
+    });
+  }
+
+  // Gives the player exactly one weapon: full magazine, infinite reserve (melee needs none).
+  function pvpGiveWeapon(player, id) {
+    cancelReload(player);
+    endMeleeSwing(player);
+    const slot = createWeaponSlotState(id);
+    if (!WEAPON_DEFS[id].gun.isMeleeOnly) slot.reserveAmmo = PVP_INFINITE_RESERVE;
+    player.inventorySlots[0] = slot;
+    player.inventorySlots[1] = null;
+    player.activeSlotIndex = 0;
+    setActiveViewModel(player); // re-raises the weapon and syncs the ammo HUD (infinity symbol)
+  }
+  // What a player spawns with: the picked weapon (Deathmatch) or their ladder level (Gun Game).
+  function pvpLoadoutWeaponId(p) {
+    return pvpIsGunGame() ? PVP_GUN_GAME_LADDER[p.pvpLevel] : p.pvpWeaponId;
+  }
+
   function pvpRecordKill(victim, attacker, source) {
+    if (pvpMatch.ended || pvpMatch.pendingWinner) return; // the match is already decided
     victim.pvpDeaths++;
-    victim.pvpLastKilledBy = attacker && attacker !== victim ? attacker : null;
+    const killer = attacker && attacker !== victim ? attacker : null;
+    victim.pvpLastKilledBy = killer;
     victim.pvpDeathCause = source === null ? "Zone" : "Fall"; // no attacker: the storm (source null) or a fall (undefined)
-    if (victim.pvpLastKilledBy) {
-      attacker.pvpKills++;
-      pvpToast(attacker, "Eliminated " + pvpPlayerLabel(victim));
+    pvpAddKillFeed(killer, victim, killer ? pvpCurrentWeaponId(killer) : null, attacker === victim ? "Self" : victim.pvpDeathCause);
+    if (killer) {
+      killer.pvpKills++;
+      pvpToast(killer, "Eliminated " + pvpPlayerLabel(victim));
+      if (!killer.isDead) { // heal on every kill, up to max health
+        killer.health = Math.min(getMaxHealth(killer), killer.health + PVP_HEAL_ON_KILL);
+        updateHealthUI(killer);
+      }
+      if (pvpIsGunGame()) pvpAdvanceLadder(killer);
     }
     updatePvpHud();
+  }
+
+  // Gun Game: one level per kill. A kill on the last weapon wins (the match ends on the next
+  // updatePvpMatch, so the victim's own death handling cannot re-show a panel over the results).
+  function pvpAdvanceLadder(killer) {
+    if (killer.pvpLevel >= PVP_GUN_GAME_LADDER.length - 1) { pvpMatch.pendingWinner = killer; return; }
+    killer.pvpLevel++;
+    killer.pvpLevelAt = pvpMatch.clock;
+    if (!killer.isDead) pvpGiveWeapon(killer, PVP_GUN_GAME_LADDER[killer.pvpLevel]); // a dead killer gets it on respawn
   }
 
   function pvpHandleDeath(player) {
@@ -22157,12 +22469,7 @@
   function pvpRespawnPlayer(player) {
     resetPlayerState(player); // health, flags, stamina (G14), physics, view model, HUD
     if (typeof player.input.forceRelease === "function") player.input.forceRelease("fire"); // the click/press that confirmed the respawn must not fire
-    const id = player.pvpWeaponId;
-    player.inventorySlots[0] = id === "fists" ? null : createWeaponSlotState(id);
-    if (player.inventorySlots[0] && !WEAPON_DEFS[id].gun.isMeleeOnly) player.inventorySlots[0].reserveAmmo = PVP_INFINITE_RESERVE;
-    player.inventorySlots[1] = null;
-    player.activeSlotIndex = 0;
-    setActiveViewModel(player); // re-raises the chosen weapon and syncs the ammo HUD (infinity symbol)
+    pvpGiveWeapon(player, pvpLoadoutWeaponId(player));
     const spot = pickPvpSpawnPoint(player);
     player.camera.position.set(spot.x, EYE_HEIGHT, spot.z);
     player.campusGroundY = 0;
@@ -22226,6 +22533,8 @@
   }
 
   function updatePvpMatch(deltaSeconds) {
+    if (pvpMatch.pendingWinner) { endPvpMatch(); return; }
+    pvpUpdateKillFeed(deltaSeconds);
     for (let i = 0; i < players.length; i++) {
       const p = players[i];
       if (p.pvpAwaitingSpawn) {
@@ -22242,6 +22551,7 @@
       pvpUi.protects[i].classList.toggle("show", p.pvpProtectedFor > 0 && !p.isDead);
     }
     if (pvpMatch.started) {
+      pvpMatch.clock += deltaSeconds;
       pvpMatch.timeLeft -= deltaSeconds;
       if (pvpMatch.timeLeft <= 0) {
         pvpMatch.timeLeft = 0;
@@ -22262,7 +22572,7 @@
         parts.el.style.width = rect.width + "px";
         parts.el.style.height = rect.height + "px";
         pvpUi.badges[i].style.left = rect.x + rect.width - 8 + "px";
-        pvpUi.badges[i].style.top = rect.y + 40 + "px";
+        pvpUi.badges[i].style.top = rect.y + 130 + "px"; // below the top-right kill feed
       }
       pvpUi.badges[i].classList.add("visible");
     }
@@ -22275,23 +22585,38 @@
     pvpUi.panels.forEach((parts) => parts.el.classList.remove("visible"));
     pvpUi.badges.forEach((el) => el.classList.remove("visible"));
     pvpUi.killsEl.classList.remove("visible");
-    const order = pvpSortedPlayerIndices();
-    const top = players[order[0]].pvpKills;
-    const winners = order.filter((i) => players[i].pvpKills === top);
+    pvpClearKillFeed();
+    const gun = pvpIsGunGame();
+    let order = pvpSortedPlayerIndices();
+    let winners;
+    if (gun && pvpMatch.pendingWinner) { // reached by a kill on the last weapon
+      const w = players.indexOf(pvpMatch.pendingWinner);
+      order = [w, ...order.filter((i) => i !== w)];
+      winners = [w];
+    } else if (gun) { // timer: furthest level, then kills, then whoever got there first; a full tie shares the win
+      const t = players[order[0]];
+      winners = order.filter((i) => players[i].pvpLevel === t.pvpLevel && players[i].pvpKills === t.pvpKills && players[i].pvpLevelAt === t.pvpLevelAt);
+    } else {
+      const top = players[order[0]].pvpKills;
+      winners = order.filter((i) => players[i].pvpKills === top);
+    }
     const banner = document.getElementById("pvp-results-banner");
-    banner.textContent = winners.length === 1 ? pvpPlayerLabel(players[winners[0]]) + " WINS" : "DRAW";
+    banner.textContent = winners.length === 1 ? pvpPlayerLabel(players[winners[0]]) + " WINS"
+      : gun ? winners.map((i) => pvpPlayerLabel(players[i])).join(" & ") + " WIN" : "DRAW";
     const board = document.getElementById("pvp-results-board");
     board.textContent = "";
-    pvpCreateEl("div", "pvp-board-title", board, "Kills");
+    pvpCreateEl("div", "pvp-board-title", board, gun ? "Level" : "Kills");
     for (const idx of order) {
       const p = players[idx];
       const r = pvpMakeBoardRow(board, idx);
-      r.kills.textContent = ": " + p.pvpKills;
+      r.kills.textContent = ": " + pvpScoreText(p);
       const name = pvpCreateEl("span", "", null, pvpPlayerLabel(p));
       name.style.color = ZONE_PLAYER_COLORS[idx % 4];
       r.row.insertBefore(name, r.kills);
-      pvpCreateEl("span", "pvp-stat", r.row, "D " + p.pvpDeaths + " · K/D " + (p.pvpDeaths ? (p.pvpKills / p.pvpDeaths).toFixed(2) : p.pvpKills.toFixed(2)));
-      if (winners.length === 1 && winners[0] === idx) r.row.classList.add("winner");
+      pvpCreateEl("span", "pvp-stat", r.row, gun
+        ? "K " + p.pvpKills + " · D " + p.pvpDeaths + " · " + pvpWeaponLabel(PVP_GUN_GAME_LADDER[p.pvpLevel])
+        : "D " + p.pvpDeaths + " · K/D " + (p.pvpDeaths ? (p.pvpKills / p.pvpDeaths).toFixed(2) : p.pvpKills.toFixed(2)));
+      if ((winners.length === 1 || gun) && winners.includes(idx)) r.row.classList.add("winner");
     }
     document.getElementById("pvp-results-return").textContent = "Returning to title in " + PVP_RESULTS_AUTO_RETURN_SECONDS;
     pvpResultsEl.classList.add("visible");
@@ -23330,11 +23655,11 @@
   // Full damage out to falloffStartDistance, then a smoothstep ease down
   // to minDamageFraction at falloffEndDistance, flat beyond that -- a
   // pellet gets weak at range but never does nothing.
-  function getShotgunPelletDamage(pellets, distance) {
+  function getShotgunPelletDamage(pellets, distance, baseDamage = pellets.damage) {
     const span = pellets.falloffEndDistance - pellets.falloffStartDistance;
     const t = Math.min(1, Math.max(0, (distance - pellets.falloffStartDistance) / span));
     const smooth = t * t * (3 - 2 * t);
-    return pellets.damage * (1 - (1 - pellets.minDamageFraction) * smooth);
+    return baseDamage * (1 - (1 - pellets.minDamageFraction) * smooth);
   }
 
   // One trigger pull of a pellet gun: pellets.count independent raycasts
@@ -23359,6 +23684,28 @@
   const PELLET_BODY_HIT_MARGIN = 0.1; // game units added to the body radius
   const pelletBodyHitPoint = new THREE.Vector3();
 
+  // Which body zone a hit at `heightAboveFeet` / `point` is on the victim: by height band, with the
+  // lateral offset (along the victim's view-right axis) telling arms from torso and neck from shoulders.
+  const pvpZoneRight = new THREE.Vector3();
+  function pvpHitZone(target, point, heightAboveFeet) {
+    const Z = PVP_HIT_ZONES;
+    const frac = heightAboveFeet / target.currentEyeHeight;
+    if (frac >= Z.HEAD_MIN) return "head";
+    if (frac < Z.GROIN_MIN) return "legs";
+    pvpZoneRight.set(1, 0, 0).applyQuaternion(target.camera.quaternion);
+    pvpZoneRight.y = 0;
+    pvpZoneRight.normalize();
+    const lateral = Math.abs((point.x - target.camera.position.x) * pvpZoneRight.x + (point.z - target.camera.position.z) * pvpZoneRight.z);
+    if (frac >= Z.NECK_MIN) return lateral <= Z.NECK_HALF_WIDTH ? "neck" : "torso"; // outside the neck = shoulder
+    if (frac < Z.SHOULDER_MIN && lateral >= Z.ARM_LATERAL_MIN) return "arms";
+    return "torso";
+  }
+  // PVP gun damage for one bullet that hit `zone` (falls back to the weapon's own damage if untabled).
+  function pvpGunDamage(def, zone) {
+    const row = PVP_DAMAGE_TABLE[def.id];
+    return row ? row[zone] : def.gun.damage;
+  }
+
   // PVP: every other living, spawned player whose body cylinder `ray` enters
   // within maxDistance, nearest first, after floor-aware world blocking
   // (worldBlocksShot: walls, floor slabs, vehicles) and barricade planks.
@@ -23382,7 +23729,8 @@
       if (y < feetY || y > pos.y + 0.15) continue; // crouch/slide shrink it automatically
       const point = new THREE.Vector3(origin.x + direction.x * t, y, origin.z + direction.z * t);
       if (isCampusMap && worldBlocksShot(origin, point, targetStandingY(shooter), targetStandingY(target))) continue;
-      out.push({ target, distance: t, point, isHeadshot: y >= pos.y - PVP_HEAD_BAND });
+      const zone = pvpHitZone(target, point, y - feetY);
+      out.push({ target, distance: t, point, zone, isHeadshot: zone === "head" });
     }
     if (barricadePlankMeshes.length && out.length) {
       if (raycaster.ray !== ray) raycaster.ray.copy(ray);
@@ -23410,15 +23758,14 @@
     if (fractions) {
       let anyHeadshot = false;
       for (let i = 0; i < hits.length && i < fractions.length; i++) {
-        const damage = def.gun.damage * fractions[i] * (hits[i].isHeadshot ? def.gun.headshotMultiplier : 1);
+        const damage = pvpGunDamage(def, hits[i].zone) * fractions[i];
         damagePvpPlayer(player, hits[i].target, damage, hits[i].isHeadshot);
         anyHeadshot = anyHeadshot || hits[i].isHeadshot;
       }
       playSniperHitAudio(anyHeadshot);
       return;
     }
-    const damage = hits[0].isHeadshot && def.gun.headshotDamage !== undefined ? def.gun.headshotDamage : def.gun.damage;
-    damagePvpPlayer(player, hits[0].target, damage, hits[0].isHeadshot);
+    damagePvpPlayer(player, hits[0].target, pvpGunDamage(def, hits[0].zone), hits[0].isHeadshot);
   }
 
   // Nearest enemy body cylinder the ray enters, as { enemyState, distance }, or null.
@@ -23460,7 +23807,8 @@
         if (!h) { spawnWorldImpact(raycaster.ray.origin, raycaster.ray.direction, 0.6); continue; }
         if (i < 3) spawnFleshImpact(h.point, raycaster.ray.direction, 0.6);
         const e = pvpDamageByPlayer.get(h.target);
-        const d = getShotgunPelletDamage(pellets, h.distance);
+        const shotgunRow = PVP_DAMAGE_TABLE.shotgun;
+        const d = getShotgunPelletDamage(pellets, h.distance, shotgunRow.pellet * (h.isHeadshot ? shotgunRow.head : 1));
         if (e) e.damage += d; else pvpDamageByPlayer.set(h.target, { damage: d });
         continue;
       }
@@ -25535,7 +25883,7 @@
       if (player.isGrounded) {
         const fallHeight = player.fallPeakY - absoluteFeetY;
         if (fallHeight > FALL_DAMAGE_SAFE_HEIGHT && player.pendingThrowLandingDamage <= 0 && !player.grabbedBy) {
-          takeDamage(player, Math.round((fallHeight - FALL_DAMAGE_SAFE_HEIGHT) * FALL_DAMAGE_PER_METER));
+          takeDamage(player, fallDamageAmount(fallHeight));
         }
       }
     }
@@ -27723,6 +28071,11 @@
 
   const MENU_NAV_SCREENS = [
     {
+      key: "pvp-settings", // first: it sits on top of the PVP setup screens
+      isActive: () => isPvpSettingsOpen(),
+      getEls: () => [pvpSettingSliderEls.health, pvpSettingSliderEls.speed, document.getElementById("pvp-settings-reset"), document.getElementById("pvp-settings-done")],
+    },
+    {
       key: "title-main",
       // Also requires the outer #title-screen to actually be visible --
       // opening Settings from it (titleSettingsButtonEl's click handler)
@@ -27967,6 +28320,7 @@
   let backButtonWasPressed = false;
 
   function getControllerBackTarget() {
+    if (isPvpSettingsOpen()) return document.getElementById("pvp-settings-done");
     if (pvpResultsEl && pvpResultsEl.classList.contains("visible")) return pvpResultsContinueEl;
     if (titlePanels.mode.classList.contains("active")) return document.getElementById("mode-back-button");
     if (titlePanels.setup.classList.contains("active")) return document.getElementById("setup-back-button");
@@ -28139,15 +28493,22 @@
     // not -- see where animate() is first called) rather than starting a
     // second competing rAF loop just for this screen's gamepad polling
     // and countdown timer.
+    // (PVP Settings panel open: the setup screens' pads/countdowns pause underneath it.)
+    const pvpSettingsUp = isPvpSettingsOpen();
+    if (pvpSetupSelected && (titlePanels["coop-setup"].classList.contains("active") || titlePanels["quad-setup"].classList.contains("active"))) pollPvpSettingsOpenButton();
     if (titlePanels["coop-setup"].classList.contains("active")) {
-      pollCoopSetupGamepads(deltaSeconds);
-      updateCoopCountdown(deltaSeconds);
+      if (!pvpSettingsUp) {
+        pollCoopSetupGamepads(deltaSeconds);
+        updateCoopCountdown(deltaSeconds);
+      }
       updateCoopSetupModelPreviews(deltaSeconds);
     }
 
     if (titlePanels["quad-setup"].classList.contains("active")) {
-      pollQuadSetupGamepads(deltaSeconds);
-      updateQuadCountdown(deltaSeconds);
+      if (!pvpSettingsUp) {
+        pollQuadSetupGamepads(deltaSeconds);
+        updateQuadCountdown(deltaSeconds);
+      }
       updateQuadSetupModelPreviews(deltaSeconds);
     }
 
@@ -28439,9 +28800,10 @@
       // Customization (setup screens), for checking the previews by hand.
       humanSystem, p1ModelPreview, coopSetup, updateCoopSetupUI,
       // PVP smoke test (#pvptest, tests/pvp-test.js).
-      startPvpForTest(n) {
+      startPvpForTest(n, mode) {
         resetGame();
         pvpSetupSelected = true;
+        pvpMode = mode || "deathmatch";
         if (n === 2) {
           resetCoopSetup();
           coopSetup.p1Scheme = "controller";
@@ -28456,6 +28818,9 @@
         }
         pvpSetupSelected = false;
       },
+      pvpSettings, PVP_SETTINGS_DEFAULT, setPvpSetting, openPvpSettings, closePvpSettings, isPvpSettingsOpen, getMaxHealth, pvpMoveSpeedMultiplier, PVP_DAMAGE_TABLE, PVP_HIT_ZONES, pvpHitZone, pvpGunDamage, updateHealthUI,
+      pvpRecordKill, fallDamageAmount, stepPvpMode, setPvpSetup, PVP_MATCH_SECONDS, PVP_GUN_GAME_LADDER, PVP_HEAL_ON_KILL, pvpUi, renderer,
+      get pvpMode() { return pvpMode; },
       pvpRespawnPlayer, pickPvpSpawnPoint, findPvpPlayerHits, updatePvpMatch, endPvpMatch, pvpMatch, pvpTryRespawn,
       pvpSelectWeapon, tryStartSlide, targetStandingY, hudRefsFor, updateCoopMatchFrame, resetGame, getMaxStamina,
       toggleInventory, PVP_SPAWN, PVP_INFINITE_RESERVE, PVP_RESPAWN_DELAY_SECONDS,
