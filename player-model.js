@@ -106,8 +106,15 @@
     // spec: { bone, parent, child, a, b, u, v, rings: [[t, ru, rv, du, dv]], radial,
     //         capStart, capEnd, blend: [s, e], extra(t, ang) -> weights,
     //         radius(t, ang, x, y, z) -> extra meters, color(t, ang, point) -> THREE.Color }
+    //   capSplit: the caps get their own copy of the ring (flat-shaded, see addTube)
+    //   angles: optional [ang] (or fn(t) -> [ang]) replacing the evenly spaced ring
+    //     vertices (duplicate angles make hard color edges); open: don't join the
+    //     last vertex back to the first (a jacket's open front). radius/color also
+    //     get the vertex's index k in the ring.
     function addTube(g, spec) {
-      const rings = spec.rings, radial = spec.radial;
+      const rings = spec.rings;
+      const angleList = (t) => (typeof spec.angles === "function" ? spec.angles(t) : spec.angles);
+      const radial = spec.angles ? angleList(rings[0][0]).length : spec.radial;
       const [bs, be] = spec.blend || [0.18, 0.18];
       tmpAxis.subVectors(spec.b, spec.a);
       const axis = tmpAxis.clone();
@@ -129,18 +136,19 @@
         const [t, ru, rv, du = 0, dv = 0] = ring;
         tmpC.copy(spec.a).addScaledVector(axis, t).addScaledVector(spec.u, du).addScaledVector(spec.v, dv);
         starts.push(g.pos.length / 3);
+        const list = spec.angles ? angleList(t) : null;
         for (let k = 0; k < radial; k++) {
-          const ang = (k / radial) * Math.PI * 2;
+          const ang = list ? list[k] : (k / radial) * Math.PI * 2;
           const cu = Math.cos(ang), sv = Math.sin(ang);
           tmpP.copy(tmpC).addScaledVector(spec.u, cu * ru).addScaledVector(spec.v, sv * rv);
-          const add = spec.radius ? spec.radius(t, ang, tmpP) : 0;
+          const add = spec.radius ? spec.radius(t, ang, tmpP, k) : 0;
           if (add) tmpP.addScaledVector(spec.u, cu * add).addScaledVector(spec.v, sv * add);
-          pushVertex(g, tmpP, weightsAt(t, ang), spec.color(t, ang, tmpP));
+          pushVertex(g, tmpP, weightsAt(t, ang), spec.color(t, ang, tmpP, k));
         }
       }
       for (let r = 0; r < rings.length - 1; r++) {
         const a0 = starts[r], a1 = starts[r + 1];
-        for (let k = 0; k < radial; k++) {
+        for (let k = 0; k < (spec.open ? radial - 1 : radial); k++) {
           const k1 = (k + 1) % radial;
           g.index.push(a0 + k, a1 + k, a0 + k1, a0 + k1, a1 + k, a1 + k1);
         }
@@ -150,7 +158,20 @@
         tmpC.copy(spec.a).addScaledVector(axis, ring[0]).addScaledVector(spec.u, ring[3] || 0).addScaledVector(spec.v, ring[4] || 0);
         if (spec.capBulge) tmpC.addScaledVector(axis.clone().normalize(), reverse ? -spec.capBulge : spec.capBulge);
         const c = pushVertex(g, tmpC, weightsAt(ring[0], 0), spec.color(ring[0], 0, tmpC));
-        const s = starts[ri];
+        let s = starts[ri];
+        if (spec.capSplit) {
+          // The cap gets its own copy of the ring, so its flat normal doesn't
+          // darken the side's shading along the rim.
+          const copy = g.pos.length / 3;
+          for (let k = 0; k < radial; k++) {
+            const v = s + k;
+            g.pos.push(g.pos[v * 3], g.pos[v * 3 + 1], g.pos[v * 3 + 2]);
+            g.col.push(g.col[v * 3], g.col[v * 3 + 1], g.col[v * 3 + 2]);
+            g.pat.push(g.pat[v]);
+            for (let i = 0; i < 4; i++) { g.skinIndex.push(g.skinIndex[v * 4 + i]); g.skinWeight.push(g.skinWeight[v * 4 + i]); }
+          }
+          s = copy;
+        }
         for (let k = 0; k < radial; k++) {
           const k1 = (k + 1) % radial;
           // Wound to face out of the tube, matching its sides (the start cap
@@ -161,6 +182,27 @@
       };
       if (spec.capStart) cap(0, true);
       if (spec.capEnd) cap(rings.length - 1, false);
+    }
+
+    // Linear blend of a ring list [[t, ru, rv, du, dv]] at t.
+    function ringLerp(rings, t) {
+      let i = 0;
+      while (i < rings.length - 2 && t > rings[i + 1][0]) i++;
+      const a = rings[i], b = rings[i + 1];
+      const f = Math.min(1, Math.max(0, (t - a[0]) / (b[0] - a[0] || 1)));
+      return [t, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, (a[3] || 0) + ((b[3] || 0) - (a[3] || 0)) * f, (a[4] || 0) + ((b[4] || 0) - (a[4] || 0)) * f];
+    }
+    // The rings plus a pair at each hard edge: one just before it (t = edge - gap)
+    // and one exactly on it. A color or radius that switches at `t >= edge` then
+    // changes over a couple of millimeters instead of smearing between two far
+    // apart rings (sleeve ends, hems, boot tops).
+    function withEdges(rings, edges, gap = 0.012) {
+      const out = rings.map((r) => r.slice());
+      for (const e of edges) {
+        if (e <= 0 || e >= 1) continue;
+        for (const t of [Math.max(0, e - gap), e]) if (!out.some((r) => r[0] === t)) out.push(ringLerp(rings, t));
+      }
+      return out.sort((a, b) => a[0] - b[0]);
     }
 
     // Paper bag over the head (head-bone local, origin at the skull base):
@@ -206,7 +248,8 @@
     //   kind: how it's cut (see buildBodyGeometry), color, under (the
     //   shirt under a jacket/vest), pattern: a CLOTH PATTERNS id.
     // ------------------------------------------------------------------
-    const PATTERN = { none: 0, plaid: 1, camo: 2, hiVis: 3, zipper: 4, buttonUp: 5, kneePads: 6, crease: 7 };
+    const PATTERN = { none: 0, plaid: 1, camo: 2, hiVis: 3, zipper: 4, buttonUp: 5, kneePads: 6, crease: 7, msum: 8 };
+    const MSUM_RED = 0xc8102e;
     const SHIRTS = {
       tee: { name: "T-Shirt", kind: "tee", color: 0xe9e6de },
       hoodie: { name: "Hoodie", kind: "hoodie", color: 0x3b3e45 },
@@ -215,6 +258,10 @@
       constructionVest: { name: "Construction Vest", kind: "vest", color: 0xd4ef2e, under: 0x6d7076, pattern: PATTERN.hiVis },
       militaryJacket: { name: "Military Jacket", kind: "jacket", color: 0x5f6947, under: 0x3a3f2e, pattern: PATTERN.camo },
       rainJacket: { name: "Rain Jacket", kind: "rainjacket", color: 0xf0c020, pattern: PATTERN.zipper },
+      // Added skins. `naked`: bare skin (the character's own tone), never a random pick.
+      suitTie: { name: "Suit Coat & Tie", kind: "suit", color: 0x17181c, under: 0xf4f3ee, tie: 0x7a1022 },
+      msumJersey: { name: "MSUM Jersey", kind: "jersey", color: MSUM_RED, pattern: PATTERN.msum },
+      naked: { name: "Naked", kind: "naked", color: 0xffffff, naked: true },
     };
     const PANTS = {
       jeans: { name: "Jeans", kind: "jeans", color: 0x3b5578 },
@@ -222,26 +269,33 @@
       suit: { name: "Suit Pants", kind: "suit", color: 0x2a2e37, pattern: PATTERN.crease },
       work: { name: "Work Pants", kind: "work", color: 0x8b7048, pattern: PATTERN.kneePads },
       athletic: { name: "Athletic Pants", kind: "athletic", color: 0x2b2d31, accent: 0xf2f2f2 },
+      shorts: { name: "Shorts", kind: "shorts", color: 0x9c8a66 },
+      msumShorts: { name: "MSUM Shorts", kind: "msumshorts", color: MSUM_RED, accent: 0xf6f6f2 },
+      naked: { name: "Naked", kind: "naked", color: 0xffffff, naked: true },
     };
     const SHIRT_KEYS = Object.keys(SHIRTS);
     const PANTS_KEYS = Object.keys(PANTS);
+    // What a random pick may land on (Naked is only reachable by cycling).
+    const SHIRT_RANDOM_KEYS = SHIRT_KEYS.filter((k) => !SHIRTS[k].naked);
+    const PANTS_RANDOM_KEYS = PANTS_KEYS.filter((k) => !PANTS[k].naked);
 
     // A copy of `ap` wearing that shirt and those pants (build, skin,
     // shoes and everything else kept).
     function dressAppearance(ap, shirtKey, pantsKey) {
       const shirt = SHIRTS[shirtKey] || SHIRTS.tee;
       const pants = PANTS[pantsKey] || PANTS.jeans;
-      const layered = shirt.kind === "jacket" || shirt.kind === "vest";
+      const layered = shirt.kind === "jacket" || shirt.kind === "vest" || shirt.kind === "suit";
       return {
         ...ap,
         shirtStyle: SHIRTS[shirtKey] ? shirtKey : "tee",
         pantsStyle: PANTS[pantsKey] ? pantsKey : "jeans",
         shirtKind: shirt.kind,
-        shirt: new THREE.Color(layered ? shirt.under : shirt.color),
-        outer: new THREE.Color(shirt.color),
+        shirt: shirt.naked ? ap.skin.clone() : new THREE.Color(layered ? shirt.under : shirt.color),
+        outer: shirt.naked ? ap.skin.clone() : new THREE.Color(shirt.color),
+        tie: new THREE.Color(shirt.tie !== undefined ? shirt.tie : 0x7a1022),
         shirtPattern: shirt.pattern || 0,
         pantsKind: pants.kind,
-        pants: new THREE.Color(pants.color),
+        pants: pants.naked ? ap.skin.clone() : new THREE.Color(pants.color),
         accent: new THREE.Color(pants.accent !== undefined ? pants.accent : 0xf2f2f2),
         pantsPattern: pants.pattern || 0,
       };
@@ -307,62 +361,129 @@
       const shade = (color, amount = 0.03) => { vi++; return cTmp.copy(color).multiplyScalar(1 - amount + 2 * amount * hash(vi, seed)); };
 
       // (a vest is worn over a tee: its sleeves are the tee's)
-      const shortSleeves = ap.shirtKind === "tee" || ap.shirtKind === "vest";
-      const sleeveLen = shortSleeves ? 0.42 : 1.1; // fraction of the upper arm (1.1 = full length, wrist cuff on forearm)
-      const torsoLoose = { tee: 0.006, longsleeve: 0.006, sweatshirt: 0.014, hoodie: 0.018, jacket: 0.024,
-        flannel: 0.01, workshirt: 0.01, vest: 0.02, rainjacket: 0.026 }[ap.shirtKind];
-      const outerColor = ap.shirtKind === "jacket" || ap.shirtKind === "vest" ? ap.outer : ap.shirt;
-      const pantsLoose = { jeans: 0.006, cargo: 0.013, athletic: 0.01, shorts: 0.012, suit: 0.004, work: 0.014 }[ap.pantsKind];
+      const kind = ap.shirtKind;
+      const bareTop = kind === "naked", suit = kind === "suit", jersey = kind === "jersey";
+      const suitDetail = suit && lod.detail; // open jacket, lapels, white shirt, tie
+      const bareLegs = ap.pantsKind === "naked";
+      const shortSleeves = kind === "tee" || kind === "vest" || jersey;
+      const sleeveLen = bareTop ? 0 : jersey ? 0.5 : shortSleeves ? 0.42 : 1.1; // fraction of the upper arm (1.1 = full length, wrist cuff on forearm)
+      const torsoLoose = { naked: 0, tee: 0.006, jersey: 0.011, longsleeve: 0.006, sweatshirt: 0.014, hoodie: 0.018, jacket: 0.024, suit: 0.024,
+        flannel: 0.01, workshirt: 0.01, vest: 0.02, rainjacket: 0.026 }[kind];
+      const jacketTop = kind === "jacket" || kind === "vest" || suit; // `outer` is the garment, `shirt` what's under it
+      const outerColor = jacketTop ? ap.outer : ap.shirt;
+      const pantsLoose = { naked: 0, jeans: 0.006, cargo: 0.013, athletic: 0.01, shorts: 0.012, msumshorts: 0.009, suit: 0.004, work: 0.014 }[ap.pantsKind];
+      const shortsCut = ap.pantsKind === "shorts" ? 0.72 : ap.pantsKind === "msumshorts" ? 0.4 : 0; // where on the thigh the hem is (0 = full length)
+      const stripedLegs = ap.pantsKind === "athletic" || ap.pantsKind === "msumshorts";
       const beltColor = new THREE.Color(0x2a2420);
+      const skinC = () => shade(ap.skin, 0.012);
+      const WHITE = 0xf4f3ee;
       // Cloth patterns (see CLOTH PATTERNS): tagged per vertex as the
       // shirt / pants colors are handed out.
-      const shirtCloth = (color, amount) => { g.nextPattern = ap.shirtPattern || 0; return shade(color, amount); };
-      const sleeveCloth = (color, amount) => { g.nextPattern = ap.shirtKind === "vest" ? 0 : ap.shirtPattern || 0; return shade(color, amount); };
-      const pantsCloth = (color, amount) => { g.nextPattern = ap.pantsPattern || 0; return shade(color, amount); };
-      const hooded = ap.shirtKind === "hoodie" || ap.shirtKind === "rainjacket";
-      const collared = ap.shirtKind === "jacket" || ap.shirtKind === "workshirt" || ap.shirtKind === "flannel";
+      const shirtCloth = (color, amount) => { if (bareTop) return skinC(); g.nextPattern = ap.shirtPattern || 0; return shade(color, amount); };
+      const sleeveCloth = (color, amount) => { if (bareTop) return skinC(); g.nextPattern = kind === "vest" ? 0 : ap.shirtPattern || 0; return shade(color, amount); };
+      const pantsCloth = (color, amount) => { if (bareLegs) return skinC(); g.nextPattern = ap.pantsPattern || 0; return shade(color, amount); };
+      const trimColor = (hex, amount = 0.015) => shade(cTmp.set(hex), amount);
+      const hooded = kind === "hoodie" || kind === "rainjacket";
+      const collared = kind === "jacket" || kind === "workshirt" || kind === "flannel";
+      // A crisp vertical stripe down a leg's outer side: the ring's vertices
+      // plus a tight pair at each stripe edge, so the stripe has hard edges.
+      const STRIPE_HALF = 0.15;
+      const stripeAngles = (centre, n) => {
+        const wrap = (a) => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+        const away = (a) => Math.abs(((a - centre + Math.PI * 3) % (2 * Math.PI)) - Math.PI);
+        const out = [];
+        for (let k = 0; k < n; k++) { const a = (k / n) * Math.PI * 2; if (away(a) > STRIPE_HALF + 0.4) out.push(a); }
+        for (const d of [-STRIPE_HALF - 0.012, -STRIPE_HALF, STRIPE_HALF, STRIPE_HALF + 0.012]) out.push(wrap(centre + d));
+        return out.sort((a, b) => a - b);
+      };
+      const inStripe = (ang, centre) => Math.abs(((ang - centre + Math.PI * 3) % (2 * Math.PI)) - Math.PI) <= STRIPE_HALF + 1e-6;
+      const tab = (y, pts) => { // piecewise-linear table lookup, clamped
+        if (y <= pts[0][0]) return pts[0][1];
+        for (let i = 1; i < pts.length; i++) if (y <= pts[i][0]) return pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * (y - pts[i - 1][0]) / (pts[i][0] - pts[i - 1][0]);
+        return pts[pts.length - 1][1];
+      };
+      // y-keyed ring lists -> tube rings (t from y0 to y1)
+      const toRings = (list, y0, y1) => list.map(([y, ...rest]) => [(y - y0) / (y1 - y0), ...rest]);
+      const densify = (rings, per) => {
+        const out = [];
+        for (let i = 0; i < rings.length - 1; i++) for (let s = 0; s < per; s++) out.push(ringLerp(rings, rings[i][0] + (rings[i + 1][0] - rings[i][0]) * s / per));
+        out.push(rings[rings.length - 1].slice());
+        return out;
+      };
+
+      // The body's own torso rings by height (units of H): the abdomen
+      // (waist taper) and the chest (shoulders sloping into the neck). Clothes
+      // are these plus a little radius; loose shirts drape straight down over
+      // the hips instead of following the waist in.
+      const SH = ap.shoulders;
+      const abdBody = [[0.99, 0.155 * gt, 0.102 * gt], [1.106, 0.155 * gt * ap.waist, 0.096 * gt], [1.222, 0.162 * gt, 0.104 * gt], [1.28, gt * (0.0818 + 0.0925 * SH), 0.1134 * gt, 0, 0.006]];
+      const abdDrape = [[0.935, 0.19 * ap.hips, 0.128 * gt], [0.99, 0.173 * ap.hips, 0.114 * gt], [1.106, 0.155 * gt * (0.5 + 0.5 * ap.waist), 0.099 * gt], abdBody[2], abdBody[3]];
+      const chestBody = [[1.23, 0.1636 * gt, 0.1047 * gt], [1.33, 0.185 * gt * SH, 0.122 * gt, 0, 0.012], [1.43, 0.198 * gt * SH, 0.114 * gt, 0, 0.004], [1.4806, 0.16 * gt * SH, 0.094 * gt], [1.515, 0.075, 0.068]];
+      const abdBottom = bareTop ? 0.99 : 0.935;
+      const abdList = bareTop ? abdBody : abdDrape;
+      const clavExtra = (t, ang) => {
+        if (t < 0.6) return null;
+        const c = Math.cos(ang);
+        const w = Math.min(0.55, Math.max(0, (Math.abs(c) - 0.35) * 1.1)) * Math.min(1, (t - 0.6) / 0.2);
+        return w > 0 ? [[c > 0 ? B.clavL : B.clavR, w]] : null;
+      };
+      // Body surface in front (z) at height y, for things lying on the chest (tie).
+      const frontZ = (y) => {
+        const l = y >= 1.23 ? chestBody : abdBody;
+        const r = ringLerp(l.map(([yy, ...rest]) => [yy, ...rest]), y);
+        return r[2] + (r[4] || 0);
+      };
 
       // ---- Pelvis ----
+      // (under a shirt that drapes over the hips, the upper rings sink inside it)
+      const shirtOverHips = !bareTop && !suit;
       addTube(g, {
         bone: B.hips, child: B.spine, a: at(0.84), b: at(1.075), u: X, v: Z, radial: lod.torso,
         // Wide enough at the hips to wrap the tops of both thighs, so the
         // legs join the body instead of hanging beside it.
-        rings: [[0, 0.158 * ap.hips, 0.092 * gt], [0.3, 0.172 * ap.hips, 0.108 * gt], [0.6, 0.174 * ap.hips, 0.112 * gt, 0, -0.008], [0.85, 0.162 * ap.hips, 0.104 * gt], [1, 0.155 * gt, 0.1 * gt]],
-        capStart: true, capBulge: 0.008, blend: [0, 0.3],
-        radius: () => pantsLoose,
-        color: (t) => (t > 0.86 && ap.pantsKind !== "athletic" && ap.pantsKind !== "shorts" ? beltColor : pantsCloth(ap.pants)),
-      });
-      // ---- Abdomen (shirt; hoodie/sweatshirt ribbed hem low on the hips) ----
-      addTube(g, {
-        bone: B.spine, parent: B.hips, child: B.chest, a: at(0.99), b: at(1.28), u: X, v: Z, radial: lod.torso,
-        // The athletic taper: narrowest at the natural waist, widening to the chest.
-        rings: [[0, 0.155 * gt, 0.102 * gt], [0.4, 0.155 * gt * ap.waist, 0.096 * gt], [0.8, 0.162 * gt, 0.104 * gt], [1, 0.174 * gt, 0.11 * gt]],
-        blend: [0.25, 0.25],
-        radius: (t) => torsoLoose + (t < 0.12 ? 0.004 : 0),
-        color: (t, ang, p) => {
-          if ((ap.shirtKind === "hoodie" || ap.shirtKind === "sweatshirt") && t < 0.1) return shirtCloth(outerColor, 0.02).multiplyScalar(0.85); // ribbed hem
-          if (ap.shirtKind === "hoodie" && p.z > 0.06 && t > 0.2 && t < 0.62 && Math.abs(p.x) < 0.1) return shirtCloth(outerColor).multiplyScalar(0.88); // kangaroo pocket
-          return shirtCloth(outerColor);
+        rings: [[0, 0.168 * ap.hips, 0.103 * gt], [0.3, 0.172 * ap.hips, 0.108 * gt], [0.6, 0.174 * ap.hips, 0.112 * gt, 0, -0.008], [0.85, 0.162 * ap.hips, 0.104 * gt], [1, 0.155 * gt, 0.1 * gt]],
+        capStart: true, capSplit: true, capBulge: 0.008, blend: [0, 0.3],
+        radius: (t) => pantsLoose - (shirtOverHips && t > 0.3 ? 0.014 * Math.min(1, (t - 0.3) / 0.3) : 0),
+        color: (t) => {
+          if (bareLegs) return skinC();
+          if (t > 0.86 && ap.pantsKind === "msumshorts") return trimColor(WHITE);
+          if (t > 0.86 && ap.pantsKind === "shorts") return pantsCloth(ap.pants).multiplyScalar(0.86);
+          return t > 0.86 && ap.pantsKind !== "athletic" ? beltColor : pantsCloth(ap.pants);
         },
       });
-      // ---- Chest: broad shoulders sloping into the neck (trapezius) ----
-      addTube(g, {
-        bone: B.chest, parent: B.spine, a: at(1.23), b: at(1.515), u: X, v: Z, radial: lod.torso,
-        rings: [[0, 0.17 * gt, 0.11 * gt], [0.35, 0.185 * gt * ap.shoulders, 0.122 * gt, 0, 0.012], [0.7, 0.198 * gt * ap.shoulders, 0.114 * gt, 0, 0.004],
-          [0.88, 0.16 * gt * ap.shoulders, 0.094 * gt], [1, 0.075, 0.068]],
-        capEnd: true, blend: [0.2, 0],
-        extra: (t, ang) => {
-          if (t < 0.6) return null;
-          const c = Math.cos(ang);
-          const w = Math.min(0.55, Math.max(0, (Math.abs(c) - 0.35) * 1.1)) * Math.min(1, (t - 0.6) / 0.2);
-          return w > 0 ? [[c > 0 ? B.clavL : B.clavR, w]] : null;
-        },
-        radius: (t) => (t < 0.95 ? torsoLoose : torsoLoose * 0.5),
-        color: (t, ang, p) => {
-          if (shortSleeves && t > 0.97) return shade(ap.skin, 0.012); // crew neck opening
-          return shirtCloth(outerColor);
-        },
-      });
+
+      // ---- Abdomen / chest ----
+      if (suitDetail) {
+        addSuitTorso();
+      } else {
+        const hemT = hooded || kind === "sweatshirt" ? 0.1 : 0;
+        // Abdomen (shirt; hoodie/sweatshirt ribbed hem low on the hips)
+        addTube(g, {
+          bone: B.spine, parent: B.hips, child: B.chest, a: at(abdBottom), b: at(1.28), u: X, v: Z, radial: lod.torso,
+          // The athletic taper: narrowest at the natural waist, widening to the chest.
+          rings: withEdges(toRings(abdList, abdBottom, 1.28), jersey ? [0.07] : hemT ? [hemT] : []),
+          blend: [0.25, 0.25],
+          radius: (t) => torsoLoose + (!bareTop && t < 0.09 ? 0.004 : 0),
+          color: (t, ang, p) => {
+            if (hemT && t < hemT) return shirtCloth(outerColor, 0.02).multiplyScalar(0.85); // ribbed hem
+            if (jersey && t < 0.07) return trimColor(WHITE); // hem trim
+            if (kind === "hoodie" && p.z > 0.06 && t > 0.3 && t < 0.72 && Math.abs(p.x) < 0.1) return shirtCloth(outerColor).multiplyScalar(0.88); // kangaroo pocket
+            return shirtCloth(outerColor);
+          },
+        });
+        // Chest: broad shoulders sloping into the neck (trapezius)
+        addTube(g, {
+          bone: B.chest, parent: B.spine, a: at(1.23), b: at(1.515), u: X, v: Z, radial: lod.torso,
+          rings: toRings(chestBody, 1.23, 1.515),
+          capEnd: true, blend: [0.2, 0],
+          extra: clavExtra,
+          radius: (t) => (t < 0.95 ? torsoLoose : torsoLoose * 0.5),
+          color: (t) => {
+            if (shortSleeves && t > 0.97) return shade(ap.skin, 0.012); // crew neck opening
+            return shirtCloth(outerColor);
+          },
+        });
+      }
       // ---- Neck ----
       addTube(g, {
         bone: B.neck, parent: B.chest, child: B.head, a: at(1.44), b: at(1.6), u: X, v: Z, radial: Math.max(6, lod.limb - 2),
@@ -378,7 +499,7 @@
           rings: [[0, 0.07, 0.035], [0.4, 0.105, 0.05], [1, 0.07, 0.03]], capStart: true, capEnd: true,
           color: () => shirtCloth(outerColor).multiplyScalar(0.92),
         });
-        for (const side of ap.shirtKind === "hoodie" ? [1, -1] : []) { // drawstrings
+        for (const side of kind === "hoodie" ? [1, -1] : []) { // drawstrings
           addTube(g, {
             bone: B.chest, a: new THREE.Vector3(0.025 * side, 1.47 * H, 0.1), b: new THREE.Vector3(0.03 * side, 1.34 * H, 0.13), u: X, v: Z, radial: 4,
             rings: [[0, 0.004, 0.004], [1, 0.004, 0.004]], color: () => cTmp.set(0xeeeeee),
@@ -392,28 +513,51 @@
           color: (t, ang) => shirtCloth(outerColor).multiplyScalar(Math.sin(ang) > 0.85 ? 0.6 : 1),
         });
       }
+      if (lod.detail && jersey) { // ribbed white collar round the neck
+        addTube(g, {
+          bone: B.chest, child: B.neck, a: at(1.475), b: at(1.525), u: X, v: Z, radial: 14,
+          rings: [[0, 0.088, 0.083, 0, -0.004], [0.3, 0.086, 0.081, 0, -0.005], [1, 0.07, 0.066, 0, -0.006]], blend: [0, 0.4],
+          color: (t) => trimColor(WHITE).multiplyScalar(t > 0.9 ? 0.9 : 1),
+        });
+      }
 
       for (const side of [1, -1]) {
         const L = side > 0;
         const cl = L ? B.clavL : B.clavR, ua = L ? B.upperArmL : B.upperArmR, fa = L ? B.forearmL : B.forearmR, hd = L ? B.handL : B.handR;
         const th = L ? B.thighL : B.thighR, sh = L ? B.shinL : B.shinR, ft = L ? B.footL : B.footR;
-        const sleeveColor = ap.shirtKind === "jacket" ? ap.outer : ap.shirt; // (a vest's sleeves are the tee under it)
+        const sleeveColor = kind === "jacket" || suit ? ap.outer : ap.shirt; // (a vest's sleeves are the tee under it)
         // Upper arm: deltoid cap into the clavicle, bicep, taper to the elbow.
+        const trimStart = sleeveLen - 0.1; // (jersey) white band at the sleeve end
         addTube(g, {
           bone: ua, parent: cl, child: fa, a: J[ua].clone().add(new THREE.Vector3(-0.01 * side, 0.03, 0)), b: J[fa], u: X, v: Z, radial: lod.limb,
-          rings: [[0, 0.058 * gl, 0.058 * gl], [0.15, 0.056 * gl, 0.06 * gl], [0.45, 0.046 * gl, 0.05 * gl], [0.8, 0.04 * gl, 0.042 * gl], [1, 0.037 * gl, 0.039 * gl]],
+          rings: withEdges([[0, 0.058 * gl, 0.058 * gl], [0.15, 0.056 * gl, 0.06 * gl], [0.45, 0.046 * gl, 0.05 * gl], [0.8, 0.04 * gl, 0.042 * gl], [1, 0.037 * gl, 0.039 * gl]],
+            sleeveLen > 0 && sleeveLen < 1 ? (jersey ? [trimStart, sleeveLen] : [sleeveLen - 0.1, sleeveLen]) : [], 0.01),
           blend: [0.3, 0.2], capStart: true, capBulge: 0.015,
-          radius: (t) => (t < sleeveLen ? (ap.shirtKind === "vest" ? 0.006 : torsoLoose) * 0.7 + (shortSleeves && t > sleeveLen - 0.1 ? 0.004 : 0) : 0),
-          color: (t) => (t < sleeveLen ? sleeveCloth(sleeveColor) : shade(ap.skin, 0.012)),
+          radius: (t) => (t < sleeveLen ? (kind === "vest" ? 0.006 : torsoLoose) * 0.7 + (shortSleeves && t >= sleeveLen - 0.1 ? 0.004 : 0) : 0),
+          color: (t) => {
+            if (t >= sleeveLen) return skinC();
+            if (jersey && t >= trimStart) return trimColor(WHITE);
+            return sleeveCloth(sleeveColor);
+          },
         });
         // Forearm: fuller below the elbow; sleeves end in a cuff at the wrist.
         const cuff = sleeveLen > 1;
+        const cuffA = suit ? 0.86 : 0.84, cuffB = suit ? 0.9 : 0.93; // sleeve (and its darker cuff) ends here
         addTube(g, {
           bone: fa, parent: ua, child: hd, a: J[fa].clone().add(new THREE.Vector3(0, 0.02, 0)), b: J[hd], u: X, v: Z, radial: lod.limb,
-          rings: [[0, 0.037 * gl, 0.039 * gl], [0.25, 0.041 * gl, 0.04 * gl], [0.7, 0.032 * gl, 0.028 * gl], [1, 0.027 * gl, 0.022 * gl]],
+          rings: withEdges([[0, 0.037 * gl, 0.039 * gl], [0.25, 0.041 * gl, 0.04 * gl], [0.7, 0.032 * gl, 0.028 * gl], [1, 0.027 * gl, 0.022 * gl]], cuff ? (suit ? [cuffB, 0.97] : [cuffA, cuffB]) : [], 0.01),
           blend: [0.2, 0.2],
-          radius: (t) => (cuff && t < 0.93 ? torsoLoose * 0.6 : 0),
-          color: (t) => (cuff && t < 0.93 ? (t > 0.84 ? sleeveCloth(sleeveColor).multiplyScalar(0.85) : sleeveCloth(sleeveColor)) : shade(ap.skin, 0.012)),
+          radius: (t) => {
+            if (!cuff) return 0;
+            if (suit && lod.detail && t >= cuffB) return t < 0.97 ? 0.007 : 0; // the shirt cuff, a little inside the sleeve
+            return t < cuffB ? torsoLoose * 0.6 : 0;
+          },
+          color: (t) => {
+            if (!cuff) return skinC();
+            if (suit && lod.detail && t >= cuffB) return t < 0.97 ? trimColor(WHITE) : skinC();
+            if (t >= cuffB) return skinC();
+            return t >= cuffA && !suit ? sleeveCloth(sleeveColor).multiplyScalar(0.85) : sleeveCloth(sleeveColor);
+          },
         });
         // Hand: a palm, then fingers curling in toward the palm (a gripping
         // hand -- players always hold a weapon or make a fist), and a thumb
@@ -439,36 +583,51 @@
             rings: [[0, 0.011, 0.012], [1, 0.008, 0.009]], capEnd: true, color: () => shade(ap.skin, 0.012),
           });
         }
-        // Thigh: pants (cargo pockets on the outer side, shorts end above the knee).
-        const shorts = ap.pantsKind === "shorts";
+        // Thigh: pants (cargo pockets on the outer side, shorts end at their hem).
+        const shorts = shortsCut > 0, bare = bareLegs;
+        const outerAng = L ? 0 : Math.PI; // the outer side of this leg (ang 0 = +X)
+        const legAngles = stripedLegs ? stripeAngles(outerAng, lod.limb) : null;
+        const hemBand = 0.06; // folded hem: this much above the cut
+        const thighRings = withEdges([[0, 0.086 * gl, 0.09 * gl], [0.2, 0.086 * gl, 0.09 * gl, 0, -0.004], [0.6, 0.068 * gl, 0.073 * gl], [1, 0.05 * gl, 0.054 * gl]],
+          shorts ? [shortsCut - hemBand, shortsCut] : [], 0.012);
         addTube(g, {
           bone: th, parent: B.hips, child: sh, a: J[th].clone().add(new THREE.Vector3(0, 0.07, 0)), b: J[sh], u: X, v: Z, radial: lod.limb,
-          rings: [[0, 0.086 * gl, 0.09 * gl], [0.2, 0.086 * gl, 0.09 * gl, 0, -0.004], [0.6, 0.068 * gl, 0.073 * gl], [1, 0.05 * gl, 0.054 * gl]],
+          angles: legAngles || undefined,
+          rings: thighRings,
           blend: [0.25, 0.2],
           radius: (t, ang) => {
-            if (shorts && t > 0.55) return 0;
+            if (bare || (shorts && t >= shortsCut)) return 0;
             let r = pantsLoose;
+            if (shorts) {
+              r += (ap.pantsKind === "shorts" ? 0.014 : 0.01) * Math.min(1, Math.max(0, (t - 0.1) / 0.35)); // flares to the hem
+              if (t >= shortsCut - hemBand) r += 0.004; // hem fold
+            }
             if (ap.pantsKind === "cargo" && t > 0.42 && t < 0.66 && Math.cos(ang) * side > 0.55) r += 0.016;
             return r;
           },
           color: (t, ang) => {
-            if (shorts && t > 0.55) return shade(ap.skin, 0.012);
-            if (ap.pantsKind === "athletic" && Math.cos(ang) * side > 0.92) return cTmp.copy(ap.accent);
+            if (bare || (shorts && t >= shortsCut)) return skinC();
+            if (stripedLegs && inStripe(ang, outerAng)) return cTmp.copy(ap.accent);
+            if (shorts && t >= shortsCut - hemBand) return (ap.pantsKind === "msumshorts" ? trimColor(WHITE) : pantsCloth(ap.pants).multiplyScalar(0.88)); // hem
             if (ap.pantsKind === "cargo" && t > 0.42 && t < 0.66 && Math.cos(ang) * side > 0.55) return pantsCloth(ap.pants).multiplyScalar(0.9);
             return pantsCloth(ap.pants);
           },
         });
         // Shin: calf; pant hem over the shoe (or boot shaft).
         const boots = ap.shoeKind === "boots";
+        const bareShin = shorts || bare; // skin down to the shoe (shorts: white sock top)
+        const sock = shorts;
         addTube(g, {
           bone: sh, parent: th, child: ft, a: J[sh].clone().add(new THREE.Vector3(0, 0.03, 0)), b: J[ft].clone().add(new THREE.Vector3(0, -0.01, 0.02)), u: X, v: Z, radial: lod.limb,
-          rings: [[0, 0.051 * gl, 0.055 * gl], [0.28, 0.054 * gl, 0.062 * gl, 0, -0.012], [0.8, 0.036 * gl, 0.038 * gl], [0.94, 0.034 * gl, 0.036 * gl], [1, 0.034 * gl, 0.036 * gl]],
+          angles: ap.pantsKind === "athletic" ? legAngles : undefined,
+          rings: withEdges([[0, 0.051 * gl, 0.055 * gl], [0.28, 0.054 * gl, 0.062 * gl, 0, -0.012], [0.8, 0.036 * gl, 0.038 * gl], [0.94, 0.034 * gl, 0.036 * gl], [1, 0.034 * gl, 0.036 * gl]],
+            boots ? [0.75] : sock ? [0.82] : [], 0.01),
           blend: [0.2, 0.15],
-          radius: (t) => (shorts ? (boots && t > 0.75 ? 0.012 : 0) : boots && t > 0.75 ? 0.016 : pantsLoose + (t > 0.85 ? 0.006 : 0)),
+          radius: (t) => (bareShin ? (boots && t >= 0.75 ? 0.012 : sock && t >= 0.82 ? 0.004 : 0) : boots && t >= 0.75 ? 0.016 : pantsLoose + (t > 0.85 ? 0.006 : 0)),
           color: (t, ang) => {
-            if (boots && t > 0.75) return shade(ap.shoe);
-            if (shorts) return t > 0.9 ? cTmp.set(0xf2f2f2) : shade(ap.skin, 0.012); // socks
-            if (ap.pantsKind === "athletic" && Math.cos(ang) * side > 0.92) return cTmp.copy(ap.accent);
+            if (boots && t >= 0.75) return shade(ap.shoe);
+            if (bareShin) return sock && t >= 0.82 ? trimColor(WHITE) : skinC(); // socks
+            if (ap.pantsKind === "athletic" && inStripe(ang, outerAng)) return cTmp.copy(ap.accent);
             return pantsCloth(ap.pants);
           },
         });
@@ -498,6 +657,85 @@
           rings: [[0, 0.046 * ss, 0.056 * ss], [0.7, 0.043 * ss, 0.05 * ss], [1, 0.041 * ss, 0.047 * ss]],
           blend: [0, 0.6],
           color: (t) => (t > 0.85 && !boots ? shade(ap.shoe).multiplyScalar(0.8) : shade(ap.shoe, 0.015)),
+        });
+      }
+
+      // ---- Suit coat & tie (detail LODs): an open black jacket with lapels
+      // over a white dress shirt and a dark red tie. The jacket is two open
+      // tubes (hem to waist, waist to shoulders) whose front is cut away; the
+      // opening and the lapel boundary are placed vertex by vertex (duplicate
+      // angles give hard edges), so the V, the lapel facings and the front edge
+      // read crisply even on a 14-sided torso.
+      function addSuitTorso() {
+        const LOOSE = torsoLoose;
+        const GAP = [[0.9, 0.034], [0.99, 0.036], [1.1, 0.044], [1.22, 0.054], [1.32, 0.058], [1.42, 0.05], [1.5, 0.03], [1.52, 0.02]]; // half-width of the opening
+        const LAPEL = [[0.9, 0], [1.1, 0], [1.14, 0.02], [1.2, 0.042], [1.3, 0.062], [1.42, 0.07], [1.5, 0.045], [1.52, 0.03]]; // width of the lapel facing
+        const BODY_N = 20;
+        const jacketAngles = (rings, y0, y1) => (t) => {
+          const y = y0 + (y1 - y0) * t, ru = ringLerp(rings, t)[1];
+          const gap = tab(y, GAP), lap = tab(y, LAPEL);
+          const e = Math.asin(Math.min(0.9, gap / ru)), b = Math.asin(Math.min(0.97, (gap + lap) / ru));
+          const lo = Math.PI / 2 + e, hi = 2.5 * Math.PI - e, B0 = Math.PI / 2 + b, B1 = 2.5 * Math.PI - b;
+          const list = [lo, lo + 0.02, B0];
+          for (let k = 0; k < BODY_N; k++) list.push(B0 + (B1 - B0) * k / (BODY_N - 1));
+          list.push(B1, hi - 0.02, hi);
+          return list;
+        };
+        const last = BODY_N + 5;
+        const jacketColor = (k) => (k <= 2 || k >= last - 2 ? cTmp.copy(ap.outer).multiplyScalar(1.45) : shirtCloth(ap.outer, 0.02)); // lapels a shade lighter
+        const jacketRadius = (y0, y1) => (t, ang, p, k) => {
+          const lap = tab(y0 + (y1 - y0) * t, LAPEL);
+          const raise = 0.006 * Math.min(1, lap / 0.02);
+          if (k === 0 || k === last) return -(LOOSE - 0.004); // the front edge dives in to the shirt
+          if (k === 1 || k === last - 1) return raise * 0.5;
+          if (k === 2 || k === last - 2) return raise;
+          return 0;
+        };
+        // jacket: hem to waist, waist to shoulders
+        const lowY0 = 0.9, lowY1 = 1.28, upY0 = 1.23, upY1 = 1.515;
+        const lowList = [[0.9, 0.19 * ap.hips, 0.144 * gt, 0, -0.004], [0.99, 0.18 * ap.hips, 0.14 * gt, 0, -0.004], [1.106, 0.16 * gt * (0.5 + 0.5 * ap.waist), 0.126 * gt],
+          [1.222, abdBody[2][1] + LOOSE, abdBody[2][2] + LOOSE], [1.28, abdBody[3][1] + LOOSE, abdBody[3][2] + LOOSE, 0, abdBody[3][4]]];
+        const lowRings = densify(toRings(lowList, lowY0, lowY1), 3);
+        const upRings = densify(toRings(chestBody.map(([y, ru, rv, du, dv]) => [y, ru + LOOSE, rv + LOOSE, du, dv]), upY0, upY1), 3);
+        addTube(g, {
+          bone: B.spine, parent: B.hips, child: B.chest, a: at(lowY0), b: at(lowY1), u: X, v: Z,
+          rings: lowRings, angles: jacketAngles(lowRings, lowY0, lowY1), open: true, blend: [0.25, 0.25],
+          radius: jacketRadius(lowY0, lowY1), color: (t, ang, p, k) => jacketColor(k),
+        });
+        addTube(g, {
+          bone: B.chest, parent: B.spine, a: at(upY0), b: at(upY1), u: X, v: Z,
+          rings: upRings, angles: jacketAngles(upRings, upY0, upY1), open: true, blend: [0.2, 0], extra: clavExtra,
+          radius: jacketRadius(upY0, upY1), color: (t, ang, p, k) => jacketColor(k),
+        });
+        // the white dress shirt underneath (tucked into the trousers)
+        const shirtLow = abdBody.map(([y, ru, rv, du, dv]) => [y, ru + 0.003, rv + 0.003, du, dv]);
+        addTube(g, {
+          bone: B.spine, parent: B.hips, child: B.chest, a: at(0.99), b: at(1.28), u: X, v: Z, radial: lod.torso,
+          rings: toRings(shirtLow, 0.99, 1.28), blend: [0.25, 0.25], color: () => trimColor(WHITE, 0.012),
+        });
+        addTube(g, {
+          bone: B.chest, parent: B.spine, a: at(1.23), b: at(1.515), u: X, v: Z, radial: lod.torso,
+          rings: toRings(chestBody.map(([y, ru, rv, du, dv]) => [y, ru + 0.003, rv + 0.003, du, dv]), 1.23, 1.515),
+          capEnd: true, blend: [0.2, 0], extra: clavExtra, color: () => trimColor(WHITE, 0.012),
+        });
+        // the shirt's stand collar
+        addTube(g, {
+          bone: B.chest, child: B.neck, a: at(1.47), b: at(1.56), u: X, v: Z, radial: 14,
+          rings: [[0, 0.083, 0.078, 0, -0.004], [0.5, 0.074, 0.07, 0, -0.005], [1, 0.066, 0.064, 0, -0.006]], blend: [0, 0.4],
+          color: () => trimColor(WHITE, 0.012),
+        });
+        // the tie: a knot at the collar and a flat blade hanging down the shirt front
+        const tieZ = (y) => frontZ(y) + 0.004;
+        const blade = [[1.46, 0.016], [1.44, 0.012], [1.36, 0.019], [1.24, 0.024], [1.14, 0.027], [1.09, 0.024], [1.075, 0.012]];
+        addTube(g, {
+          bone: B.chest, child: B.spine, a: at(1.46), b: at(1.075), u: X, v: Z, radial: 8, blend: [0, 0.6],
+          rings: blade.map(([y, w]) => [(1.46 - y) / (1.46 - 1.075), w, 0.0045, 0, tieZ(y)]), capEnd: true,
+          color: (t, ang) => shade(ap.tie, 0.02).multiplyScalar(0.92 + 0.12 * Math.max(0, Math.sin(ang * 2))),
+        });
+        addTube(g, {
+          bone: B.chest, a: at(1.5), b: at(1.45), u: X, v: Z, radial: 10,
+          rings: [[0, 0.016, 0.011, 0, tieZ(1.5) + 0.006], [0.45, 0.023, 0.016, 0, tieZ(1.5) + 0.01], [1, 0.015, 0.012, 0, tieZ(1.5) + 0.006]],
+          capStart: true, capEnd: true, color: () => shade(ap.tie, 0.02).multiplyScalar(1.12),
         });
       }
 
@@ -1107,8 +1345,13 @@
             const a = side * (0.95 + k * 0.12);
             helmetPart(group, new THREE.CircleGeometry(0.008, 6), helmetMaterial(0x1a1a1c, 0.9), Math.sin(a) * (r + 0.001), 0.0, cz + Math.cos(a) * (r + 0.001), 0, a, 0);
           }
-          const p = helmetPart(group, new THREE.ConeGeometry(0.05, 0.22, 8), plume, 0, y1 + 0.18, cz - 0.02, -0.25, 0, 0);
-          p.scale.set(0.7, 1, 1.2);
+          // a horse-hair crest running front to back over the crown
+          [[0.05, 0.1, 0.05], [0.0, 0.125, 0.065], [-0.05, 0.11, 0.06], [-0.1, 0.075, 0.05]].forEach(([dz, h, w]) => {
+            const c = helmetPart(group, new THREE.SphereGeometry(w, 10, 8), plume, 0, y1 + 0.06 + h * 0.5, cz + dz);
+            c.scale.set(0.45, h / w * 0.9, 1.25);
+          });
+          // brow band across the top of the face opening
+          frontArc(group, r + 0.006, 0.007, 0.085 + FACE_H / 2 + 0.01, 0.62, dark);
           return group;
         },
       },
@@ -1134,6 +1377,10 @@
           for (const side of [1, -1]) {
             helmetPart(group, new THREE.CylinderGeometry(0.022, 0.022, 0.012, 12), trim, side * (r + 0.004), 0.17, cz + 0.02, 0, 0, Math.PI / 2);
           }
+          // a white racing stripe over the top, front to back
+          const white = helmetMaterial(0xf2f2ee, 0.25);
+          const stripeBand = helmetPart(group, new THREE.TorusGeometry(r + 0.002, 0.016, 4, 20, Math.PI), white, 0, y1, cz, 0, Math.PI / 2, 0);
+          stripeBand.scale.set(1, 0.6, 1);
           // spoiler at the back
           helmetPart(group, new THREE.BoxGeometry(0.12, 0.012, 0.05), shell, 0, y1 + 0.06, cz - r * 0.75, -0.5, 0, 0);
           return group;
@@ -1142,6 +1389,39 @@
     };
     const HELMET_KEYS = Object.keys(HELMETS);
     const DEFAULT_HELMET = "bag";
+
+    // MSUM lettering for the jersey: four letters drawn as stroked polylines
+    // (distance to the nearest segment, so the edges stay crisp at any size
+    // and the text moves with the chest). Text box in bind-pose meters: the
+    // chest between the shoulders, read left to right as seen from the front.
+    const MSUM_BOX = { x0: -0.118, y0: 1.285, w: 0.236, h: 0.082 };
+    const MSUM_LETTERS = {
+      // [[x, y], ...] polylines in a letter's unit cell (0..1)
+      M: [[[0, 0], [0, 1], [0.5, 0.42], [1, 1], [1, 0]]],
+      S: [[[1, 0.84], [0.88, 0.96], [0.5, 1], [0.12, 0.96], [0, 0.8], [0.06, 0.63], [0.32, 0.53], [0.68, 0.47], [0.94, 0.37], [1, 0.2], [0.88, 0.04], [0.5, 0], [0.12, 0.04], [0, 0.16]]],
+      U: [[[0, 1], [0, 0.28], [0.1, 0.07], [0.5, 0], [0.9, 0.07], [1, 0.28], [1, 1]]],
+    };
+    const MSUM_GLSL = (() => {
+      const f = (n) => n.toFixed(4);
+      const lines = ["float msumSeg(vec2 p, vec2 a, vec2 b) { vec2 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba * h); }"];
+      const body = [];
+      // Letters are laid out in a 0..1 box (x across the 4 letters + gaps, y up);
+      // x is scaled by the box's aspect so strokes have the same width both ways.
+      const word = ["M", "S", "U", "M"], gap = 0.07, cellW = (1 - gap * 3) / 4;
+      const aspect = MSUM_BOX.w / MSUM_BOX.h;
+      word.forEach((ch, i) => {
+        const x0 = i * (cellW + gap);
+        for (const line of MSUM_LETTERS[ch]) {
+          for (let k = 0; k < line.length - 1; k++) {
+            const [ax, ay] = line[k], [bx, by] = line[k + 1];
+            body.push(`d = min(d, msumSeg(vec2(p.x * ${f(aspect)}, p.y), vec2((${f(x0)} + ${f(ax * cellW)}) * ${f(aspect)}, ${f(ay)}), vec2((${f(x0)} + ${f(bx * cellW)}) * ${f(aspect)}, ${f(by)})));`);
+          }
+        }
+      });
+      lines.push("float msumDist(vec2 p) { float d = 10.0;", ...body, "return d; }");
+      lines.push(`const float MSUM_X0 = ${f(MSUM_BOX.x0)}; const float MSUM_Y0 = ${f(MSUM_BOX.y0)}; const float MSUM_W = ${f(MSUM_BOX.w)}; const float MSUM_H = ${f(MSUM_BOX.h)}; const float MSUM_STROKE = 0.085;`);
+      return lines.join("\n");
+    })();
 
     // Clothing/skin: moderately rough (fabric and skin aren't mirror-like).
     const bodyMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, skinning: true });
@@ -1164,11 +1444,13 @@
           "  return mix(mix(mix(clothHash(i), clothHash(i + vec3(1, 0, 0)), f.x), mix(clothHash(i + vec3(0, 1, 0)), clothHash(i + vec3(1, 1, 0)), f.x), f.y),",
           "    mix(mix(clothHash(i + vec3(0, 0, 1)), clothHash(i + vec3(1, 0, 1)), f.x), mix(clothHash(i + vec3(0, 1, 1)), clothHash(i + vec3(1, 1, 1)), f.x), f.y), f.z);",
           "}",
+          MSUM_GLSL,
         ].join("\n"))
         .replace("#include <color_fragment>", [
           "#include <color_fragment>",
           "{",
           "  float cp = floor(vClothPattern + 0.5);",
+          "  if (abs(vClothPattern - cp) > 0.2) cp = 0.0;",
           "  vec3 q = vClothPos;",
           "  float front = step(0.0, q.z);",
           "  if (cp > 0.5 && cp < 1.5) {", // plaid
@@ -1200,8 +1482,16 @@
           "    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.9, 0.88, 0.84), button * 0.8);",
           "  } else if (cp > 5.5 && cp < 6.5) {", // work pants: knee patches
           "    diffuseColor.rgb *= 1.0 - 0.3 * step(abs(q.y - 0.5), 0.075) * step(0.02, q.z);",
-          "  } else if (cp > 6.5) {", // suit pants: a pressed crease down each leg
+          "  } else if (cp > 6.5 && cp < 7.5) {", // suit pants: a pressed crease down each leg
           "    diffuseColor.rgb *= 1.0 + 0.14 * step(abs(abs(q.x) - 0.095), 0.004) * step(0.02, q.z);",
+          "  } else if (cp > 7.5) {", // MSUM jersey: MSUM in white strokes across the chest (front only)
+          "    vec2 tp = vec2(q.x - MSUM_X0, q.y - MSUM_Y0);",
+          "    if (q.z > 0.0 && tp.x > -0.02 && tp.x < MSUM_W + 0.02 && tp.y > -0.02 && tp.y < MSUM_H + 0.02) {",
+          "      float d = msumDist(vec2(tp.x / MSUM_W, tp.y / MSUM_H));",
+          "      float px = max(fwidth(tp.x), fwidth(tp.y)) / MSUM_H;",
+          "      float ink = 1.0 - smoothstep(MSUM_STROKE - px, MSUM_STROKE + px, d);",
+          "      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.96, 0.95, 0.92), ink);",
+          "    }",
           "  }",
           "}",
         ].join("\n"));
@@ -1934,6 +2224,8 @@
       helmetKeys: HELMET_KEYS,
       helmetName: (key) => (HELMETS[key] || HELMETS[DEFAULT_HELMET]).name,
       shirtKeys: SHIRT_KEYS,
+      shirtRandomKeys: SHIRT_RANDOM_KEYS,
+      pantsRandomKeys: PANTS_RANDOM_KEYS,
       shirtName: (key) => (SHIRTS[key] || SHIRTS.tee).name,
       pantsKeys: PANTS_KEYS,
       pantsName: (key) => (PANTS[key] || PANTS.jeans).name,
