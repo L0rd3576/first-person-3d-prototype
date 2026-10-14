@@ -23656,8 +23656,10 @@
   // to minDamageFraction at falloffEndDistance, flat beyond that -- a
   // pellet gets weak at range but never does nothing.
   function getShotgunPelletDamage(pellets, distance, baseDamage = pellets.damage) {
-    const span = pellets.falloffEndDistance - pellets.falloffStartDistance;
-    const t = Math.min(1, Math.max(0, (distance - pellets.falloffStartDistance) / span));
+    // PVP: full damage 50% farther out before the falloff starts (end distance unchanged).
+    const falloffStart = isPvpMatchActive ? pellets.falloffStartDistance * 1.5 : pellets.falloffStartDistance;
+    const span = pellets.falloffEndDistance - falloffStart;
+    const t = Math.min(1, Math.max(0, (distance - falloffStart) / span));
     const smooth = t * t * (3 - 2 * t);
     return baseDamage * (1 - (1 - pellets.minDamageFraction) * smooth);
   }
@@ -24138,7 +24140,12 @@
       player.activeHipFireRotationY + (player.activeAdsRotationY - player.activeHipFireRotationY) * eased;
 
     // Per-gun override (gun.adsFov): the SMG's 1x holo sight doesn't zoom.
-    const adsFov = activeDef && activeDef.gun.adsFov !== undefined ? activeDef.gun.adsFov : ADS_FOV;
+    let adsFov = activeDef && activeDef.gun.adsFov !== undefined ? activeDef.gun.adsFov : ADS_FOV;
+    // PVP scope zoom overrides: SMG 1.5x, AK-47 2x (PVE keeps its own).
+    if (isPvpMatchActive && activeDef) {
+      const pvpZoom = activeDef === WEAPON_DEFS.smg ? 1.5 : activeDef === WEAPON_DEFS.ak47 ? 2 : 0;
+      if (pvpZoom) adsFov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(NORMAL_FOV / 2)) / pvpZoom));
+    }
     player.camera.fov = NORMAL_FOV + (adsFov - NORMAL_FOV) * eased;
     player.camera.updateProjectionMatrix();
   }
