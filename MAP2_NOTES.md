@@ -22,3 +22,13 @@
 - **Win screen**: the PVP results screen now counts as a menu screen (`isAnyMenuScreenVisible`), `setCursorHidden(true)` is ignored there for a keyboard+mouse P1 (another player's controller input used to re-hide the cursor), and a pointer lock granted while it is up (late retry listener) is released again. Lock is re-requested by the normal match start paths (`startCoopMatch`/`startQuadMatch`).
 - **Bat**: heavy windup swing (`BAT_MELEE_DAMAGE`) 60 -> 100, fast shove (`BAT_SWEEP_DAMAGE`, up to 3 targets) 12 -> 25. The bat has no hold-to-charge, so "charged" was read as the heavy swing and "weak" as the shove. Applies to PVE too (shared constants; PVP melee uses WEAPON_DEFS values).
 - **Katana**: `KATANA_MELEE_RANGE` 2.8 -> 2.4 (the slash sweep reads this one range; no other constant).
+
+## Rev 4: wooden fences, back alley, east garage (streeview2 / topdownview - angle2)
+- **Tall fence (1.8 m, tan vertical boards, posts every ~2.4 m, top rail)** round the street-facing yard of 1104 (px x 252, y 161..255 across the front, plus the north side along the drive edge to x 298 and the south side to x 300). The fenced house in streeview2 is 1104 (bearing check from the camera at px 185,185), not 320 as the brief said; 320 is the brown house at the left of the view.
+- **Low dark fence (1.5 m, horizontal boards)** on the north side of the back alley, px y 98, x 248..302 and 372..404 (320's yard side, "left" of the alley in streeview2).
+- **Back alley**: concrete strip px [300,98,402,122] east from the 320/1104 drive apron, north of the new east garage, out to the back yards. Open only at the west end beside the yellow car (the drive's south side is closed by the tall fence).
+- **garageE** px [297,122,333,150]: beige gable, white double door facing the street, behind the yellow hatchback (`paint`/`model` options on the parking spot). 320 recoloured tan/brown, 1104 greyer to match streeview2.
+- Fences are real colliders (`fx: "wood"`, opaque, drawn on the minimap like walls), one merged mesh per style plus instanced posts. Both are taller than the jump apex (7^2 / 36 = 1.36 m) so they cannot be climbed.
+- Tests: `M2.8a..g` in tests/pvp-test.js (blocked from three sides, not jumpable, sight/shot blocked, alley walkable end to end, alley north fence, garage solid, minimap count). All pass.
+- Known: `M2S.4 HUD says the storm is closing` and `M2S.5 still the final circle` fail in this swiftshader harness with or without these changes (HUD label text timing; the storm maths checks pass). Not touched here.
+- Render comparison (map2.html#cam=185,185,1.7,-90,0 vs streeview2): layout, garage, yellow car, tall fence and dark fence line up. Houses still read taller than in the photo (storey heights are uniform).

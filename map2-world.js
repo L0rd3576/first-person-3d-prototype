@@ -36,6 +36,7 @@
     [245, 125, 300, 160], [540, 280, 556, 372], [420, 498, 445, 590], [528, 450, 555, 590],
     // aprons across the boulevards where a drive meets the road
     [420, 450, 445, 498], [540, 346, 556, 372], [245, 98, 300, 125],
+    [300, 98, 402, 122],   // back alley: east from 320/1104's drive, north of the garage, to the back yards
   ];
   const FRONT_WALKS = [[325, 272, 333, 338], [493, 275, 500, 338], [85, 240, 112, 247], [403, 275, 411, 338], [330, 338, 338, 346]];
   const PLAYABLE_PX = [[36, 98], [302, 98], [302, 8], [634, 8], [634, 584], [250, 584], [250, 535], [36, 535]];
@@ -52,19 +53,20 @@
   // [name, px rect, front side (toward the street), options]
   // form: "gable-ns"/"gable-ew" (ridge direction) or "hip"; storeys 1 / 1.5 / 2.
   const HOUSES = [
-    ["1104", [300, 188, 363, 272], "S", { storeys: 1.5, form: "gable-ns", wall: 0xe6dcc0, roof: 0x6f747a, porch: "deck", number: "1104" }],
-    ["1104w", [298, 150, 345, 188], "S", { storeys: 1, form: "gable-ew", wall: 0xe6dcc0, roof: 0x4e5258, nodoor: true }],
+    ["1104", [300, 188, 363, 272], "S", { storeys: 1.5, form: "gable-ns", wall: 0xd8d1bc, roof: 0x55585c, porch: "deck", number: "1104" }],
+    ["1104w", [298, 150, 345, 188], "S", { storeys: 1, form: "gable-ew", wall: 0xd8d1bc, roof: 0x45484c, nodoor: true }],
     ["1108", [383, 210, 450, 275], "S", { storeys: 1, form: "gable-ew", wall: 0xe3d6a8, roof: 0x8a7c6c, porch: "stoop", number: "1108" }],
     ["1114", [466, 210, 540, 272], "S", { storeys: 1, form: "gable-ew", wall: 0xf1f1ee, roof: 0x7a5a48, porch: "stoop", number: "1114", chimney: [-0.22, -0.1], shutters: true }],
     ["1118", [595, 195, 640, 268], "S", { storeys: 2, form: "gable-ns", wall: 0xecebe6, roof: 0x7d8186, porch: "porch", number: "1118" }],
     ["1118w", [570, 175, 630, 195], "S", { storeys: 1, form: "gable-ew", wall: 0xecebe6, roof: 0x6a6e73, nodoor: true }],
-    ["320", [302, 15, 372, 97], "W", { storeys: 1.5, form: "hip", wall: 0xf0efea, roof: 0x8a8f96, porch: "stoop", number: "320" }],
+    ["320", [302, 15, 372, 97], "W", { storeys: 1.5, form: "hip", wall: 0xbfa886, roof: 0x5b4e44, porch: "stoop", number: "320" }],
     ["321", [38, 205, 85, 262], "E", { storeys: 1, form: "gable-ns", wall: 0xeeede8, roof: 0x6c7886, porch: "stoop", number: "321" }],
     ["1101", [272, 522, 338, 590], "N", { storeys: 1, form: "gable-ew", wall: 0xe8dfc4, roof: 0x70757b, porch: "stoop", number: "1101" }],
     ["1109", [355, 522, 415, 590], "N", { storeys: 1, form: "gable-ew", wall: 0xb9bcbf, roof: 0x5b4a40, porch: "stoop", number: "1109", chimney: [-0.25, 0.1] }],
     ["1105", [462, 528, 528, 590], "N", { storeys: 1.5, form: "gable-ns", wall: 0xf1f1ee, roof: 0x9a3b33, porch: "stoop", number: "1105" }],
     ["1115", [565, 530, 620, 590], "N", { storeys: 1, form: "gable-ew", wall: 0xcfd2d4, roof: 0x73777c, porch: "stoop", number: "1115" }],
     ["garageW", [40, 115, 62, 137], "E", { height: 3.4, form: "gable-ew", wall: 0xf0efea, roof: 0x4a4d52, nodoor: true }],
+    ["garageE", [297, 122, 333, 150], "W", { height: 3.6, form: "gable-ew", wall: 0xd9cba6, roof: 0x66625c, nodoor: true, garageDoor: true }],
     ["garageN", [455, 5, 480, 35], "S", { height: 3.4, form: "gable-ew", wall: 0xb9bcbf, roof: 0x4a4d52, nodoor: true }],
     ["houseNE", [618, 20, 640, 70], "W", { storeys: 1, form: "gable-ns", wall: 0xaeb2b5, roof: 0x6d7176, nodoor: true }],
     // backdrop: outside the playable polygon, drawn but not solid
@@ -83,7 +85,7 @@
   // [px, py, heading] -- campus convention: 0 = +x east, PI/2 = +z south
   const CARS = [
     [440, 383, Math.PI], [585, 383, Math.PI], [82, 137, Math.PI], [80, 157, Math.PI], [72, 180, Math.PI],
-    [272, 143, 0], [548, 298, -Math.PI / 2], [548, 322, -Math.PI / 2], [540, 560, Math.PI / 2], [151, 250, Math.PI / 2],
+    [272, 143, 0, { paint: 0xe3b81c, model: "hatchback" }], [548, 298, -Math.PI / 2], [548, 322, -Math.PI / 2], [540, 560, Math.PI / 2], [151, 250, Math.PI / 2],
   ];
 
   // [px, py, yaw] -- the red dot (S1) faces north-northeast like the streetview
@@ -346,6 +348,15 @@
         const yaw = Math.abs(n.x) === 1 ? Math.PI / 2 : 0;
         const faceYaw = Math.atan2(n.x, n.z);
         const isFront = side === front;
+        if (o.garageDoor && isFront) {
+          // white double sectional door on the gable end, with panel seams
+          const dw = L * 0.8, dxg = cx + n.x * half, dzg = cz + n.z * half;
+          const sxg = dw * Math.abs(along.x) + 0.1 * Math.abs(n.x), szg = dw * Math.abs(along.z) + 0.1 * Math.abs(n.z);
+          box(dxg + n.x * 0.04, 0, dzg + n.z * 0.04, sxg, 2.4, szg, 0, 0xf2f1ec);
+          for (let r = 1; r < 4; r++) box(dxg + n.x * 0.1, r * 0.6, dzg + n.z * 0.1, sxg * (Math.abs(n.x) ? 0.5 : 1) + 0.02 * Math.abs(n.z), 0.03, szg * (Math.abs(n.z) ? 0.5 : 1) + 0.02 * Math.abs(n.x), 0, 0xb9b8b2);
+          box(dxg + n.x * 0.12, 0, dzg + n.z * 0.12, 0.05 * Math.abs(along.x) + 0.04 * Math.abs(n.x), 2.4, 0.05 * Math.abs(along.z) + 0.04 * Math.abs(n.z), 0, 0xb9b8b2);
+          continue;
+        }
         const us = [];
         if (isFront && !o.nodoor) {
           for (const k of [-1, 1]) for (let i = 1; Math.abs(doorU + k * i * 2.7) < L / 2 - 0.9 && i <= 2; i++) us.push(doorU + k * i * 2.7);
@@ -425,7 +436,7 @@
       for (const [lo, hi] of ranges) axis === "h" ? addRun(lo, fixed, hi, fixed, "fence") : addRun(fixed, lo, fixed, hi, "fence");
       for (const [lo, hi] of hedges || []) axis === "h" ? addRun(lo, fixed, hi, fixed, "hedge") : addRun(fixed, lo, fixed, hi, "hedge");
     };
-    fenceEdge("h", 98, [[36, 105], [248, 302]], [[128, 142], [213, 232]]);   // A-B
+    fenceEdge("h", 98, [[36, 105]], [[128, 142], [213, 232]]);              // A-B (248..302 is the solid dark fence below)
     fenceEdge("v", 302, [[8, 15]]);                                         // B-C
     fenceEdge("h", 8, [[302, 634]]);                                        // C-D
     fenceEdge("v", 634, [[8, 584]]);                                        // D-E
@@ -446,6 +457,85 @@
       } else {
         box(mx, 0, mz, len, 1.25, 0.9, yaw, 0x3f6a34);
       }
+    }
+    // ---- solid wooden fences: real colliders, one merged mesh per style --
+    // tall: 1.8 m tan privacy fence round the 1104 side yard (streeview2);
+    // low: 1.5 m dark horizontal-board fence on the north side of the back alley.
+    // Both stay above the jump apex (~1.36 m), so they cannot be climbed.
+    const FENCE_STYLES = {
+      tall: { h: 1.8, thick: 0.1, tileU: 1, tileV: 1.8, post: 0x8a6a48 },
+      low: { h: 1.5, thick: 0.1, tileU: 2, tileV: 1.44, post: 0x3b271b },
+    };
+    FENCE_STYLES.tall.material = new THREE.MeshLambertMaterial({
+      map: canvasTexture(64, 64, (ctx, w, h) => {
+        const rand = seededRandom(31);
+        for (let i = 0; i < 8; i++) {
+          const k = 0.86 + rand() * 0.26;
+          ctx.fillStyle = `rgb(${Math.round(198 * k)},${Math.round(148 * k)},${Math.round(94 * k)})`;
+          ctx.fillRect(i * 8, 0, 8, h);
+          ctx.fillStyle = "rgba(70,40,15,0.5)";
+          ctx.fillRect(i * 8, 0, 1, h);
+          for (let g = 0; g < 5; g++) { ctx.fillStyle = "rgba(90,55,25,0.18)"; ctx.fillRect(i * 8 + 1 + Math.floor(rand() * 6), 0, 1, h); }
+        }
+      }),
+    });
+    FENCE_STYLES.low.material = new THREE.MeshLambertMaterial({
+      map: canvasTexture(64, 64, (ctx, w, h) => {
+        const rand = seededRandom(32);
+        for (let i = 0; i < 8; i++) {
+          const k = 0.85 + rand() * 0.3;
+          ctx.fillStyle = `rgb(${Math.round(92 * k)},${Math.round(60 * k)},${Math.round(42 * k)})`;
+          ctx.fillRect(0, i * 8, w, 8);
+          ctx.fillStyle = "rgba(20,10,5,0.55)";
+          ctx.fillRect(0, i * 8, w, 1);
+        }
+      }),
+    });
+    const solidRuns = { tall: [], low: [] };
+    const addSolidFence = (x1, y1, x2, y2, style) => {
+      const a = mapToWorld(x1, y1), b = mapToWorld(x2, y2), S = FENCE_STYLES[style];
+      const len = Math.hypot(b.x - a.x, b.z - a.z), yaw = Math.atan2(-(b.z - a.z), b.x - a.x);
+      solidRuns[style].push({ a, b, len, yaw });
+      const c = makeCollider((a.x + b.x) / 2, (a.z + b.z) / 2, len / 2, S.thick / 2 + 0.03, S.h, yaw);
+      c.render = false; c.fx = "wood";   // opaque: blocks sight and shots, shown on the minimap like a wall
+      addCollider(c);
+    };
+    addSolidFence(252, 161, 252, 255, "tall");   // across the front of the house, driveway edge southward
+    addSolidFence(252, 161, 298, 161, "tall");   // north side, along the driveway edge to the house wing
+    addSolidFence(252, 255, 300, 255, "tall");   // south side, to the house wall
+    addSolidFence(248, 98, 302, 98, "low");      // alley north side, west of house 320 (on the map edge)
+    addSolidFence(372, 98, 404, 98, "low");      // alley north side, east of house 320
+    for (const style of Object.keys(solidRuns)) {
+      const S = FENCE_STYLES[style], pos = [], nor = [], uv = [], idx = [];
+      for (const { a, b, len, yaw } of solidRuns[style]) {
+        const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
+        const g = new THREE.BoxGeometry(len, S.h, S.thick);
+        const guv = g.attributes.uv;
+        for (let i = 0; i < guv.count; i++) {
+          if (i >= 16) guv.setXY(i, guv.getX(i) * len / S.tileU, guv.getY(i) * S.h / S.tileV); // the two long faces tile the boards
+          else guv.setXY(i, 0.06, 0.5);
+        }
+        g.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(mx, S.h / 2, mz), new THREE.Quaternion().setFromAxisAngle(yUp, yaw), new THREE.Vector3(1, 1, 1)));
+        const base = pos.length / 3;
+        pos.push(...g.attributes.position.array);
+        nor.push(...g.attributes.normal.array);
+        uv.push(...g.attributes.uv.array);
+        for (const i of g.index.array) idx.push(base + i);
+        const posts = Math.ceil(len / 2.4);
+        for (let i = 0; i <= posts; i++) {
+          const k = i / posts;
+          box(a.x + (b.x - a.x) * k, 0, a.z + (b.z - a.z) * k, 0.14, S.h + 0.1, 0.14, yaw, S.post);
+        }
+        box(mx, S.h, mz, len, 0.06, S.thick + 0.06, yaw, S.post); // top rail
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+      geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+      geo.setIndex(idx);
+      const mesh = new THREE.Mesh(geo, S.material);
+      mesh.frustumCulled = false;
+      root.add(mesh);
     }
     {
       // curbs along every road edge (cosmetic lip, no collider)
@@ -539,9 +629,9 @@
     }
 
     // ---- parked cars -----------------------------------------------------
-    const parkingSpaces = CARS.map(([px, py, yaw], i) => {
+    const parkingSpaces = CARS.map(([px, py, yaw, extra], i) => {
       const p = mapToWorld(px, py);
-      return { x: p.x, z: p.z, yaw, width: 2.7, depth: 5.9, lot: "map2-car-" + i, occupancy: 1, noBackIn: true };
+      return { x: p.x, z: p.z, yaw, width: 2.7, depth: 5.9, lot: "map2-car-" + i, occupancy: 1, noBackIn: true, ...extra };
     });
     const vehicleSystem = window.createParkedVehicleSystem
       ? window.createParkedVehicleSystem(THREE, root, parkingSpaces, { groundHeightAt: () => 0 })

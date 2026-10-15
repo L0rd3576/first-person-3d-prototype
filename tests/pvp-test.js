@@ -504,6 +504,29 @@
     const a1 = W.mapToWorld(416, 300), a2 = W.mapToWorld(416, 190);
     check("M2.5 1108 blocks the lawn -> back yard line", W.segmentBlocked(a1.x, a1.z, a2.x, a2.z, 0, false, 1.6, 1.6));
     check("M2.5 4th Ave is open from S1 to the intersection", !W.segmentBlocked(sp[0][0], sp[0][1], 0, 0, 0, false, 1.6, 1.6));
+    // fences + back alley (streeview2): solid wooden fences, alley passable west of the garage
+    {
+      const P = (px, py) => W.mapToWorld(px, py);
+      // walk a circle from px point 1 toward px point 2 in ~0.3 m steps at the given feet height
+      const walk = (px1, py1, px2, py2, feetY) => {
+        const a = P(px1, py1), b = P(px2, py2), n = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 0.3);
+        const pos = new THREE.Vector3(a.x, feetY, a.z);
+        for (let s = 0; s < n; s++) { pos.x += (b.x - a.x) / n; pos.z += (b.z - a.z) / n; W.resolveCircle(pos, 0.35, feetY, feetY === 0); }
+        return Math.hypot(pos.x - b.x, pos.z - b.z) < 0.5;
+      };
+      const eyeBlocked = (p1, p2) => { const a = P(...p1), b = P(...p2); return W.segmentBlocked(a.x, a.z, b.x, b.z, 0, false, 0, 0); };
+      check("M2.8a front fence of 1104 blocks walking in from the lawn", !walk(240, 210, 275, 210, 0));
+      check("M2.8a ...and its north side", !walk(275, 150, 275, 175, 0));
+      check("M2.8a ...and its south side", !walk(275, 275, 275, 240, 0));
+      check("M2.8b fences cannot be jumped (apex 1.36 m < fence height)", !walk(240, 210, 275, 210, 1.36) && !walk(280, 110, 280, 85, 1.36));
+      const r0 = P(240, 210), ray = W.raycast(r0.x, 1.6, r0.z, 1, 0, 0, 30);
+      check("M2.8c fences block sight and shots at eye height", eyeBlocked([240, 210], [275, 210]) && ray && !ray.ground && ray.distance < 8, ray && ray.distance);
+      check("M2.8d alley is passable west -> east", walk(246, 110, 400, 110, 0) && !eyeBlocked([246, 110], [400, 110]));
+      check("M2.8d alley cells are walkable", [[250, 110], [300, 110], [350, 110], [398, 110]].every(([px, py]) => W.isWalkable(P(px, py).x, P(px, py).z, 0.4)));
+      check("M2.8e dark fence closes the alley's north side", !walk(275, 112, 275, 90, 0) && !walk(390, 112, 390, 90, 0));
+      check("M2.8f garage still blocks", !walk(315, 112, 315, 140, 0));
+      check("M2.8g fences are on the minimap", W.minimapFootprints().filter((c) => c.fx === "wood" && c.height >= 1.4 && c.height <= 1.9).length >= 5);
+    }
     H.zoneUi.layerKey = null; H.ensureZoneStaticLayer();
     check("M2.6 minimap layer keyed to map2 with >=12 footprints", /^map2/.test(H.zoneUi.layerKey) && W.minimapFootprints().length >= 12, H.zoneUi.layerKey + " " + W.minimapFootprints().length);
     H.resetGame();

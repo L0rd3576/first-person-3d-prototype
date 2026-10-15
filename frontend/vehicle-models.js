@@ -604,7 +604,7 @@
         if (rOcc > lotOccupancy.get(sp.lot) * bunching(sp)) continue;
       }
       // A model that fits the space.
-      let name = null;
+      let name = sp.model && MODELS[sp.model] ? sp.model : null;  // optional per-space model / paint override (map2's yellow car)
       for (let k = 0; k < 6 && !name; k++) {
         const cand = pickWeighted(C.VEHICLE_MODEL_WEIGHTS, k === 0 ? rModel : rand());
         const m = MODELS[cand];
@@ -615,7 +615,7 @@
       if (m.L > sp.depth - 0.05 || m.W > sp.width - 0.3) continue;
       // Paint.
       const cat = C.VEHICLE_COLOR_WEIGHTS[pickWeighted(C.VEHICLE_COLOR_WEIGHTS, rColor)];
-      color.setHex(cat[1][Math.floor(rShade * cat[1].length) % cat[1].length]);
+      color.setHex(sp.paint !== undefined ? sp.paint : cat[1][Math.floor(rShade * cat[1].length) % cat[1].length]);
       const ageKey = m.old ? "older" : pickWeighted(C.AGE_WEIGHTS, rAge);
       const age = ageKey === "newer" ? 0.05 * rVar[0] : ageKey === "middle" ? 0.3 + 0.25 * rVar[0] : 0.65 + 0.35 * rVar[0];
       color.getHSL(hsl);
