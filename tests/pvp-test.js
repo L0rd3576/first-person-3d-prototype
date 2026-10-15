@@ -516,7 +516,7 @@
       };
       const eyeBlocked = (p1, p2) => { const a = P(...p1), b = P(...p2); return W.segmentBlocked(a.x, a.z, b.x, b.z, 0, false, 0, 0); };
       check("M2.8a front fence of 1104 blocks walking in from the lawn", !walk(240, 210, 275, 210, 0));
-      check("M2.8a ...and its north side", !walk(275, 150, 275, 175, 0));
+      check("M2.8a ...and its north side (from the driveway)", !walk(275, 172, 275, 195, 0));
       check("M2.8a ...and its south side", !walk(275, 275, 275, 240, 0));
       check("M2.8b fences cannot be jumped (apex 1.36 m < fence height)", !walk(240, 210, 275, 210, 1.36) && !walk(280, 110, 280, 85, 1.36));
       const r0 = P(240, 210), ray = W.raycast(r0.x, 1.6, r0.z, 1, 0, 0, 30);
@@ -704,38 +704,44 @@
       const half = Math.abs(n.x) ? h.halfX : h.halfZ, halfAlong = Math.abs(n.x) ? h.halfZ : h.halfX;
       const at = (u, v) => ({ x: h.x + n.x * u + along.x * v, z: h.z + n.z * u + along.z * v }); // u toward the front, v sideways
       const L = "HS." + h.name + " ";
-      const centre = at(0, 0), out = at(half + 4, 0);
-      const wi = walkPath(out, centre, 0, true);
+      // the doorway may be off-centre (1114): dv = its sideways offset from the middle of the facade
+      const dv = (d.x - h.x) * along.x + (d.z - h.z) * along.z;
+      const centre = at(0, 0), centreD = at(0, dv), out = at(half + 4, dv);
+      const wi0 = walkPath(out, at(half - 1.2, dv), 0, true), wi1 = walkPath(wi0, centre, wi0.feet, true);
+      const wi = { x: wi1.x, z: wi1.z, feet: wi1.feet, maxJump: Math.max(wi0.maxJump, wi1.maxJump), arrived: wi0.arrived && wi1.arrived };
       check(L + "walk in through the open doorway to the middle, level on the floor (0.34)", wi.arrived && Math.abs(wi.feet - 0.34) < 0.02 && wi.maxJump < 0.3, JSON.stringify(wi));
-      const wo = walkPath(centre, out, 0.34, true);
+      const wo0 = walkPath(centre, at(half - 1.2, dv), 0.34, true), wo1 = walkPath(wo0, out, wo0.feet, true);
+      const wo = { x: wo1.x, z: wo1.z, feet: wo1.feet, maxJump: Math.max(wo0.maxJump, wo1.maxJump), arrived: wo0.arrived && wo1.arrived };
       check(L + "...and back out", wo.arrived && Math.abs(wo.feet) < 0.02, JSON.stringify(wo));
-      check(L + "floor support 0.34 inside, doorway threshold 0.34", Math.abs(W.supportHeightAt(centre.x, centre.z, R, 0.84) - 0.34) < 0.01 && Math.abs(W.supportHeightAt(at(half - 0.15, 0).x, at(half - 0.15, 0).z, 0.05, 0.84) - 0.34) < 0.01);
+      check(L + "floor support 0.34 inside, doorway threshold 0.34", Math.abs(W.supportHeightAt(centre.x, centre.z, R, 0.84) - 0.34) < 0.01 && Math.abs(W.supportHeightAt(at(half - 0.15, dv).x, at(half - 0.15, dv).z, 0.05, 0.84) - 0.34) < 0.01);
       // walls: from inside toward each wall and the front wall away from the door; from outside into wall, window and back wall
       const inside = (r) => Math.abs((r.x - h.x) * n.x + (r.z - h.z) * n.z) < half - 0.2 && Math.abs((r.x - h.x) * along.x + (r.z - h.z) * along.z) < halfAlong - 0.2;
-      const blocks = [at(0, halfAlong + 3), at(0, -halfAlong - 3), at(-half - 3, 0), at(half + 3, 3.2), at(half + 3, -3.2)].map((t) => walkPath(centre, t, 0.34, true));
+      const beside = Math.abs(dv) < 0.01 ? [3.2, -3.2] : [dv < 0 ? 1.2 : -1.2]; // front-wall spots beside the doorway
+      const blocks = [at(0, halfAlong + 3), at(0, -halfAlong - 3), at(-half - 3, 0), ...beside.map((v) => at(half + 3, v))].map((t) => walkPath(centre, t, 0.34, true));
       check(L + "walls block from inside (both sides, back, front wall beside the doorway)", blocks.every((r) => !r.arrived && inside(r)), blocks.map((r) => r.arrived + "/" + inside(r)).join(" "));
-      const outs = [[at(-half - 4, 0), at(0, 0)], [at(half + 4, 4), at(0, 4)], [at(0, halfAlong + 4), at(0, 0)], [at(half + 4, -4), at(0, -4)]].map(([a, b]) => walkPath(a, b, 0, true));
+      const frontVs = halfAlong > 5 ? [4, -4] : beside;
+      const outs = [[at(-half - 4, 0), at(0, 0)], [at(0, halfAlong + 4), at(0, 0)], ...frontVs.map((v) => [at(half + 4, v), at(0, v)])].map(([a, b]) => walkPath(a, b, 0, true));
       check(L + "walls block from outside (back, front beside the door, both sides)", outs.every((r) => !r.arrived && !inside(r)), outs.map((r) => r.arrived + "/" + inside(r)).join(" "));
-      const jump = walkPath(at(half + 1.5, 0), at(half - 1.5, 0), 1.2, false); // airborne through the doorway: the lintel stops it
+      const jump = walkPath(at(half + 1.5, dv), at(half - 1.5, dv), 1.2, false); // airborne through the doorway: the lintel stops it
       check(L + "a jump cannot go through the doorway (lintel)", !jump.arrived || Math.abs((jump.x - h.x) * n.x + (jump.z - h.z) * n.z) > half - 0.2, JSON.stringify(jump));
       const head = { x: centre.x, y: 1.7, z: centre.z };
       const hb = new THREE.Vector3(centre.x, 1.7, centre.z); W.resolveCircle(hb, R, 1.7, false);
       check(L + "no head-bump push-out under the roof at a jump apex", Math.hypot(hb.x - head.x, hb.z - head.z) < 1e-6);
       // sight and shots
-      const door = at(half + 6, 0), side = at(half + 6, 5), back = at(-half - 6, 0);
+      const door = at(half + 6, dv), side = at(half + 6, 5), back = at(-half - 6, 0);
       const sb = (a, b) => W.segmentBlocked(a.x, a.z, b.x, b.z, 0, false, 0.34, 0.34);
-      check(L + "sight: out through the doorway is open, through the front wall / back wall is blocked", !sb(centre, door) && sb(centre, side) && sb(centre, back) && sb(door, back));
+      check(L + "sight: out through the doorway is open, through the front wall / back wall is blocked", !sb(centreD, door) && sb(centre, side) && sb(centre, back) && sb(door, back));
       const shot = (o, dir, y, dy) => W.raycast(o.x, y, o.z, dir.x, dy || 0, dir.z, 40);
-      const rDoor = shot(centre, { x: n.x, z: n.z }, 1.7), rBack = shot(centre, { x: -n.x, z: -n.z }, 1.7), rSide = shot(centre, { x: along.x, z: along.z }, 1.7);
+      const rDoor = shot(centreD, { x: n.x, z: n.z }, 1.7), rBack = shot(centre, { x: -n.x, z: -n.z }, 1.7), rSide = shot(centre, { x: along.x, z: along.z }, 1.7);
       check(L + "shots: out the doorway fly free (>14 m), back/side walls stop them at the wall", (!rDoor || rDoor.distance > 14) && rBack && Math.abs(rBack.distance - (half - 0.3)) < 0.2 && rSide && Math.abs(rSide.distance - (halfAlong - 0.3)) < 0.2, [rDoor && rDoor.distance, rBack && rBack.distance, rSide && rSide.distance].join("/"));
       const rUp = shot(centre, { x: 0, z: 0 }, 1.7, 1), rTop = W.raycast(centre.x, h.height + 5, centre.z, 0, -1, 0, 30);
       check(L + "shots: the ceiling/roof is solid from inside and from above", rUp && rUp.collider && rUp.collider.ceiling && Math.abs(rUp.y - 3.2) < 0.05 && rTop && !rTop.ground && Math.abs(rTop.y - h.height) < 0.05, (rUp && rUp.y) + "/" + (rTop && rTop.y));
-      const lintelShot = shot(at(half + 2, 0), { x: -n.x, z: -n.z }, 2.5);
-      check(L + "shots at lintel height hit it; at head height they pass the doorway", lintelShot && Math.abs(lintelShot.distance - 2) < 0.2 && !!shot(at(half + 2, 0), { x: -n.x, z: -n.z }, 1.7) && shot(at(half + 2, 0), { x: -n.x, z: -n.z }, 1.7).distance > 3);
+      const lintelShot = shot(at(half + 2, dv), { x: -n.x, z: -n.z }, 2.5);
+      check(L + "shots at lintel height hit it; at head height they pass the doorway", lintelShot && Math.abs(lintelShot.distance - 2) < 0.2 && !!shot(at(half + 2, dv), { x: -n.x, z: -n.z }, 1.7) && shot(at(half + 2, dv), { x: -n.x, z: -n.z }, 1.7).distance > 3);
       // minimap: wall ring with the doorway gap, nothing across the interior
       const feet = W.minimapFootprints().filter((c) => c.style === "house" && Math.abs(c.cx - h.x) < Math.max(half, halfAlong) + 1 && Math.abs(c.cz - h.z) < Math.max(half, halfAlong) + 1);
       const covers = (pt) => feet.some((c) => Math.abs(pt.x - c.cx) <= c.halfX && Math.abs(pt.z - c.cz) <= c.halfZ);
-      check(L + "minimap: wall ring with an open doorway and an empty middle", feet.length >= 4 && !covers(centre) && !covers(at(half - 0.15, 0)) && covers(at(-half + 0.15, 0)) && covers(at(half - 0.15, 3)), feet.length);
+      check(L + "minimap: wall ring with an open doorway and an empty middle", feet.length >= 4 && !covers(centre) && !covers(at(half - 0.15, dv)) && covers(at(-half + 0.15, 0)) && covers(at(half - 0.15, dv < 0 ? 1.2 : 3)), feet.length);
       check(L + "interior is walkable at spawn clearance", W.isWalkable(centre.x, centre.z, 0.8));
     }
     // other houses stay solid boxes
@@ -770,7 +776,209 @@
     H.resetGame();
   }
 
-  try { run(); runMap2(); runMap2Storm(); runCars(); runHouses(); } catch (e) { check("exception", false, e && e.stack || e); }
+  // ---- Rev 6: the north block traced from topdowncloseup.png (prefix M2C) ----
+  // closeup px -> topdownview px: one isotropic scale, closeup (60,60) = topdown (225.6,114.8) (NCC 0.935 against the aerial)
+  function runMap2Closeup() {
+    H.startPvpForTest(2, "deathmatch", "map2");
+    const W = H.map2World, P = H.players;
+    P.forEach((q) => H.pvpRespawnPlayer(q));
+    const td = (cx, cy) => [225.6 + (cx - 60) / 2.83, 114.8 + (cy - 60) / 2.83];
+    const px = (x, z) => { const q = W.pxOfWorld(x, z); return [q.x, q.y]; };
+    const rectPx = (h) => { const a = px(h.x - h.halfX, h.z - h.halfZ), b = px(h.x + h.halfX, h.z + h.halfZ); return [a[0], a[1], b[0], b[1]]; };
+    const rec = (name) => W.houses.find((h) => h.name === name);
+    const inPoly = (x, y, poly) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
+    const walkP = (a, b, feetY) => { // walk a body from px a to px b like the game does (resolveCircle), arrived = got there
+      const A = W.mapToWorld(a[0], a[1]), B = W.mapToWorld(b[0], b[1]), n = Math.ceil(Math.hypot(B.x - A.x, B.z - A.z) / 0.25);
+      const pos = new THREE.Vector3(A.x, feetY || 0, A.z);
+      for (let s = 0; s < n; s++) { pos.x += (B.x - A.x) / n; pos.z += (B.z - A.z) / n; W.resolveCircle(pos, 0.35, feetY || 0, !feetY); }
+      return { arrived: Math.hypot(pos.x - B.x, pos.z - B.z) < 0.5, x: pos.x, z: pos.z };
+    };
+    const wp = (a) => W.mapToWorld(a[0], a[1]);
+    const reach = (x, y) => { const q = W.mapToWorld(x, y); return W.isReachable(q.x, q.z); };
+
+    // 1. footprints: each building's part rectangles reproduce its coloured outline (area mismatch < 3%)
+    const outlines = {
+      black: { names: ["1104", "1104e", "1104w", "1104p"], poly: [[270.5, 288.5], [445, 288.5], [445, 494.5], [319, 494.5], [319, 469.5], [270.5, 469.5]].map((p) => td(...p)) },
+      pink: { names: ["1114", "1114w", "1114e"], poly: [[741.5, 328], [914.5, 328], [914.5, 406], [951, 406], [951, 506], [806, 506], [806, 487.5], [741.5, 487.5]].map((p) => td(...p)) },
+      orange: { names: ["garageE"], poly: [[267, 105.5], [432, 105.5], [432, 251.5], [267, 251.5]].map((p) => td(...p)) },
+      purple: { names: ["garageP"], poly: [[533.5, 80], [667, 80], [667, 201.5], [533.5, 201.5]].map((p) => td(...p)) },
+      yellow: { names: ["garageY"], poly: [[912.5, 251.5], [999.5, 251.5], [999.5, 388], [912.5, 388]].map((p) => td(...p)) },
+    };
+    for (const [colour, o] of Object.entries(outlines)) {
+      const recs = o.names.map(rec);
+      const xs = o.poly.map((p) => p[0]), ys = o.poly.map((p) => p[1]);
+      let mism = 0, tot = 0;
+      for (let y = Math.min(...ys) - 3; y <= Math.max(...ys) + 3; y += 0.25) for (let x = Math.min(...xs) - 3; x <= Math.max(...xs) + 3; x += 0.25) {
+        const inside = inPoly(x, y, o.poly), built = recs.some((h) => { const r = rectPx(h); return x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3]; });
+        if (inside || built) tot++;
+        if (inside !== built) mism++;
+      }
+      check("M2C.1 " + colour + " outline = footprint (" + o.names.join("+") + ")", recs.every(Boolean) && mism / tot < 0.03, (mism / tot * 100).toFixed(2) + "% mismatch");
+    }
+    // 2. heights: 1104 / 1114 are 2 storeys (5.2-5.6 m walls) for most of the outline, wings ~3 m, 1108 is one storey
+    {
+      const area = (h) => h.halfX * h.halfZ * 4;
+      const frac = (names) => { const t = names.map(rec); const tall = t.filter((h) => h.wallH >= 5.2 && h.wallH <= 5.6).reduce((a, h) => a + area(h), 0); return tall / t.reduce((a, h) => a + area(h), 0); };
+      check("M2C.2 1104: most of the footprint is 2 storeys, the wings are ~3 m", frac(["1104", "1104e", "1104w", "1104p"]) > 0.6 && ["1104w", "1104p"].every((n) => Math.abs(rec(n).wallH - 3) < 0.25) && ["1104", "1104e"].every((n) => rec(n).wallH >= 5.2 && rec(n).wallH <= 5.6), frac(["1104", "1104e", "1104w", "1104p"]).toFixed(2));
+      check("M2C.2 1114: most of the footprint is 2 storeys, the east wing is ~3 m", frac(["1114", "1114w", "1114e"]) > 0.6 && Math.abs(rec("1114e").wallH - 3) < 0.25 && rec("1114").wallH >= 5.2 && rec("1114w").wallH >= 5.2, frac(["1114", "1114w", "1114e"]).toFixed(2));
+      check("M2C.2 1108 stays one storey and is lower than both", rec("1108").wallH < 3.5 && rec("1104").wallH - rec("1108").wallH > 2 && rec("1114").wallH - rec("1108").wallH > 2, rec("1108").wallH);
+      check("M2C.2 garages are 1 storey (eaves <= 3 m)", ["garageE", "garageP", "garageY"].every((n) => rec(n).wallH <= 3));
+      // collider support heights match the visual part heights
+      const sh = (name) => { const h = rec(name); return W.supportHeightAt(h.x, h.z, 0.1, 99); };
+      check("M2C.2 support heights follow the parts (tall block > wing, = roof top)", sh("1104") > sh("1104w") + 2 && sh("1114w") > sh("1114e") + 2 && Math.abs(sh("1104w") - rec("1104w").height) < 0.01 && Math.abs(sh("garageP") - rec("garageP").height) < 0.01, [sh("1104"), sh("1104w"), sh("1114w"), sh("1114e")].map((v) => v.toFixed(1)).join("/"));
+    }
+    // 3. notches are open air, the rest of the outline is built
+    {
+      const open = (cx, cy) => { const q = wp(td(cx, cy)); return W.isWalkable(q.x, q.z, 0.4); };
+      check("M2C.3 1104 notch (lower-left) is open ground, its wings and porch are solid", open(295, 483) && !open(380, 380) && !open(300, 440) && !open(360, 480));
+      check("M2C.3 1114 notch (upper-right) and lower-left step are open, the wing is solid", open(935, 397) && open(760, 497) && !open(930, 450) && !open(935, 360));
+    }
+    // 4. the sealed yard (west of 1104, between the orange garage and 1104, the notch): unreachable, never used
+    {
+      const yardPts = [[272, 225], [272, 255], [280, 190], [330, 189], [350, 189], [308, 264], [255, 200], [255, 265]];
+      check("M2C.4 exclusion rect covers the yard, the gap and the notch", yardPts.every(([x, y]) => { const q = W.mapToWorld(x, y); return W.isSpawnExcluded(q.x, q.z); }));
+      check("M2C.4 flood fill: yard / gap / notch cells are not reachable, street / alley / lawns are", yardPts.every(([x, y]) => !reach(x, y)) && [[177, 300], [330, 110], [420, 300], [500, 140], [520, 330], [270, 168], [600, 290]].every(([x, y]) => reach(x, y)), JSON.stringify(W.reachInfo()));
+      let leak = 0, tested = 0;
+      for (let y = 182.5; y < 269; y += 1.5) for (let x = 248.5; x < 357; x += 1.5) { if (reach(x, y)) leak++; tested++; }
+      check("M2C.4 not one reachable cell inside the exclusion rect (" + tested + " sampled)", leak === 0, leak);
+      // walking in from every side (ground and jump apex) fails
+      const ins = [[[236, 225], [272, 225]], [[272, 172], [272, 195]], [[272, 276], [272, 255]], [[366, 190], [345, 190]], [[236, 262], [285, 262]], [[300, 276], [308, 262]]];
+      check("M2C.4 walking in (west, north, south, the gap's east end, notch front) is blocked", ins.every(([a, b]) => !walkP(a, b, 0).arrived && !walkP(a, b, 1.36).arrived), ins.map(([a, b]) => walkP(a, b, 0).arrived + "/" + walkP(a, b, 1.36).arrived).join(" "));
+      // and a body inside cannot get out, in any direction
+      let escaped = 0;
+      for (const [sx, sy] of [[272, 225], [330, 189], [308, 264]]) for (let k = 0; k < 48; k++) {
+        const a = (k / 48) * Math.PI * 2, A = W.mapToWorld(sx, sy), pos = new THREE.Vector3(A.x, 0, A.z);
+        for (let s = 0; s < 400; s++) { pos.x += Math.cos(a) * 0.25; pos.z += Math.sin(a) * 0.25; W.resolveCircle(pos, 0.35, 0, true); }
+        const q = px(pos.x, pos.z);
+        if (q[0] < 246 || q[0] > 358 || q[1] < 181 || q[1] > 269.5) escaped++;
+      }
+      check("M2C.4 from inside the yard / gap / notch nobody walks out", escaped === 0, escaped);
+      // eye-level rays from inside all stop on fences / walls (the region is closed in plan)
+      let open = 0;
+      for (const [sx, sy] of [[272, 225], [330, 189]]) for (let k = 0; k < 72; k++) {
+        const a = (k / 72) * Math.PI * 2, A = W.mapToWorld(sx, sy), r = W.raycast(A.x, 1.0, A.z, Math.cos(a), 0, Math.sin(a), 40);
+        if (!r || r.ground) { open++; continue; }
+        const q = px(A.x + Math.cos(a) * r.distance, A.z + Math.sin(a) * r.distance);
+        if (q[0] < 245 || q[0] > 359 || q[1] < 180 || q[1] > 270.5) open++;
+      }
+      check("M2C.4 every ray from inside ends on the fence / walls around the region", open === 0, open);
+      check("M2C.4 no fixed spawn / pickup spot is inside it, in a garage or in a hollow house", W.pvpSpawnPoints.concat(W.pvpPickupSpots).every((s) => !W.isSpawnExcluded(s[0], s[1]) && W.isReachable(s[0], s[1]) && !W.isInsideHouseInterior(s[0], s[1])), JSON.stringify(W.pvpPickupSpots));
+    }
+    // 5. yellow garage: attached to 1114, no way in from anywhere; 1114's interior does not connect to it
+    {
+      const y = rec("garageY"), c = rec("1114");
+      const ry = rectPx(y), rc = rectPx(c), cp = px(c.x, c.z);
+      check("M2C.5 yellow garage interior: solid, not walkable, not reachable", !W.isWalkable(y.x, y.z, 0.3) && !W.isReachable(y.x, y.z));
+      check("M2C.5 yellow shares a wall with 1114 (its west face on 1114's NE wall)", Math.abs(ry[0] - rc[2]) < 1 && ry[1] < rc[3] && ry[3] > rc[1] + 5, ry[0].toFixed(1) + " vs " + rc[2].toFixed(1));
+      const cy = [(ry[0] + ry[2]) / 2, (ry[1] + ry[3]) / 2];
+      const around = [[ry[0] - 6, cy[1]], [cy[0], ry[3] + 6], [ry[2] + 6, cy[1]], [cy[0], ry[1] - 6]];
+      check("M2C.5 walking into the yellow garage from all four sides is blocked", around.every((a) => !walkP(a, cy, 0).arrived && !walkP(a, cy, 1.36).arrived));
+      const inter = walkP(cp, [ry[0] + 3, cy[1]], 0), ip = px(inter.x, inter.z);
+      check("M2C.5 from the middle of 1114 you cannot walk through the shared wall into the yellow garage", !inter.arrived && ip[0] < rc[2], JSON.stringify(ip));
+      check("M2C.5 purple + orange garages are solid and unreachable inside", ["garageP", "garageE"].every((n) => { const g = rec(n); return !W.isWalkable(g.x, g.z, 0.3) && !W.isReachable(g.x, g.z); }));
+    }
+    // 6. driveway runs to the orange garage's door; alley ends at the purple garage's door apron
+    {
+      const g = rec("garageE"), gr = rectPx(g);
+      let ok = true, at = null;
+      for (let x = 250; x <= gr[0] - 0.5; x += 1) { const q = W.mapToWorld(x, 144); if (W.groundMaterialAt(q.x, q.z) !== "concrete") { ok = false; at = x; break; } }
+      check("M2C.6 concrete drive runs from the sidewalk up to the orange garage wall (at the door row)", ok && gr[0] > 296, at);
+      let rows = true;
+      for (let y = 128; y <= 178; y += 3) { const q = W.mapToWorld(gr[0] - 1.2, y); if (W.groundMaterialAt(q.x, q.z) !== "concrete") rows = false; }
+      check("M2C.6 the drive is concrete along the whole west face of the garage", rows);
+      check("M2C.6 you can walk from the sidewalk to the garage door (round the parked car) and the wall stops you", walkP([249, 164], [gr[0] - 1.0, 164], 0).arrived && walkP([gr[0] - 1.0, 164], [gr[0] - 1.0, 152], 0).arrived && !walkP([gr[0] - 1.0, 164], [gr[0] + 4, 164], 0).arrived);
+      const p = rec("garageP"), pr = rectPx(p), doorX = (pr[0] + pr[2]) / 2;
+      let conc = true;
+      for (let x = 300; x <= doorX + 3; x += 2) { const q = W.mapToWorld(x, 110); if (W.groundMaterialAt(q.x, q.z) !== "concrete") conc = false; }
+      const apron = W.mapToWorld(doorX, pr[1] - 1.5);
+      check("M2C.6 the back alley is concrete all the way to the purple garage's door and its apron touches the door wall", conc && W.groundMaterialAt(apron.x, apron.z) === "concrete" && pr[1] - 122 < 1.5, "doorX=" + doorX.toFixed(1));
+      check("M2C.6 walk the alley end to end to the purple door, the wall stops you", walkP([246, 110], [doorX, pr[1] - 1.0], 0).arrived && !walkP([doorX, pr[1] - 1.0], [doorX, pr[1] + 8], 0).arrived);
+    }
+    // 7. the little curved footpath of 1108
+    {
+      const pts = [[395.2, 333], [401.4, 314.4], [404.5, 305.6], [409.3, 296.8], [413.8, 289.6]];
+      check("M2C.7 footpath points are concrete, flat and walkable (no collider)", pts.every(([x, y]) => { const q = W.mapToWorld(x, y); return W.groundMaterialAt(q.x, q.z) === "concrete" && W.isWalkable(q.x, q.z, 0.4) && W.supportHeightAt(q.x, q.z, 0.3, 0.6) === 0; }));
+      check("M2C.7 branch points are concrete too and the lawn beside is grass", [[402.3, 287.9], [383.7, 280.0], [378.9, 275.6]].every(([x, y]) => { const q = W.mapToWorld(x, y); return W.groundMaterialAt(q.x, q.z) === "concrete"; }) && (() => { const q = W.mapToWorld(425, 310); return W.groundMaterialAt(q.x, q.z) === "grass"; })());
+      let all = true;
+      for (let i = 0; i < pts.length - 1; i++) all = all && walkP(pts[i], pts[i + 1], 0).arrived;
+      check("M2C.7 walkable from the sidewalk up to the front step", all);
+      const old = W.mapToWorld(407, 320);
+      check("M2C.7 the old straight walk is gone", W.groundMaterialAt(old.x, old.z) === "grass");
+    }
+    // 8. minimap data stays valid
+    {
+      const fp = W.minimapFootprints();
+      check("M2C.8 minimap footprints finite and include every new part", fp.every((c) => [c.cx, c.cz, c.halfX, c.halfZ, c.height].every(Number.isFinite)) && ["1104", "1104e", "1104w", "1104p", "1114w", "1114e", "garageE", "garageP", "garageY"].every((n) => { const h = rec(n); return fp.some((c) => Math.abs(c.cx - h.x) < 0.01 && Math.abs(c.cz - h.z) < 0.01); }), fp.length);
+    }
+    H.resetGame();
+  }
+
+  // ---- Rev 6: spawns never land deep in the storm (prefix M2P) ----
+  function runMap2Spawns() {
+    H.startPvpForTest(2, "deathmatch", "map2");
+    const W = H.map2World, P = H.players, z = H.zoneState, f = W.pvpFinalZone;
+    P.forEach((q) => H.pvpRespawnPlayer(q));
+    const from = { x: z.center.x, z: z.center.z, radius: z.radius };
+    const states = [0, 0.2, 0.45, 0.7, 1].map((t) => ({ t, x: from.x + (f.x - from.x) * t, z: from.z + (f.z - from.z) * t, r: from.radius + (f.radius - from.radius) * t }));
+    const rp = W.reachablePoints();
+    let total = 0, outside = 0, excluded = 0, unreachable = 0, notWalk = 0, inHouse = 0, inStorm = 0, tooClose = 0, worstEdge = 0;
+    const t0 = performance.now();
+    for (const s of states) {
+      z.center = { x: s.x, z: s.z }; z.radius = s.r;
+      for (let i = 0; i < 1000; i++) {
+        const me = P[i % 2], other = P[(i + 1) % 2];
+        if (i % 5 === 0) { const q = rp[Math.floor(Math.random() * rp.length)]; other.camera.position.set(q.x, H.EYE_HEIGHT, q.z); } // vary where the opponent is
+        const r = H.pickPvpSpawnPoint(me);
+        total++;
+        const d = Math.hypot(r.x - s.x, r.z - s.z);
+        if (d > s.r) outside++;
+        if (r.inStorm) inStorm++;
+        worstEdge = Math.max(worstEdge, d - s.r);
+        if (W.isSpawnExcluded(r.x, r.z)) excluded++;
+        if (!W.isReachable(r.x, r.z)) unreachable++;
+        if (!W.isWalkable(r.x, r.z, 0.4) || !W.insidePlayableEdge(r.x, r.z, 0)) notWalk++;
+        if (W.isInsideHouseInterior(r.x, r.z)) inHouse++;
+        if (Math.hypot(other.camera.position.x - r.x, other.camera.position.z - r.z) < 3) tooClose++;
+      }
+    }
+    check("M2P.1 " + total + " respawns across the whole storm: none outside the safe circle, none flagged in-storm", outside === 0 && inStorm === 0, "outside=" + outside + " inStorm=" + inStorm + " worst=" + worstEdge.toFixed(2) + " (" + ((performance.now() - t0) / 1000).toFixed(1) + " s)");
+    check("M2P.2 none in the exclusion region, none unreachable, all walkable", excluded === 0 && unreachable === 0 && notWalk === 0, [excluded, unreachable, notWalk].join("/"));
+    check("M2P.3 hollow-house interiors are (almost) never chosen while open ground exists", inHouse <= total * 0.01, inHouse);
+    check("M2P.4 never right on top of the opponent", tooClose === 0, tooClose);
+    // the margin from the edge: every normal spawn keeps >= min(8, 0.3 r) from the circle
+    {
+      z.center = { x: f.x, z: f.z }; z.radius = f.radius;
+      let min = Infinity;
+      for (let i = 0; i < 300; i++) { const r = H.pickPvpSpawnPoint(P[0]); min = Math.min(min, f.radius - Math.hypot(r.x - f.x, r.z - f.z)); }
+      check("M2P.5 the final circle's spawns keep a margin from its edge", min >= Math.min(H.PVP_SPAWN.ZONE_EDGE_MARGIN, f.radius * 0.3) - 0.01, min.toFixed(2));
+    }
+    // truly nowhere valid in the eye of the circle (a circle inside the purple garage): nearest valid walkable point, slightly in the storm
+    {
+      const g = W.houses.find((h) => h.name === "garageP");
+      z.center = { x: g.x, z: g.z }; z.radius = 2.5;
+      const picks = [];
+      for (let i = 0; i < 200; i++) picks.push(H.pickPvpSpawnPoint(P[i % 2]));
+      const maxD = Math.max(...picks.map((r) => Math.hypot(r.x - g.x, r.z - g.z) - z.radius));
+      check("M2P.6 no ground in the circle: spawns are flagged in-storm, valid, and the nearest ground to the circle (slightly in the storm)", picks.every((r) => r.inStorm && W.isWalkable(r.x, r.z, 0.4) && W.isReachable(r.x, r.z) && !W.isSpawnExcluded(r.x, r.z)) && maxD < 10, "maxD=" + maxD.toFixed(2));
+      // such a spawn gets double protection and double storm grace
+      const p = P[0];
+      H.pvpRespawnPlayer(p);
+      check("M2P.7 in-storm spawn: protection 4 s (2x) and zone grace x2", p.pvpProtectedFor === 4 && p.zoneDelayScale === 2, p.pvpProtectedFor + "/" + p.zoneDelayScale);
+      const run = (pl, scale, prot, seconds) => { pl.health = 100; pl.zoneOutsideSeconds = 0; pl.zoneDamageAccum = 0; pl.zoneDelayScale = scale; pl.pvpProtectedFor = prot; for (let t = 0; t < seconds; t += 0.1) { H.updateZone(0.1); if (pl.pvpProtectedFor > 0) pl.pvpProtectedFor = Math.max(0, pl.pvpProtectedFor - 0.1); } return pl.health; };
+      place(P[1], g.x + 40, g.z, 0); P[1].pvpProtectedFor = 99; // the other player stays out of this
+      z.phase = "stay"; z.from = null; // the map2 converge phase would re-centre the circle on every update
+      z.center = { x: g.x, z: g.z }; z.radius = 2.5;
+      place(p, g.x + 20, g.z, 0); // outside the 2.5 m circle
+      const hpNormal = run(p, 1, 2, 3.4), hpLong = run(p, 2, 4, 3.4), hpLongLate = run(p, 2, 4, 6.5);
+      check("M2P.8 storm damage: a normal spawn is hurt within 3.4 s, the in-storm spawn is untouched until ~4 s, then hurt", hpNormal < 100 && hpLong === 100 && hpLongLate < 100, [hpNormal, hpLong, hpLongLate].join("/"));
+      // back inside the safe circle the grace resets
+      place(p, g.x, g.z, 0); H.updateZone(0.1);
+      check("M2P.9 inside the circle the longer grace is dropped again", p.zoneDelayScale === 1, p.zoneDelayScale);
+    }
+    H.resetGame();
+  }
+
+  try { run(); runMap2(); runMap2Storm(); runCars(); runHouses(); runMap2Closeup(); runMap2Spawns(); } catch (e) { check("exception", false, e && e.stack || e); }
   const pass = checks.every((c) => c.ok);
   window.__perfResults = JSON.stringify({ pass, checks });
 })();

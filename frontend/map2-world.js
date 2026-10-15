@@ -33,12 +33,21 @@
     [112, -300, 128, 890], [232, -300, 248, 890], [-300, 330, 940, 346], [-300, 482, 940, 498],
   ];
   const DRIVEWAYS = [
-    [245, 125, 300, 160], [540, 280, 556, 372], [420, 498, 445, 590], [528, 450, 555, 590],
+    [243, 125, 299.5, 180], [540, 280, 556, 372], [420, 498, 445, 590], [528, 450, 555, 590],   // 1st: runs right up to the garage door (west wall of the orange garage)
     // aprons across the boulevards where a drive meets the road
     [420, 450, 445, 498], [540, 346, 556, 372], [245, 98, 300, 125],
-    [300, 98, 402, 122],   // back alley: east from 320/1104's drive, north of the garage, to the back yards
+    [300, 98, 428, 122],   // back alley: east from 320/1104's drive, north of the orange garage, ending at the door apron of the purple garage
   ];
-  const FRONT_WALKS = [[325, 272, 333, 338], [493, 275, 500, 338], [85, 240, 112, 247], [403, 275, 411, 338], [330, 338, 338, 346]];
+  const FRONT_WALKS = [[325, 272, 333, 338], [493, 275, 500, 338], [85, 240, 112, 247], [330, 338, 338, 346]];
+  // curved concrete footpaths (flat, walkable, no collider): [px width, [px points...]]. 1108's walk leaves the front
+  // sidewalk, bends up to its front step; a narrow branch peels off west along the front wall and curls up the west side.
+  const FOOTPATHS = [
+    [6.8, [[394.8, 331], [396.2, 326], [401.4, 314.4], [404.5, 305.6], [409.3, 296.8], [413.8, 289.6], [415.5, 285]]],
+    [4.6, [[409.8, 291.2], [402.3, 287.9], [393.4, 284.0], [383.7, 280.0], [378.9, 275.6], [377.1, 270.7]]],
+  ];
+  // Sealed yard (west fence x 247.5 .. orange garage east wall x 357, y 181.9 .. 1104's front line 269.2): spawns, respawns
+  // and pickups never use it. The fences and walls above make it physically unreachable too.
+  const EXCLUSION_PX = [[246, 181, 358, 269.2]];
   const PLAYABLE_PX = [[36, 98], [302, 98], [302, 8], [634, 8], [634, 584], [250, 584], [250, 535], [36, 535]];
 
   // ORANGE: ROAD CLOSED rows [px, py, axis, widthPx, options]; PURPLE: the
@@ -52,11 +61,24 @@
 
   // [name, px rect, front side (toward the street), options]
   // form: "gable-ns"/"gable-ew" (ridge direction) or "hip"; storeys 1 / 1.5 / 2.
+  // Options: wallH (eave height, m), pitch (roof tan), height (garages: eave height + single window row),
+  // noSides ("NE": no windows on those faces, they are shared walls), ceilH (hollow houses: interior ceiling).
+  // 1104 / 1114 / the garages are traced from 'topdowncloseup.png' (coloured outlines), registered onto topdownview.png
+  // px with one isotropic scale (closeup px = 2.83 x topdown px, closeup (60,60) = topdown (225.6,114.8), NCC 0.935).
+  const TALL_H = 5.4, LOW_H = 3.0, TALL_PITCH = 0.55;
   const HOUSES = [
-    ["1104", [300, 188, 363, 272], "S", { storeys: 1.5, form: "gable-ns", wall: 0xd8d1bc, roof: 0x55585c, porch: "deck", number: "1104" }],
-    ["1104w", [298, 150, 345, 188], "S", { storeys: 1, form: "gable-ew", wall: 0xd8d1bc, roof: 0x45484c, nodoor: true }],
+    // 1104 (black outline): L-shaped, 2 storeys for the back block and the east wing, 1 storey for the front-west
+    // wing (L1) and the porch wing (L2, carries the door); the notch at the front-left is open yard.
+    ["1104", [300, 195.5, 361.6, 245.5], "S", { wallH: TALL_H, storeys: 2, pitch: TALL_PITCH, form: "gable-ew", wall: 0xd8d1bc, roof: 0x55585c, nodoor: true, noSides: "S" }],
+    ["1104e", [340, 245.5, 361.6, 268.5], "S", { wallH: TALL_H, storeys: 2, pitch: TALL_PITCH, form: "gable-ns", wall: 0xd8d1bc, roof: 0x4d5054, nodoor: true, noSides: "NW" }],
+    ["1104w", [300, 245.5, 340, 259.5], "W", { wallH: LOW_H, storeys: 1, pitch: TALL_PITCH, form: "gable-ew", wall: 0xd8d1bc, roof: 0x45484c, nodoor: true, noSides: "NES" }],
+    ["1104p", [317.1, 259.5, 340, 268.5], "S", { wallH: LOW_H, storeys: 1, pitch: TALL_PITCH, form: "gable-ew", wall: 0xd8d1bc, roof: 0x45484c, porch: "deck", number: "1104", noSides: "NE" }],
     ["1108", [383, 210, 450, 275], "S", { storeys: 1, form: "gable-ew", wall: 0xe3d6a8, roof: 0x8a7c6c, porch: "stoop", number: "1108", hollow: true }],
-    ["1114", [466, 210, 540, 272], "S", { storeys: 1, form: "gable-ew", wall: 0xf1f1ee, roof: 0x7a5a48, porch: "stoop", number: "1114", chimney: [-0.22, -0.1], shutters: true, hollow: true }],
+    // 1114 (pink outline): L-shaped, 2 storeys outside, only the main floor (H) is hollow; the east wing (E1) is
+    // 1 storey; the yellow garage shares the wall at H's north-east corner but has no way in.
+    ["1114", [489.2, 209.5, 527.5, 272.4], "S", { wallH: TALL_H, ceilH: 3.2, storeys: 2, pitch: TALL_PITCH, form: "gable-ns", wall: 0xf1f1ee, roof: 0x7a5a48, porch: "stoop", number: "1114", chimney: [-0.2, -0.1], shutters: true, hollow: true, doorU: -2.38, noSides: "WE" }],
+    ["1114w", [466.4, 209.5, 489.2, 265.9], "S", { wallH: TALL_H, storeys: 2, pitch: TALL_PITCH, form: "gable-ns", wall: 0xf1f1ee, roof: 0x6f5042, nodoor: true, noSides: "E" }],
+    ["1114e", [527.5, 237.1, 540.4, 272.4], "S", { wallH: LOW_H, storeys: 1, pitch: TALL_PITCH, form: "gable-ns", wall: 0xf1f1ee, roof: 0x7a5a48, nodoor: true, noSides: "W" }],
     ["1118", [595, 195, 640, 268], "S", { storeys: 2, form: "gable-ns", wall: 0xecebe6, roof: 0x7d8186, porch: "porch", number: "1118" }],
     ["1118w", [570, 175, 630, 195], "S", { storeys: 1, form: "gable-ew", wall: 0xecebe6, roof: 0x6a6e73, nodoor: true }],
     ["320", [302, 15, 372, 97], "W", { storeys: 1.5, form: "hip", wall: 0xbfa886, roof: 0x5b4e44, porch: "stoop", number: "320" }],
@@ -66,7 +88,11 @@
     ["1105", [462, 528, 528, 590], "N", { storeys: 1.5, form: "gable-ns", wall: 0xf1f1ee, roof: 0x9a3b33, porch: "stoop", number: "1105" }],
     ["1115", [565, 530, 620, 590], "N", { storeys: 1, form: "gable-ew", wall: 0xcfd2d4, roof: 0x73777c, porch: "stoop", number: "1115" }],
     ["garageW", [40, 115, 62, 137], "E", { height: 3.4, form: "gable-ew", wall: 0xf0efea, roof: 0x4a4d52, nodoor: true }],
-    ["garageE", [297, 122, 333, 150], "W", { height: 3.6, form: "gable-ew", wall: 0xd9cba6, roof: 0x66625c, nodoor: true, garageDoor: true }],
+    // solid 1-storey garages (no way in): ORANGE behind 1104 (door on the west face, onto the yellow car's drive),
+    // PURPLE in 1108's back yard (door on the north face, at the end of the back alley), YELLOW on 1114's NE corner
+    ["garageE", [298.7, 130.9, 357, 182.5], "W", { height: 2.7, pitch: 0.3, form: "gable-ew", wall: 0xd9cba6, roof: 0x4f545b, nodoor: true, garageDoor: true, garageDoorW: 7.2, doorU: -1.6 }],
+    ["garageP", [392.9, 121.9, 440.1, 164.8], "N", { height: 2.7, pitch: 0.3, form: "hip", wall: 0xc9c2ae, roof: 0x4a4d52, nodoor: true, garageDoor: true, garageDoorW: 4.8 }],
+    ["garageY", [526.8, 182.5, 557.6, 230.7], "E", { height: 2.7, pitch: 0.3, form: "gable-ns", wall: 0xe2dccb, roof: 0x6b5f52, nodoor: true }],
     ["garageN", [455, 5, 480, 35], "S", { height: 3.4, form: "gable-ew", wall: 0xb9bcbf, roof: 0x4a4d52, nodoor: true }],
     ["houseNE", [618, 20, 640, 70], "W", { storeys: 1, form: "gable-ns", wall: 0xaeb2b5, roof: 0x6d7176, nodoor: true }],
     // backdrop: outside the playable polygon, drawn but not solid
@@ -76,7 +102,7 @@
 
   // [px, py, canopy radius px, flowering]
   const TREES = [
-    [222, 285, 48], [455, 192, 45], [470, 100, 45], [365, 145, 32], [530, 30, 40], [600, 30, 35],
+    [222, 285, 48], [455, 192, 45], [470, 100, 45], [366, 147, 27], [530, 30, 40], [600, 30, 35],
     [603, 118, 35], [405, 70, 30], [68, 292, 28], [72, 352, 30, true], [262, 103, 24], [552, 205, 22],
     [572, 272, 20], [630, 300, 22], [310, 462, 28, true], [255, 508, 30], [597, 462, 25], [630, 522, 20],
     [18, 112, 30], [15, 280, 25], [182, 80, 22],
@@ -85,7 +111,7 @@
   // [px, py, heading] -- campus convention: 0 = +x east, PI/2 = +z south
   const CARS = [
     [440, 383, Math.PI], [585, 383, Math.PI], [82, 137, Math.PI], [80, 157, Math.PI], [72, 180, Math.PI],
-    [272, 143, 0, { paint: 0xe3b81c, model: "hatchback" }], [548, 298, -Math.PI / 2], [548, 322, -Math.PI / 2], [540, 560, Math.PI / 2], [151, 250, Math.PI / 2],
+    [274, 144, 0, { paint: 0xe3b81c, model: "hatchback" }], [548, 298, -Math.PI / 2], [548, 322, -Math.PI / 2], [540, 560, Math.PI / 2], [151, 250, Math.PI / 2],
   ];
 
   // [px, py, yaw] -- the red dot (S1) faces north-northeast like the streetview
@@ -211,6 +237,30 @@
     mergedPlanes([[-400, -400, 400, 400]], 0, 6, grassMaterial);
     mergedPlanes(SIDEWALKS.map(worldRect).concat(DRIVEWAYS.map(worldRect), FRONT_WALKS.map(worldRect)), 0.012, 1.5, concreteMaterial);
     mergedPlanes(ASPHALT.map(worldRect), 0.024, 6, asphaltMaterial);
+    // curved footpaths: one flat ribbon per path (concrete texture, no collider, so they are just ground)
+    const footpaths = FOOTPATHS.map(([wPx, pts]) => ({ half: (wPx * MAP2_M_PER_PX) / 2, pts: pts.map(([x, y]) => mapToWorld(x, y)) }));
+    {
+      const pos = [], uv = [], idx = [], tile = 1.5, y = 0.016;
+      for (const { half, pts } of footpaths) {
+        const base = pos.length / 3;
+        pts.forEach((p, i) => {
+          const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+          let tx = b.x - a.x, tz = b.z - a.z; const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
+          const w = half * (1 - 0.25 * (i / (pts.length - 1))) * (i === 0 ? 1.25 : 1); // flares slightly where it meets the sidewalk
+          for (const k of [-1, 1]) { const x = p.x - tz * w * k, z = p.z + tx * w * k; pos.push(x, y, z); uv.push(x / tile, z / tile); }
+        });
+        for (let i = 0; i < pts.length - 1; i++) { const q = base + i * 2; idx.push(q, q + 1, q + 3, q, q + 3, q + 2); }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+      g.setIndex(idx);
+      g.computeVertexNormals();
+      for (let i = 0; i < g.attributes.normal.count; i++) if (g.attributes.normal.getY(i) < 0) g.attributes.normal.setY(i, -g.attributes.normal.getY(i));
+      const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: concreteTexture, side: THREE.DoubleSide }));
+      mesh.frustumCulled = false;
+      root.add(mesh);
+    }
     {
       // paint: crosswalk bars (west leg), stop bar (east leg), dashed centre lines
       const paint = [];
@@ -300,7 +350,8 @@
       const a = mapToWorld(rectPx[0], rectPx[1]), b = mapToWorld(rectPx[2], rectPx[3]);
       const cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2;
       const W = Math.abs(b.x - a.x), D = Math.abs(b.z - a.z);
-      const wallH = o.height || (o.storeys > 1 ? 5.8 : 3.2);
+      const wallH = o.wallH || o.height || (o.storeys > 1 ? 5.8 : 3.2);
+      const pitch = o.pitch || PITCH;
       const out = FACE[front];
       const long = Math.abs(out.x) === 1 ? D : W; // facade length of the front
       const form = o.form;
@@ -314,24 +365,24 @@
       const ridgeNS = form === "gable-ns";
       let roofTop = wallH;
       if (form === "hip") {
-        const rise = Math.min(W, D) / 2 * PITCH + 0.3;
-        put("hip", cx, wallH - OVERHANG * PITCH, cz, W + OVERHANG * 2, rise, D + OVERHANG * 2, 0, o.roof);
-        roofTop = wallH - OVERHANG * PITCH + rise;
+        const rise = Math.min(W, D) / 2 * pitch + 0.3;
+        put("hip", cx, wallH - OVERHANG * pitch, cz, W + OVERHANG * 2, rise, D + OVERHANG * 2, 0, o.roof);
+        roofTop = wallH - OVERHANG * pitch + rise;
       } else {
         const span = ridgeNS ? W : D, len = ridgeNS ? D : W;
-        const rise = (span / 2 + OVERHANG) * PITCH;
+        const rise = (span / 2 + OVERHANG) * pitch;
         const yaw = ridgeNS ? Math.PI / 2 : 0; // gable prism ridge runs along local x
-        put("gable", cx, wallH - OVERHANG * PITCH, cz, len + OVERHANG * 2, rise, span + OVERHANG * 2, yaw, o.roof);
-        put("gableEnd", cx, wallH, cz, len, span / 2 * PITCH, span, yaw, o.wall);
-        roofTop = wallH - OVERHANG * PITCH + rise;
+        put("gable", cx, wallH - OVERHANG * pitch, cz, len + OVERHANG * 2, rise, span + OVERHANG * 2, yaw, o.roof);
+        put("gableEnd", cx, wallH, cz, len, span / 2 * pitch, span, yaw, o.wall);
+        roofTop = wallH - OVERHANG * pitch + rise;
         if (o.crossGable) {
           // a small gable on the front (ridge across the main ridge), centred
           const cw = o.crossGable;
-          const crise = (cw / 2 + OVERHANG) * PITCH;
+          const crise = (cw / 2 + OVERHANG) * pitch;
           const depth = Math.min(span / 2, 3.2) + 0.6;
           const fx = cx + out.x * (Math.abs(out.x) ? W / 2 - depth / 2 + OVERHANG : 0), fz = cz + out.z * (Math.abs(out.z) ? D / 2 - depth / 2 + OVERHANG : 0);
           const cyaw = Math.abs(out.z) === 1 ? Math.PI / 2 : 0;
-          put("gable", fx, wallH - OVERHANG * PITCH + 0.08, fz, depth + OVERHANG, crise, cw + OVERHANG * 2, cyaw, o.roof);
+          put("gable", fx, wallH - OVERHANG * pitch + 0.08, fz, depth + OVERHANG, crise, cw + OVERHANG * 2, cyaw, o.roof);
         }
       }
       if (o.chimney) {
@@ -340,7 +391,7 @@
         box(hx, roofTop + 0.6, hz, 0.95, 0.12, 0.95, 0, 0x6b6e70);
       }
       // collider: the whole footprint, up to the ridge (hollow houses: wall ring + floor + roof slab instead)
-      const record = { name, x: cx, z: cz, halfX: W / 2, halfZ: D / 2, height: roofTop, hollow, door: null };
+      const record = { name, x: cx, z: cz, halfX: W / 2, halfZ: D / 2, height: roofTop, wallH, hollow, door: null };
       if (hollow) buildHollowShell();
       else if (!o.backdrop) {
         const c = makeCollider(cx, cz, W / 2, D / 2, roofTop, 0);
@@ -353,6 +404,7 @@
       // stoop, a ceiling and lined interior walls. The roof is a ceiling-flagged slab (shots only, no head-bump).
       function buildHollowShell() {
         const T = HOLLOW_WALL_T, fl = HOLLOW_FLOOR_Y, DW = HOLLOW_DOOR_W, DH = HOLLOW_DOOR_H;
+        const ceilH = o.ceilH || wallH; // interior ceiling; a 2-storey shell keeps its tall solid walls above it (no upstairs)
         const doorU0 = o.doorU || 0;
         function wallPiece(side, u0, u1, y0, y1) {
           const n = FACE[side], nxa = Math.abs(n.x), nza = Math.abs(n.z);
@@ -367,8 +419,8 @@
           if (y0 > 0) c.base = y0;
           c.style = "house";
           addCollider(c);
-          const yi = Math.max(y0, fl);
-          put("interior", cx + n.x * (half - T - 0.02) + al.x * um, (yi + y1) / 2, cz + n.z * (half - T - 0.02) + al.z * um, nxa * 0.04 + al.x * len, y1 - yi, nza * 0.04 + al.z * len, 0, HOLLOW_WALL_COLOR);
+          const yi = Math.max(y0, fl), yt = Math.min(y1, ceilH);
+          if (yt > yi) put("interior", cx + n.x * (half - T - 0.02) + al.x * um, (yi + yt) / 2, cz + n.z * (half - T - 0.02) + al.z * um, nxa * 0.04 + al.x * len, yt - yi, nza * 0.04 + al.z * len, 0, HOLLOW_WALL_COLOR);
         }
         for (const side of ["N", "S", "E", "W"]) {
           const n = FACE[side], L = Math.abs(n.x) === 1 ? D - 2 * T : W;
@@ -390,13 +442,13 @@
         }
         // floor + ceiling
         put("interior", cx, fl / 2, cz, W - 2 * T, fl, D - 2 * T, 0, HOLLOW_FLOOR_COLOR);
-        put("interior", cx, wallH - 0.05, cz, W - 2 * T, 0.1, D - 2 * T, 0, HOLLOW_CEIL_COLOR);
+        put("interior", cx, ceilH - 0.05, cz, W - 2 * T, 0.1, D - 2 * T, 0, HOLLOW_CEIL_COLOR);
         const floor = makeCollider(cx, cz, (W - 2 * T) / 2, (D - 2 * T) / 2, fl, 0);
         floor.render = false; floor.seeThrough = true; floor.fx = "wood";
         addCollider(floor);
         // roof slab on top of the walls: solid to shots, never pushes a body under it
         const roofSlab = makeCollider(cx, cz, W / 2, D / 2, roofTop, 0);
-        roofSlab.base = wallH; roofSlab.ceiling = true; roofSlab.style = "house";
+        roofSlab.base = ceilH; roofSlab.ceiling = true; roofSlab.style = "house";
         addCollider(roofSlab);
       }
       // windows on every facade; door + steps on the front
@@ -409,9 +461,10 @@
         const yaw = Math.abs(n.x) === 1 ? Math.PI / 2 : 0;
         const faceYaw = Math.atan2(n.x, n.z);
         const isFront = side === front;
+        if (o.noSides && o.noSides.includes(side)) continue;
         if (o.garageDoor && isFront) {
           // white double sectional door on the gable end, with panel seams
-          const dw = L * 0.8, dxg = cx + n.x * half, dzg = cz + n.z * half;
+          const dw = o.garageDoorW || L * 0.8, gu = o.doorU || 0, dxg = cx + n.x * half + along.x * gu, dzg = cz + n.z * half + along.z * gu;
           const sxg = dw * Math.abs(along.x) + 0.1 * Math.abs(n.x), szg = dw * Math.abs(along.z) + 0.1 * Math.abs(n.z);
           box(dxg + n.x * 0.04, 0, dzg + n.z * 0.04, sxg, 2.4, szg, 0, 0xf2f1ec);
           for (let r = 1; r < 4; r++) box(dxg + n.x * 0.1, r * 0.6, dzg + n.z * 0.1, sxg * (Math.abs(n.x) ? 0.5 : 1) + 0.02 * Math.abs(n.z), 0.03, szg * (Math.abs(n.z) ? 0.5 : 1) + 0.02 * Math.abs(n.x), 0, 0xb9b8b2);
@@ -426,15 +479,16 @@
           for (let i = 0; i < count; i++) us.push((i + 0.5) * (L / count) - L / 2);
         }
         const floors = o.storeys > 1 ? 2 : 1;
+        const floorH = o.wallH && floors === 2 ? o.wallH / 2 : FLOOR_H;
         for (const u of us) {
           for (let f = 0; f < floors; f++) {
             if (o.height && f > 0) continue;
-            const wy = (o.height ? 1.4 : 1.15) + f * FLOOR_H;
+            const wy = (o.height ? 1.4 : 1.15) + f * floorH;
             const wh = o.height ? 1.0 : 1.35;
             const px = cx + n.x * half + along.x * u, pz = cz + n.z * half + along.z * u;
             box(px + n.x * 0.03, wy - 0.1, pz + n.z * 0.03, 1.3 * Math.abs(along.x) + 0.07 * Math.abs(n.x), 1.55, 1.3 * Math.abs(along.z) + 0.07 * Math.abs(n.z), 0, WHITE);
             box(px + n.x * 0.06, wy, pz + n.z * 0.06, 1.1 * Math.abs(along.x) + 0.05 * Math.abs(n.x), wh, 1.1 * Math.abs(along.z) + 0.05 * Math.abs(n.z), 0, 0x39495a);
-            if (hollow) { // inside faces of the (still solid) window
+            if (hollow && f === 0) { // inside faces of the (still solid) window
               const ix = cx + n.x * (half - HOLLOW_WALL_T - 0.055) + along.x * u, iz = cz + n.z * (half - HOLLOW_WALL_T - 0.055) + along.z * u;
               box(ix, wy - 0.1, iz, 1.3 * Math.abs(along.x) + 0.07 * Math.abs(n.x), 1.55, 1.3 * Math.abs(along.z) + 0.07 * Math.abs(n.z), 0, WHITE);
               box(ix - n.x * 0.025, wy, iz - n.z * 0.025, 1.1 * Math.abs(along.x) + 0.05 * Math.abs(n.x), wh, 1.1 * Math.abs(along.z) + 0.05 * Math.abs(n.z), 0, 0x39495a);
@@ -578,9 +632,14 @@
       c.render = false; c.fx = "wood";   // opaque: blocks sight and shots, shown on the minimap like a wall
       addCollider(c);
     };
-    addSolidFence(252, 161, 252, 255, "tall");   // across the front of the house, driveway edge southward
-    addSolidFence(252, 161, 298, 161, "tall");   // north side, along the driveway edge to the house wing
-    addSolidFence(252, 255, 300, 255, "tall");   // south side, to the house wall
+    // The fenced yard west of 1104 (topdowncloseup.png): west fence, north fence along the driveway's south edge to the
+    // orange garage, south fence across the front of the yard to the porch wing, and a cross fence closing the gap
+    // between the orange garage and 1104 at the garage's east wall. The yard, the gap and the notch of 1104 are
+    // sealed (EXCLUSION_PX): nobody can enter, nothing spawns there.
+    addSolidFence(247.5, 181.9, 247.5, 269.2, "tall");   // west side
+    addSolidFence(247.5, 181.9, 299.2, 181.9, "tall");   // north side, to the orange garage's south-west corner
+    addSolidFence(247.5, 269.2, 317.5, 269.2, "tall");   // south side, across the front of the yard and the notch, to the porch wing
+    addSolidFence(357, 181.9, 357, 196.4, "tall");       // east end of the gap between the orange garage and 1104
     addSolidFence(248, 98, 302, 98, "low");      // alley north side, west of house 320 (on the map edge)
     addSolidFence(372, 98, 404, 98, "low");      // alley north side, east of house 320
     for (const style of Object.keys(solidRuns)) {
@@ -768,11 +827,22 @@
     // ---- world queries -------------------------------------------------------
     const pxRectsWorldCheck = (px, py, rects) => rects.some((r) => inRect(px, py, r));
     const concreteRects = [...SIDEWALKS, ...DRIVEWAYS, ...FRONT_WALKS];
+    function onFootpath(x, z) {
+      for (const { half, pts } of footpaths) {
+        for (let i = 0; i < pts.length - 1; i++) {
+          const a = pts[i], b = pts[i + 1], dx = b.x - a.x, dz = b.z - a.z;
+          const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz)));
+          if (Math.hypot(x - (a.x + dx * t), z - (a.z + dz * t)) <= half) return true;
+        }
+      }
+      return false;
+    }
     function groundMaterialAt(x, z, feetY = 0) {
       const p = pxOfWorld(x, z);
       if (feetY > 0.05) return "floor";
       if (pxRectsWorldCheck(p.x, p.y, ASPHALT)) return "asphalt";
       if (pxRectsWorldCheck(p.x, p.y, concreteRects)) return "concrete";
+      if (onFootpath(x, z)) return "concrete";
       return "grass";
     }
     function surfaceAt(x, z, feetY = 0) {
@@ -784,10 +854,19 @@
     const queries = window.createColliderQueries({ colliders, bounds, groundHeightAt: () => 0, stepUpHeight: STEP_UP_M, groundMaterialAt });
     const cars = window.createCarQueries(vehicleSystem, queries);
 
+    // ---- spawn rules: exclusion region, reachability, house interiors -----------------
+    const exclusionRects = EXCLUSION_PX.map((r) => {
+      const a = mapToWorld(r[0], r[1]), b = mapToWorld(r[2], r[3]);
+      return { minX: Math.min(a.x, b.x), maxX: Math.max(a.x, b.x), minZ: Math.min(a.z, b.z), maxZ: Math.max(a.z, b.z) };
+    });
+    const isSpawnExcluded = (x, z, margin = 0) => exclusionRects.some((r) => x > r.minX - margin && x < r.maxX + margin && z > r.minZ - margin && z < r.maxZ + margin);
+    // true inside the walls of a hollow house (its rooms: walkable, but not somewhere to spawn)
+    const isInsideHouseInterior = (x, z, margin = 0) => houseRecords.some((h) => h.hollow && Math.abs(x - h.x) < h.halfX + margin && Math.abs(z - h.z) < h.halfZ + margin);
+
     // ---- spawns ---------------------------------------------------------------
     const pvpSpawnPoints = SPAWNS_PX.map(([px, py, yaw]) => {
       let p = mapToWorld(px, py);
-      const ok = (q) => queries.isWalkable(q.x, q.z, 0.8) && insidePlayableEdge(q.x, q.z, 2);
+      const ok = (q) => queries.isWalkable(q.x, q.z, 0.8) && insidePlayableEdge(q.x, q.z, 2) && !isSpawnExcluded(q.x, q.z, 0.5) && !isInsideHouseInterior(q.x, q.z, 0.5);
       if (!ok(p)) {
         // nudge toward the map centre, 0.5 m at a time, up to 6 m
         const dx = mapCenter.x - p.x, dz = mapCenter.z - p.z, d = Math.hypot(dx, dz) || 1;
@@ -803,6 +882,55 @@
       }
       return [p.x, p.z, yaw];
     });
+
+    // ---- reachability (flood fill from the first fixed spawn) ---------------------------
+    // Flood fill over walkable ground (0.4 m cells, 0.4 m body) from the first fixed spawn: cells it cannot reach (the sealed
+    // yard, garage interiors, pockets behind fences) are never valid spawn / pickup points. Built on first use.
+    let reach = null;
+    function buildReach() {
+      const cell = 0.4, R = 0.4;
+      const nx = Math.ceil((bounds.maxX - bounds.minX) / cell) + 1, nz = Math.ceil((bounds.maxZ - bounds.minZ) / cell) + 1;
+      const open = new Uint8Array(nx * nz), seen = new Uint8Array(nx * nz);
+      const at = (i, j) => ({ x: bounds.minX + i * cell, z: bounds.minZ + j * cell });
+      for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+        const p = at(i, j);
+        open[j * nx + i] = insidePlayableEdge(p.x, p.z, 0.4) && queries.isWalkable(p.x, p.z, R) ? 1 : 0;
+      }
+      const s0 = pvpSpawnPoints[0];
+      let si = Math.round((s0[0] - bounds.minX) / cell), sj = Math.round((s0[1] - bounds.minZ) / cell);
+      const queue = [];
+      if (open[sj * nx + si]) { queue.push(sj * nx + si); seen[sj * nx + si] = 1; }
+      for (let h = 0; h < queue.length; h++) {
+        const k = queue[h], i = k % nx, j = (k - i) / nx;
+        for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const a = i + di, b = j + dj;
+          if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
+          const q = b * nx + a;
+          if (open[q] && !seen[q]) { seen[q] = 1; queue.push(q); }
+        }
+      }
+      reach = { cell, nx, nz, seen, open, count: queue.length };
+      return reach;
+    }
+    const reachState = () => reach || buildReach();
+    function isReachable(x, z) {
+      const r = reachState();
+      const i = Math.round((x - bounds.minX) / r.cell), j = Math.round((z - bounds.minZ) / r.cell);
+      return i >= 0 && j >= 0 && i < r.nx && j < r.nz && r.seen[j * r.nx + i] === 1;
+    }
+    // every reachable cell centre on a coarser lattice (for 'nearest valid point' searches), outside the exclusion and house interiors
+    let reachablePointsCache = null;
+    function reachablePoints() {
+      if (reachablePointsCache) return reachablePointsCache;
+      const r = reachState(), out = [], stride = 3;
+      for (let j = 0; j < r.nz; j += stride) for (let i = 0; i < r.nx; i += stride) {
+        if (!r.seen[j * r.nx + i]) continue;
+        const x = bounds.minX + i * r.cell, z = bounds.minZ + j * r.cell;
+        if (isSpawnExcluded(x, z) || isInsideHouseInterior(x, z, 0.3) || !queries.isWalkable(x, z, 0.8) || !insidePlayableEdge(x, z, 2)) continue;
+        out.push({ x, z });
+      }
+      return (reachablePointsCache = out);
+    }
 
     const roadRectsWorld = [ROAD_11TH, ROAD_4TH].map(worldRect).map(([x1, z1, x2, z2]) => ({
       minX: Math.max(x1, bounds.minX - 10), maxX: Math.min(x2, bounds.maxX + 10), minZ: Math.max(z1, bounds.minZ - 10), maxZ: Math.min(z2, bounds.maxZ + 10),
@@ -871,7 +999,10 @@
       pvpSpawnTuning: { MIN_DISTANCE: 15, DISTANCE_CAP: 60 },
       // Final storm circle: the pink circle on 'topdownview - annotations.png' (px centre 462,245, radius ~78 px = ~15.4 m)
       pvpFinalZone: (() => { const p = mapToWorld(462, 245); return { x: p.x, z: p.z, radius: 78 * MAP2_M_PER_PX }; })(),
-      pvpPickupSpots: [pvpSpawnPoints[6], [0, 0], (() => { const p = mapToWorld(420, 250); return [p.x, p.z]; })()],
+      pvpPickupSpots: [pvpSpawnPoints[6], [0, 0], (() => { const p = mapToWorld(420, 300); return [p.x, p.z]; })()],  // on the 1108 front lawn (never inside a house)
+      pvpExclusionRects: exclusionRects,
+      isSpawnExcluded, isInsideHouseInterior, isReachable, reachablePoints,
+      reachInfo: () => { const r = reachState(); return { cell: r.cell, cells: r.nx * r.nz, open: r.open.reduce((a, v) => a + v, 0), reached: r.count }; },
       closures: {
         roads: closureResult.rows.map((r) => ({ x: r.x, z: r.z, axis: r.axis, length: r.length })),
         sidewalks: closureResult.sidewalkSigns.map((s) => ({ x: s.x, z: s.z, axis: s.axis })),

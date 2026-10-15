@@ -13647,11 +13647,11 @@
       if (p.isDead) { p.zoneOutsideSeconds = 0; p.zoneDamageAccum = 0; continue; }
       const outside = Math.hypot(p.camera.position.x - z.center.x, p.camera.position.z - z.center.z) > z.radius;
       if (!outside) {
-        p.zoneOutsideSeconds = 0; p.zoneDamageAccum = 0;
+        p.zoneOutsideSeconds = 0; p.zoneDamageAccum = 0; p.zoneDelayScale = 1; // back in the safe circle: normal grace again
         continue;
       }
       p.zoneOutsideSeconds += deltaSeconds;
-      const over = p.zoneOutsideSeconds - c.ZONE_DAMAGE_START_DELAY;
+      const over = p.zoneOutsideSeconds - c.ZONE_DAMAGE_START_DELAY * (p.zoneDelayScale || 1); // x2 after a forced in-storm spawn
       if (over <= 0) continue;
       const dps = Math.min(c.ZONE_DAMAGE_MAX_PER_SECOND, c.ZONE_DAMAGE_PER_SECOND + c.ZONE_DAMAGE_RAMP * over);
       p.zoneDamageAccum += dps * deltaSeconds;
@@ -22661,7 +22661,8 @@
     if (isWorldMap) currentWorld.updateVisibility(players.map((p) => p.camera.position));
     player.pvpAwaitingSpawn = false;
     player.pvpIsPrematch = false;
-    player.pvpProtectedFor = PVP_SPAWN_PROTECTION_SECONDS;
+    player.pvpProtectedFor = PVP_SPAWN_PROTECTION_SECONDS * (spot.inStorm ? 2 : 1); // map2: no safe ground left in the circle -> double immunity
+    player.zoneDelayScale = spot.inStorm ? 2 : 1;
     hidePvpPanel(player);
     if (!pvpMatch.started && players.every((p) => !p.pvpIsPrematch)) { // the clock starts once everyone has deployed
       pvpMatch.started = true;
@@ -22672,7 +22673,70 @@
   // Spawn point (see PVP_PLAN.md section 5): random candidates inside the
   // current zone, cheapest rejections first, scored by distance from every
   // living opponent; a point no opponent can see is always preferred.
+  // Residential (map2) spawns: only walkable, reachable ground inside the current safe circle (with a margin from its
+  // edge), never in the sealed yard / a garage / behind a fence, preferably not inside a house, away from and out of
+  // sight of the opponents. Order of preference: far + hidden, far, any valid point in the circle; a dense scan of the
+  // whole circle runs if the random candidates all fail; only if the eye of the circle has no valid ground at all does
+  // the nearest valid walkable point to the circle get used (inStorm: the caller grants double immunity).
+  function pickPvpSpawnPointWorld(player) {
+    const w = currentWorld, z = zoneState;
+    const others = players.filter((p) => p !== player && !p.isDead && !p.pvpAwaitingSpawn);
+    const fixed = w.pvpSpawnPoints, tuning = w.pvpSpawnTuning || PVP_SPAWN;
+    const margin = Math.min(PVP_SPAWN.ZONE_EDGE_MARGIN, z.radius * 0.3);
+    const safeR = Math.max(1, z.radius - margin);
+    const inCircle = (x, zz, r) => Math.hypot(x - z.center.x, zz - z.center.z) <= r;
+    const valid = (x, zz) => w.insidePlayableEdge(x, zz, 2) && w.isWalkable(x, zz, PVP_SPAWN.CLEARANCE) && !w.isSpawnExcluded(x, zz, 0.5) && w.isReachable(x, zz);
+    const minDist = Math.min(tuning.MIN_DISTANCE, z.radius * 0.6); // a small final circle can't keep the full distance
+    const pools = { okHidden: null, ok: null, any: null };
+    const consider = (x, zz, fixedYaw, inHouse) => {
+      let minD = Infinity;
+      for (const o of others) minD = Math.min(minD, Math.hypot(o.camera.position.x - x, o.camera.position.z - zz));
+      let visible = 0;
+      for (const o of others) {
+        if (!w.segmentBlocked(o.camera.position.x, o.camera.position.z, x, zz, 0, false, targetStandingY(o), 0)) visible++;
+      }
+      const score = Math.min(minD, tuning.DISTANCE_CAP) - visible * PVP_SPAWN.VISIBLE_PENALTY - (inHouse ? 40 : 0) + Math.random() * 5;
+      const cand = { x, z: zz, score, yaw: fixedYaw };
+      const key = minD >= minDist && !inHouse ? (visible === 0 ? "okHidden" : "ok") : "any";
+      if (!pools[key] || score > pools[key].score) pools[key] = cand;
+    };
+    const randomInCircle = (r) => { const a = Math.random() * Math.PI * 2, rr = r * Math.sqrt(Math.random()); return { x: z.center.x + Math.cos(a) * rr, z: z.center.z + Math.sin(a) * rr }; };
+    for (let n = 0; n < PVP_SPAWN.CANDIDATES; n++) {
+      let x, zz, fixedYaw;
+      const fp = fixed[n % fixed.length];
+      x = fp[0]; zz = fp[1]; fixedYaw = fp[2];
+      if (n >= fixed.length) { // later passes jitter the fixed point a little (must stay valid)
+        const jx = x + (Math.random() - 0.5) * 3, jz = zz + (Math.random() - 0.5) * 3;
+        if (valid(jx, jz)) { x = jx; zz = jz; }
+      }
+      if (!inCircle(x, zz, safeR)) { const q = randomInCircle(safeR); x = q.x; zz = q.z; fixedYaw = undefined; } // no fixed point left inside the circle
+      if (!valid(x, zz) || !inCircle(x, zz, safeR)) continue;
+      consider(x, zz, fixedYaw, w.isInsideHouseInterior(x, zz, 0.5));
+    }
+    if (!pools.okHidden && !pools.ok && !pools.any) { // dense scan of the circle (1.5 m lattice), no margin beyond a body width
+      const r = Math.max(1, z.radius - 0.8);
+      for (let gx = -r; gx <= r; gx += 1.5) for (let gz = -r; gz <= r; gz += 1.5) {
+        const x = z.center.x + gx, zz = z.center.z + gz;
+        if (gx * gx + gz * gz > r * r || !valid(x, zz)) continue;
+        consider(x, zz, undefined, w.isInsideHouseInterior(x, zz, 0.5));
+      }
+    }
+    let pick = pools.okHidden || pools.ok || pools.any, inStorm = false;
+    if (!pick) { // nowhere valid inside the eye of the circle: the valid point nearest to it (slightly in the storm)
+      let bestD = Infinity;
+      for (const q of w.reachablePoints()) {
+        const d = Math.max(0, Math.hypot(q.x - z.center.x, q.z - z.center.z) - z.radius) + Math.random() * 0.01;
+        if (d < bestD) { bestD = d; pick = { x: q.x, z: q.z }; }
+      }
+      if (!pick) pick = { x: w.spawn.x, z: w.spawn.z };
+      inStorm = !inCircle(pick.x, pick.z, z.radius);
+    }
+    const yaw = pick.yaw !== undefined ? pick.yaw : Math.atan2(-(z.center.x - pick.x), -(z.center.z - pick.z));
+    return { x: pick.x, z: pick.z, yaw, inStorm };
+  }
+
   function pickPvpSpawnPoint(player) {
+    if (isWorldMap && currentWorld.pvpSpawnPoints && currentWorld.isReachable) return pickPvpSpawnPointWorld(player);
     const others = players.filter((p) => p !== player && !p.isDead && !p.pvpAwaitingSpawn);
     const z = zoneState;
     const rect = zoneMapRect();
