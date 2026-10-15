@@ -700,6 +700,8 @@
       // map2-only
       pvpSpawnPoints,
       pvpSpawnTuning: { MIN_DISTANCE: 15, DISTANCE_CAP: 60 },
+      // Final storm circle: the pink circle on 'topdownview - annotations.png' (px centre 462,245, radius ~78 px = ~15.4 m)
+      pvpFinalZone: (() => { const p = mapToWorld(462, 245); return { x: p.x, z: p.z, radius: 78 * MAP2_M_PER_PX }; })(),
       pvpPickupSpots: [pvpSpawnPoints[6], [0, 0], (() => { const p = mapToWorld(420, 250); return [p.x, p.z]; })()],
       closures: {
         roads: closureResult.rows.map((r) => ({ x: r.x, z: r.z, axis: r.axis, length: r.length })),

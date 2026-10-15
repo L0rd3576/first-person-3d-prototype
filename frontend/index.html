@@ -4082,7 +4082,7 @@
   // All three numbers are first-guess placeholders (flagged, not tuned by
   // feel yet), same convention as every other un-spec'd balance number in
   // this file.
-  const BAT_MELEE_DAMAGE = 60;
+  const BAT_MELEE_DAMAGE = 100;        // explicit request (was 60): the heavy windup swing
   const BAT_MELEE_RANGE = 3.2;         // noticeably longer reach than MELEE_RANGE's 2.2 -- explicit request
   const BAT_MELEE_COOLDOWN = 1.0;      // explicit follow-up request: -0.2s off the previous 1.2
 
@@ -4102,7 +4102,7 @@
   // with line of sight) gets cut, once per slash -- see
   // updateKatanaSweepHits.
   const KATANA_MELEE_DAMAGE = 40;          // explicit request (was 30)
-  const KATANA_MELEE_RANGE = 2.8;
+  const KATANA_MELEE_RANGE = 2.4;          // explicit request (was 2.8); the sweep hit test reads this range
   const KATANA_MELEE_COOLDOWN = 0.2;       // seconds between slashes while held (was 0.4 -- explicit request)
   const KATANA_SWING_DURATION = 0.2;       // full slash, anticipation to reset -- equal to the cooldown, so held attacks chain straight from one reset into the next cut
   // Explicit request (katana overhaul -- see KATANA SLASH): a short
@@ -4204,7 +4204,7 @@
   // flat MELEE_COOLDOWN, then -0.2s off that, then a flat 0.3s, now 0.35s) -- still
   // resolves instantly like every other weapon's melee, no windup of its
   // own, unlike the bat's normal swing above.
-  const BAT_SWEEP_DAMAGE = 12; // explicit follow-up request, up from 10
+  const BAT_SWEEP_DAMAGE = 25; // explicit request (was 12): the light/fast shove attack
   const BAT_SWEEP_MAX_TARGETS = 3;
   const BAT_SWEEP_COOLDOWN = 0.35;
   // Smooth knockback (explicit request -- was an instant teleport-style
@@ -12187,7 +12187,7 @@
   // Standing height on the campus (0, a construction-pit step, or a
   // bleacher step/roof reached by stepping up) for a body at `position`.
   function campusSupportHeight(position, radius, currentGroundY) {
-    return campusWorld.supportHeightAt(position.x, position.z, radius, (currentGroundY || 0) + campusWorld.stepUpHeight);
+    return currentWorld.supportHeightAt(position.x, position.z, radius, (currentGroundY || 0) + currentWorld.stepUpHeight); // currentWorld, not campusWorld: map2 has its own colliders (cars!)
   }
 
   // Dormant: hidden, parked far off the map (so no distance/raycast check
@@ -13502,6 +13502,13 @@
     const j = ZONE_CONFIG.ZONE_STAY_JITTER;
     return zoneTiming("ZONE_STAY_DURATION") * (1 - j + Math.random() * 2 * j);
   }
+  // Residential (map2) PVP storm: starts as one circle enclosing the whole map, then converges continuously
+  // onto the map's final circle (currentWorld.pvpFinalZone) over ZONE_MAP2_CONVERGE_SECONDS of match time and
+  // holds there. No wait/warning/transition phases and no random zones; campus keeps the cycle below.
+  const ZONE_MAP2_CONVERGE_SECONDS = 5 * 60;
+  function zoneIsMap2Pvp() {
+    return isPvpMatchActive && isWorldMap && !!currentWorld && !!currentWorld.pvpFinalZone;
+  }
   function zoneMatchPlayers() {
     return isCoopMatchActive ? players : [players[0]];
   }
@@ -13524,6 +13531,18 @@
     zoneState.next = null;
     zoneState.history = [{ x: c.x, z: c.z }];
     zoneState.moves = 0;
+    if (zoneIsMap2Pvp()) { // full-size start: centred on the map, radius reaching the farthest playable corner
+      const m = zoneMapRect();
+      const mx = (m.minX + m.maxX) / 2, mz = (m.minZ + m.maxZ) / 2;
+      let r = 0;
+      for (const q of currentWorld.playablePolygon) r = Math.max(r, Math.hypot(q.x - mx, q.z - mz));
+      zoneState.phase = "converge";
+      zoneState.phaseDuration = ZONE_MAP2_CONVERGE_SECONDS;
+      zoneState.center = { x: mx, z: mz };
+      zoneState.radius = r + 2;
+      zoneState.from = { x: mx, z: mz, radius: r + 2 };
+      zoneState.history = [{ x: mx, z: mz }];
+    }
     for (const p of allPlayers) { p.zoneOutsideSeconds = 0; p.zoneDamageAccum = 0; }
   }
   function resetZone() {
@@ -13581,6 +13600,20 @@
     }
     if (!zoneState.initialized) initZone();
     const z = zoneState;
+    if (zoneIsMap2Pvp()) {
+      const f = currentWorld.pvpFinalZone;
+      if (z.phase === "converge") {
+        if (pvpMatch.started) z.phaseTime += deltaSeconds; // match time only (not while players are still picking a weapon)
+        const t = Math.min(1, z.phaseTime / z.phaseDuration);
+        z.center.x = z.from.x + (f.x - z.from.x) * t;
+        z.center.z = z.from.z + (f.z - z.from.z) * t;
+        z.radius = z.from.radius + (f.radius - z.from.radius) * t;
+        if (t >= 1) { z.center = { x: f.x, z: f.z }; z.radius = f.radius; z.sizeName = "SMALL"; z.from = null; z.phase = "stay"; z.phaseTime = 0; z.phaseDuration = 0; z.moves++; }
+      }
+      updateZoneDamage(deltaSeconds);
+      updateZoneUi(deltaSeconds);
+      return;
+    }
     z.phaseTime += deltaSeconds;
     if (z.phase === "stay" && z.phaseTime >= z.phaseDuration) {
       z.phase = "warning"; z.phaseTime = 0; z.phaseDuration = zoneTiming("ZONE_WARNING_DURATION");
@@ -13782,7 +13815,9 @@
     updateMinimapView(deltaSeconds);
     const left = z.phaseDuration - z.phaseTime;
     let text = "", cls = "";
-    if (z.phase === "stay") text = `Storm holds • ${zoneFmtTime(left)}`;
+    if (zoneIsMap2Pvp()) { // Residential: one continuous close, then the final circle
+      if (z.phase === "converge") { text = `Storm closing • ${zoneFmtTime(left)}`; cls = "moving"; } else text = "Final circle";
+    } else if (z.phase === "stay") text = `Storm holds • ${zoneFmtTime(left)}`;
     else if (z.phase === "warning") { text = ZONE_CONFIG.ZONE_WARNING_VISUALS_ENABLED ? `STORM MOVING SOON • ${zoneFmtTime(left)}` : ""; cls = "warn"; }
     else { text = `Storm moving • ${zoneFmtTime(left)}`; cls = "moving"; }
     if (zoneUi.label.textContent !== text) zoneUi.label.textContent = text;
@@ -18995,6 +19030,11 @@
   // or overriding it.
 
   function onPointerLockChange() {
+    if (document.pointerLockElement === canvas && pvpResultsEl.classList.contains("visible")) {
+      suppressNextPauseOnUnlock = true; // a lock granted over the PVP results screen (late click) is released again so the buttons stay clickable
+      document.exitPointerLock();
+      return;
+    }
     if (document.pointerLockElement === canvas) {
       overlay.classList.add("hidden");
       // The click that just grabbed the mouse (Play/Resume/click-to-play)
@@ -19843,6 +19883,8 @@
   // own mouse-clickable buttons (pollSingleplayerPauseGamepad/resumeButtonEl/
   // triggerDeath).
   function setCursorHidden(hidden) {
+    // A keyboard+mouse player on the PVP results screen needs a free cursor for its Continue button; another player's controller input must not re-hide it.
+    if (hidden && matchP1Scheme === "keyboard" && pvpResultsEl.classList.contains("visible")) return;
     document.body.classList.toggle("hide-cursor", hidden);
   }
 
@@ -20007,7 +20049,8 @@
   function isAnyMenuScreenVisible() {
     return !titleScreenEl.classList.contains("hidden") ||
       !overlay.classList.contains("hidden") ||
-      deathScreenEl.classList.contains("visible");
+      deathScreenEl.classList.contains("visible") ||
+      pvpResultsEl.classList.contains("visible");
   }
   document.addEventListener("mousemove", function () {
     if (isAnyMenuScreenVisible()) setCursorHidden(false);
@@ -20912,6 +20955,7 @@
     document.removeEventListener("click", retryCoopPointerLockOnce);
     document.removeEventListener("keydown", retryCoopPointerLockOnce);
     if (
+      !pvpResultsEl.classList.contains("visible") && // never re-grab the mouse over the PVP results screen
       isCoopMatchActive &&
       matchP1Scheme === "keyboard" &&
       document.pointerLockElement !== canvas &&
@@ -22644,7 +22688,10 @@
           const jx = x + (Math.random() - 0.5) * 3, jz = zz + (Math.random() - 0.5) * 3;
           if (currentWorld.isWalkable(jx, jz, PVP_SPAWN.CLEARANCE) && currentWorld.insidePlayableEdge(jx, jz, 2)) { x = jx; zz = jz; }
         }
-        if (Math.hypot(x - z.center.x, zz - z.center.z) > Math.max(10, z.radius - 2)) continue; // outside the shrinking zone
+        if (Math.hypot(x - z.center.x, zz - z.center.z) > Math.max(10, z.radius - 2)) { // outside the shrinking zone: a random point inside it instead (later in the match no fixed point is left inside)
+          const a = Math.random() * Math.PI * 2, rr = Math.max(2, z.radius - 3) * Math.sqrt(Math.random());
+          x = z.center.x + Math.cos(a) * rr; zz = z.center.z + Math.sin(a) * rr; fixedYaw = undefined;
+        }
       } else {
         const a = Math.random() * Math.PI * 2;
         const r = R * Math.sqrt(Math.random());
@@ -22658,7 +22705,7 @@
       const inNext = !z.next || Math.hypot(x - z.next.x, zz - z.next.z) < z.next.radius - 4;
       let minD = Infinity;
       for (const o of others) minD = Math.min(minD, Math.hypot(o.camera.position.x - x, o.camera.position.z - zz));
-      if (minD < spawnTuning.MIN_DISTANCE) continue;
+      if (minD < Math.min(spawnTuning.MIN_DISTANCE, fixedPoints ? z.radius * 0.6 : Infinity)) continue; // map2: a small final circle can't keep the full distance
       let visible = 0;
       for (const o of others) {
         const ox = o.camera.position.x, oz = o.camera.position.z;

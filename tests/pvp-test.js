@@ -262,6 +262,9 @@
     step(0.1);
     check("19 last-weapon kill ends match", H.pvpMatch.ended === true && visible("pvp-results"));
     check("19 banner P1 wins", document.getElementById("pvp-results-banner").textContent === "P1 WINS", document.getElementById("pvp-results-banner").textContent);
+    // win screen: the cursor must stay un-hidden for mouse clicks even if something re-hides it (a controller player's input), and the mouse stays free
+    document.body.classList.add("hide-cursor"); document.dispatchEvent(new MouseEvent("mousemove"));
+    check("19 win screen: a mouse move frees the cursor", !document.body.classList.contains("hide-cursor") && document.pointerLockElement === null);
     check("19 results header Level", document.querySelector("#pvp-results-board .pvp-board-title").textContent === "Level");
     H.resetGame();
 
@@ -509,7 +512,117 @@
     H.resetGame();
   }
 
-  try { run(); runMap2(); } catch (e) { check("exception", false, e && e.stack || e); }
+
+  // ---- Map 2 storm (prefix M2S): full-size start, converges on the final circle in 5 min, then holds ----
+  function runMap2Storm() {
+    H.startPvpForTest(2, "deathmatch", "map2");
+    const W = H.map2World, P = H.players, z = H.zoneState, f = W.pvpFinalZone;
+    const fw = W.mapToWorld(462, 245);
+    check("M2S.0 final circle = pink circle (px 462,245 r 78)", Math.hypot(f.x - fw.x, f.z - fw.z) < 0.01 && Math.abs(f.radius - 78 * W.constants.MAP2_M_PER_PX) < 0.01 && f.radius > 14 && f.radius < 17, JSON.stringify(f));
+    check("M2S.1 match is 15 minutes on map2", H.PVP_MATCH_SECONDS === 900 && H.pvpMatch.timeLeft === 900, H.pvpMatch.timeLeft);
+    let far = 0;
+    for (const q of W.playablePolygon) far = Math.max(far, Math.hypot(q.x - z.center.x, q.z - z.center.z));
+    check("M2S.2 starts full size around the whole boundary, no waves/warning", z.phase === "converge" && z.next === null && z.radius >= far && z.radius < far + 5, z.phase + " r=" + z.radius.toFixed(1) + " far=" + far.toFixed(1));
+    check("M2S.2 every spawn point is safe at the start", W.pvpSpawnPoints.every((s) => Math.hypot(s[0] - z.center.x, s[1] - z.center.z) < z.radius));
+    P.forEach((p) => H.pvpRespawnPlayer(p));
+    check("M2S.3 clock started and spawns picked inside the circle", H.pvpMatch.started && P.every((p) => Math.hypot(p.camera.position.x - z.center.x, p.camera.position.z - z.center.z) < z.radius));
+    P.forEach((p) => place(p, f.x, f.z, 0)); // park both inside the final circle so the storm never touches them in this test
+    P.forEach((p) => { p.health = 100; });
+    const r0 = z.radius, c0 = { x: z.center.x, z: z.center.z };
+    let prev = { x: z.center.x, z: z.center.z, r: z.radius }, monotone = true, maxJump = 0, mid = null, label1 = "";
+    const T = 5; // seconds per update
+    for (let t = T; t <= 300; t += T) {
+      H.updateZone(T);
+      maxJump = Math.max(maxJump, Math.hypot(z.center.x - prev.x, z.center.z - prev.z), Math.abs(z.radius - prev.r));
+      if (z.radius > prev.r + 1e-6) monotone = false;
+      prev = { x: z.center.x, z: z.center.z, r: z.radius };
+      if (t === 150) { mid = { x: z.center.x, z: z.center.z, r: z.radius }; label1 = H.zoneUi.label.textContent; }
+    }
+    check("M2S.4 shrinks monotonically and smoothly (small steps)", monotone && maxJump < 3, "maxStep=" + maxJump.toFixed(2));
+    check("M2S.4 halfway it is halfway", mid && Math.abs(mid.r - (r0 + f.radius) / 2) < 1 && Math.abs(mid.x - (c0.x + f.x) / 2) < 1 && Math.abs(mid.z - (c0.z + f.z) / 2) < 1, JSON.stringify(mid));
+    check("M2S.4 HUD says the storm is closing", /Storm closing/.test(label1), label1);
+    check("M2S.5 after 5 minutes it is exactly the final circle and holds", Math.abs(z.radius - f.radius) < 1e-6 && Math.abs(z.center.x - f.x) < 1e-6 && Math.abs(z.center.z - f.z) < 1e-6 && z.phase === "stay", z.phase + " r=" + z.radius);
+    H.updateZone(60); H.updateZone(60);
+    check("M2S.5 still the final circle 2 minutes later", Math.abs(z.radius - f.radius) < 1e-6 && Math.abs(z.center.x - f.x) < 1e-6 && z.next === null && /Final circle/.test(H.zoneUi.label.textContent), z.radius);
+    // damage outside the final circle works as usual; inside it does not
+    const out = P[0], inn = P[1];
+    place(out, f.x + f.radius + 30, f.z, 0);
+    out.pvpProtectedFor = 0; inn.pvpProtectedFor = 0;
+    const hp0 = out.health;
+    for (let t = 0; t < 8; t += 0.5) H.updateZone(0.5);
+    check("M2S.6 outside the final circle takes damage, inside does not", out.health < hp0 && inn.health === 100, out.health + "/" + inn.health);
+    // respawn late in the match still lands inside the small circle
+    let badSp = 0;
+    for (let i = 0; i < 40; i++) { const s = H.pickPvpSpawnPoint(P[i % 2]); if (Math.hypot(s.x - f.x, s.z - f.z) > f.radius || !W.isWalkable(s.x, s.z, 0.4)) badSp++; }
+    check("M2S.7 late respawns land inside the final circle", badSp === 0, badSp);
+    H.resetGame();
+    // campus keeps its own cycle
+    H.startPvpForTest(2, "deathmatch", "campus");
+    check("M2S.8 campus storm unchanged (60 s delay, stay phase, LARGE)", H.zoneState.phase === "stay" && H.zoneState.phaseDuration === 60 && H.zoneState.sizeName === "LARGE", H.zoneState.phase + "/" + H.zoneState.phaseDuration);
+    H.resetGame();
+  }
+
+  // ---- Parked-car hitboxes (prefix CAR): walk + jump onto a car, stand on its roof, never clip ----
+  function carRoofTest(label, W) {
+    const P = H.players, p = P[0];
+    const lowRoof = (r) => (r.roofY - r.bodyTop) <= W.stepUpHeight - 0.05;
+    let car = null, start = null;
+    for (const r of W.carRecords) {
+      if (!lowRoof(r) || Math.abs(r.groundY) > 0.01) continue;
+      const s = { x: r.x + r.fx * (r.halfL + 3), z: r.z + r.fz * (r.halfL + 3) };
+      let clear = true;
+      for (let d = 1.0; d <= 3.4 && clear; d += 0.3) clear = W.isWalkable(r.x + r.fx * (r.halfL + d), r.z + r.fz * (r.halfL + d), 0.45) && !W.carAt(r.x + r.fx * (r.halfL + d), r.z + r.fz * (r.halfL + d), 0.4);
+      if (clear && W.insidePlayableEdge(s.x, s.z, 2)) { car = r; start = s; break; }
+    }
+    check("CAR " + label + " found a low-roof car with a clear approach", !!car, W.carRecords.length + " cars");
+    if (!car) return;
+    // the collider box matches the rendered car: centred, L x W, along the heading; the corners are solid, just outside is free
+    const probe = (u, v, rad) => { const o = { x: car.x + u * car.fx - v * car.fz, z: car.z + u * car.fz + v * car.fx }; const before = { x: o.x, z: o.z }; W.resolveCircle(o, rad, 0, true); return Math.hypot(o.x - before.x, o.z - before.z); };
+    check("CAR " + label + " footprint solid at the four corners, free 0.5 m outside", [[1, 1], [1, -1], [-1, 1], [-1, -1]].every(([a, b]) => probe(a * (car.halfL - 0.25), b * (car.halfW - 0.25), 0.1) > 0.05 && probe(a * (car.halfL + 0.5), b * (car.halfW + 0.5), 0.1) < 1e-6));
+    check("CAR " + label + " support height: body top over the hood, roof over the cabin, ground beside", Math.abs(W.supportHeightAt(car.x + car.fx * (car.halfL - 0.3), car.z + car.fz * (car.halfL - 0.3), 0.1, 3) - car.bodyTop) < 0.01 && Math.abs(W.supportHeightAt(car.x, car.z, 0.1, 3) - car.roofY) < 0.01 && Math.abs(W.supportHeightAt(car.x - car.fz * (car.halfW + 0.6), car.z + car.fx * (car.halfW + 0.6), 0.1, 3) - car.groundY) < 0.01);
+    // walk up to the nose, jump onto it, keep walking over the roof; track clipping
+    place(P[1], W.spawn.x, W.spawn.z, 0);
+    place(p, start.x, start.z, Math.atan2(car.fx, car.fz)); // faces -heading, i.e. the nose
+    p.health = P[1].health = 100; p.pvpProtectedFor = P[1].pvpProtectedFor = 0;
+    const real = p.input, fake = Object.create(real);
+    let jumpQueued = false;
+    fake.isActionHeld = (a) => a === "moveForward";
+    fake.wasActionJustPressed = (a) => { if (a === "jump" && jumpQueued) { jumpQueued = false; return true; } return false; };
+    p.input = fake;
+    let roofFrames = 0, clip = 0, below = 0, popped = 0, minHeightOnCar = Infinity, prevX = start.x, prevZ = start.z, prevFeet = 0, jumps = 0;
+    try {
+      for (let i = 0; i < 30 * 8; i++) {
+        const dx0 = p.camera.position.x - car.x, dz0 = p.camera.position.z - car.z;
+        const u0 = dx0 * car.fx + dz0 * car.fz;
+        if (p.isGrounded && p.campusGroundY < 0.05 && u0 > car.halfL - 0.5 && u0 < car.halfL + 1.1 && roofFrames < 5) { jumpQueued = true; jumps++; }
+        H.updateCoopMatchFrame(DT);
+        const x = p.camera.position.x, zz = p.camera.position.z, feet = p.campusGroundY + p.jumpOffset;
+        const dx = x - car.x, dz = zz - car.z, u = dx * car.fx + dz * car.fz, v = -dx * car.fz + dz * car.fx;
+        const onFootprint = Math.abs(u) < car.halfL - 0.02 && Math.abs(v) < car.halfW - 0.02;
+        if (onFootprint) minHeightOnCar = Math.min(minHeightOnCar, feet);
+        if (onFootprint && feet < car.bodyTop - 0.05) clip++;
+        if (feet < car.groundY - 0.02) below++;
+        if (Math.hypot(x - prevX, zz - prevZ) > 1 || Math.abs(feet - prevFeet) > 0.7) popped++;
+        if (onFootprint && Math.abs(u) < car.halfL * 0.3 && Math.abs(v) < car.halfW * 0.4 && feet >= car.roofY - 0.06 && p.isGrounded) roofFrames++;
+        prevX = x; prevZ = zz; prevFeet = feet;
+      }
+    } finally { p.input = real; }
+    check("CAR " + label + " walk/jump reaches and stands on the roof (" + car.name + ")", roofFrames >= 5, "roofFrames=" + roofFrames + " jumps=" + jumps + " roofY=" + car.roofY.toFixed(2));
+    check("CAR " + label + " no clipping into the car, no falling through, no popping", clip === 0 && below === 0 && popped === 0, "clip=" + clip + " below=" + below + " popped=" + popped + " minFeetOnCar=" + minHeightOnCar.toFixed(2));
+  }
+
+  function runCars() {
+    H.startPvpForTest(2, "deathmatch", "map2");
+    H.players.forEach((q) => H.pvpRespawnPlayer(q));
+    carRoofTest("map2", H.map2World);
+    H.resetGame();
+    H.startPvpForTest(2, "deathmatch", "campus");
+    H.players.forEach((q) => H.pvpRespawnPlayer(q));
+    carRoofTest("campus", H.campusWorld);
+    H.resetGame();
+  }
+
+  try { run(); runMap2(); runMap2Storm(); runCars(); } catch (e) { check("exception", false, e && e.stack || e); }
   const pass = checks.every((c) => c.ok);
   window.__perfResults = JSON.stringify({ pass, checks });
 })();
