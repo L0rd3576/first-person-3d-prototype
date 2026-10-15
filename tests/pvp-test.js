@@ -526,6 +526,17 @@
       check("M2.8e dark fence closes the alley's north side", !walk(275, 112, 275, 90, 0) && !walk(390, 112, 390, 90, 0));
       check("M2.8f garage still blocks", !walk(315, 112, 315, 140, 0));
       check("M2.8g fences are on the minimap", W.minimapFootprints().filter((c) => c.fx === "wood" && c.height >= 1.4 && c.height <= 1.9).length >= 5);
+      // Rev 7: access drive from 11th St S (secondalleywayview.png)
+      const gm = (px, py) => W.groundMaterialAt(P(px, py).x, P(px, py).z);
+      check("M2.9a lane and apron are concrete from the curb across the boulevard and sidewalk to the garage", [[214, 142], [222, 150], [240, 140], [260, 136], [290, 125], [215, 160], [240, 165], [290, 175], [297, 150]].every(([x, y]) => gm(x, y) === "concrete"));
+      check("M2.9a grass strip north of the lane, grass wedge south of the apron at the curb, grass boulevard beside it", gm(260, 108) === "grass" && gm(222, 177) === "grass" && gm(222, 190) === "grass");
+      check("M2.9b walk from the street mouth along the lane into the alley, and along the apron to the garage door", walk(214, 148, 262, 150, 0) && walk(214, 122, 300, 116, 0) && walk(300, 116, 400, 110, 0) && walk(214, 160, 295, 160, 0));
+      const car = W.carRecords.find((c) => Math.abs(P(240, 134.5).x - c.x) < 1.5 && Math.abs(P(240, 134.5).z - c.z) < 1.5);
+      check("M2.9c a dark sedan is parked on the lane and blocks walking through it, the rest of the lane stays open", !!car && !walk(240, 124, 240, 146, 0) && walk(214, 150, 262, 152, 0));
+      const bin = P(218.5, 179), pal = P(262, 181.9);
+      check("M2.9d the trash bin at the curb is solid, the lawn around it is open", !W.isWalkable(bin.x, bin.z, 0.2) && W.isWalkable(bin.x, bin.z - 2.5, 0.35));
+      check("M2.9e the pallet leaning on the fence is solid but never a floor, and the fence still cannot be jumped from it", !W.isWalkable(pal.x, pal.z - 0.25, 0.1) && W.supportHeightAt(pal.x, pal.z - 0.25, 0.05, 1.6) < 0.05 && !walk(262, 172, 262, 195, 1.36));
+      check("M2.9f lower slat fence closes the alley's north end and stays taller than a jump", !walk(390, 112, 390, 90, 1.36) && W.minimapFootprints().some((c) => c.fx === "wood" && Math.abs(c.height - 1.4) < 0.01));
     }
     H.zoneUi.layerKey = null; H.ensureZoneStaticLayer();
     check("M2.6 minimap layer keyed to map2 with >=12 footprints", /^map2/.test(H.zoneUi.layerKey) && W.minimapFootprints().length >= 12, H.zoneUi.layerKey + " " + W.minimapFootprints().length);

@@ -33,11 +33,18 @@
     [112, -300, 128, 890], [232, -300, 248, 890], [-300, 330, 940, 346], [-300, 482, 940, 498],
   ];
   const DRIVEWAYS = [
-    [243, 125, 299.5, 180], [540, 280, 556, 372], [420, 498, 445, 590], [528, 450, 555, 590],   // 1st: runs right up to the garage door (west wall of the orange garage)
+    [540, 280, 556, 372], [420, 498, 445, 590], [528, 450, 555, 590],
     // aprons across the boulevards where a drive meets the road
-    [420, 450, 445, 498], [540, 346, 556, 372], [245, 98, 300, 125],
+    [420, 450, 445, 498], [540, 346, 556, 372],
     [300, 98, 428, 122],   // back alley: east from 320/1104's drive, north of the orange garage, ending at the door apron of the purple garage
   ];
+  // Access driveway off 11th St S (secondalleywayview.png): a narrow dark lane tilted north-east along the grass strip, parked-car
+  // side, leading past the orange garage's north-west corner to the back alley, and a wide light apron in front of the garage's
+  // door whose south edge leaves a grass wedge along the tall fence. Quads [TL, TR, BR, BL] (vertical ends), px; they cross the
+  // boulevard and the sidewalk and count as concrete. The lane is drawn darker.
+  const LANE_Q = [[213, 133.5], [300, 114.1], [300, 130.1], [213, 149.6]];
+  const APRON_Q = [[213, 149.6], [300, 130.1], [300, 180], [213, 172]];
+  const DRIVE_QUADS = [LANE_Q, APRON_Q];
   const FRONT_WALKS = [[325, 272, 333, 338], [493, 275, 500, 338], [85, 240, 112, 247], [330, 338, 338, 346]];
   // curved concrete footpaths (flat, walkable, no collider): [px width, [px points...]]. 1108's walk leaves the front
   // sidewalk, bends up to its front step; a narrow branch peels off west along the front wall and curls up the west side.
@@ -90,7 +97,7 @@
     ["garageW", [40, 115, 62, 137], "E", { height: 3.4, form: "gable-ew", wall: 0xf0efea, roof: 0x4a4d52, nodoor: true }],
     // solid 1-storey garages (no way in): ORANGE behind 1104 (door on the west face, onto the yellow car's drive),
     // PURPLE in 1108's back yard (door on the north face, at the end of the back alley), YELLOW on 1114's NE corner
-    ["garageE", [298.7, 130.9, 357, 182.5], "W", { height: 2.7, pitch: 0.3, form: "gable-ew", wall: 0xd9cba6, roof: 0x4f545b, nodoor: true, garageDoor: true, garageDoorW: 7.2, doorU: -1.6 }],
+    ["garageE", [298.7, 130.9, 357, 182.5], "W", { height: 2.7, pitch: 0.3, form: "gable-ew", wall: 0x8d968a, roof: 0x60666c, nodoor: true, garageDoor: true, garageDoorW: 7.2, doorU: -0.4 }],
     ["garageP", [392.9, 121.9, 440.1, 164.8], "N", { height: 2.7, pitch: 0.3, form: "hip", wall: 0xc9c2ae, roof: 0x4a4d52, nodoor: true, garageDoor: true, garageDoorW: 4.8 }],
     ["garageY", [526.8, 182.5, 557.6, 230.7], "E", { height: 2.7, pitch: 0.3, form: "gable-ns", wall: 0xe2dccb, roof: 0x6b5f52, nodoor: true }],
     ["garageN", [455, 5, 480, 35], "S", { height: 3.4, form: "gable-ew", wall: 0xb9bcbf, roof: 0x4a4d52, nodoor: true }],
@@ -111,7 +118,7 @@
   // [px, py, heading] -- campus convention: 0 = +x east, PI/2 = +z south
   const CARS = [
     [440, 383, Math.PI], [585, 383, Math.PI], [82, 137, Math.PI], [80, 157, Math.PI], [72, 180, Math.PI],
-    [274, 144, 0, { paint: 0xe3b81c, model: "hatchback" }], [548, 298, -Math.PI / 2], [548, 322, -Math.PI / 2], [540, 560, Math.PI / 2], [151, 250, Math.PI / 2],
+    [274, 144, 0, { paint: 0xe3b81c, model: "hatchback" }], [240, 134.5, -0.22, { paint: 0x23262d, model: "midsizeSedan" }], [548, 298, -Math.PI / 2], [548, 322, -Math.PI / 2], [540, 560, Math.PI / 2], [151, 250, Math.PI / 2],
   ];
 
   // [px, py, yaw] -- the red dot (S1) faces north-northeast like the streetview
@@ -237,6 +244,29 @@
     mergedPlanes([[-400, -400, 400, 400]], 0, 6, grassMaterial);
     mergedPlanes(SIDEWALKS.map(worldRect).concat(DRIVEWAYS.map(worldRect), FRONT_WALKS.map(worldRect)), 0.012, 1.5, concreteMaterial);
     mergedPlanes(ASPHALT.map(worldRect), 0.024, 6, asphaltMaterial);
+    {
+      // the access drive: convex quads, one concrete mesh; the lane gets a darker weathered overlay except where the sidewalk crosses it
+      const quadY = (q, x) => { const k = (x - q[0][0]) / (q[1][0] - q[0][0]); return [q[0][1] + (q[1][1] - q[0][1]) * k, q[3][1] + (q[2][1] - q[3][1]) * k]; };
+      const clipQuad = (q, x0, x1) => { const a = quadY(q, x0), b = quadY(q, x1); return [[x0, a[0]], [x1, b[0]], [x1, b[1]], [x0, a[1]]]; };
+      const quadMesh = (quads, y, material) => {
+        const pos = [], uv = [], idx = [];
+        for (const q of quads) {
+          const base = pos.length / 3;
+          for (const [px, py] of q) { const w = mapToWorld(px, py); pos.push(w.x, y, w.z); uv.push(w.x / 1.5, w.z / 1.5); }
+          idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+        g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+        g.setIndex(idx);
+        g.computeVertexNormals();
+        const mesh = new THREE.Mesh(g, material);
+        mesh.frustumCulled = false;
+        root.add(mesh);
+      };
+      quadMesh(DRIVE_QUADS, 0.012, concreteMaterial);
+      quadMesh([clipQuad(LANE_Q, 213, 232), clipQuad(LANE_Q, 248, 300)], 0.016, new THREE.MeshLambertMaterial({ map: concreteTexture, color: 0x8c8a86 }));
+    }
     // curved footpaths: one flat ribbon per path (concrete texture, no collider, so they are just ground)
     const footpaths = FOOTPATHS.map(([wPx, pts]) => ({ half: (wPx * MAP2_M_PER_PX) / 2, pts: pts.map(([x, y]) => mapToWorld(x, y)) }));
     {
@@ -592,18 +622,20 @@
     }
     // ---- solid wooden fences: real colliders, one merged mesh per style --
     // tall: 1.8 m tan privacy fence round the 1104 side yard (streeview2);
-    // low: 1.5 m dark horizontal-board fence on the north side of the back alley.
-    // Both stay above the jump apex (~1.36 m), so they cannot be climbed.
+    // low: 1.5 m brown horizontal-board fence on the north side of the back alley (secondalleywayview.png);
+    // slat: the shorter (1.4 m) pale vertical-slat section at its east end.
+    // All stay above the jump apex (~1.36 m), so they cannot be climbed.
     const FENCE_STYLES = {
       tall: { h: 1.8, thick: 0.1, tileU: 1, tileV: 1.8, post: 0x8a6a48 },
-      low: { h: 1.5, thick: 0.1, tileU: 2, tileV: 1.44, post: 0x3b271b },
+      low: { h: 1.5, thick: 0.1, tileU: 2, tileV: 1.44, post: 0x4a3324 },
+      slat: { h: 1.4, thick: 0.08, tileU: 1.2, tileV: 1.4, post: 0x7b6347 },
     };
     FENCE_STYLES.tall.material = new THREE.MeshLambertMaterial({
       map: canvasTexture(64, 64, (ctx, w, h) => {
         const rand = seededRandom(31);
         for (let i = 0; i < 8; i++) {
           const k = 0.86 + rand() * 0.26;
-          ctx.fillStyle = `rgb(${Math.round(198 * k)},${Math.round(148 * k)},${Math.round(94 * k)})`;
+          ctx.fillStyle = `rgb(${Math.round(184 * k)},${Math.round(140 * k)},${Math.round(94 * k)})`;
           ctx.fillRect(i * 8, 0, 8, h);
           ctx.fillStyle = "rgba(70,40,15,0.5)";
           ctx.fillRect(i * 8, 0, 1, h);
@@ -616,14 +648,26 @@
         const rand = seededRandom(32);
         for (let i = 0; i < 8; i++) {
           const k = 0.85 + rand() * 0.3;
-          ctx.fillStyle = `rgb(${Math.round(92 * k)},${Math.round(60 * k)},${Math.round(42 * k)})`;
+          ctx.fillStyle = `rgb(${Math.round(114 * k)},${Math.round(78 * k)},${Math.round(55 * k)})`;
           ctx.fillRect(0, i * 8, w, 8);
           ctx.fillStyle = "rgba(20,10,5,0.55)";
           ctx.fillRect(0, i * 8, w, 1);
         }
       }),
     });
-    const solidRuns = { tall: [], low: [] };
+    FENCE_STYLES.slat.material = new THREE.MeshLambertMaterial({
+      map: canvasTexture(64, 64, (ctx, w, h) => {
+        const rand = seededRandom(33);
+        for (let i = 0; i < 10; i++) {
+          const k = 0.88 + rand() * 0.2;
+          ctx.fillStyle = `rgb(${Math.round(150 * k)},${Math.round(116 * k)},${Math.round(82 * k)})`;
+          ctx.fillRect(i * 6.4, 0, 5.6, h);
+          ctx.fillStyle = "rgba(25,15,8,0.6)";
+          ctx.fillRect(i * 6.4 + 5.6, 0, 0.8, h);
+        }
+      }),
+    });
+    const solidRuns = { tall: [], low: [], slat: [] };
     const addSolidFence = (x1, y1, x2, y2, style) => {
       const a = mapToWorld(x1, y1), b = mapToWorld(x2, y2), S = FENCE_STYLES[style];
       const len = Math.hypot(b.x - a.x, b.z - a.z), yaw = Math.atan2(-(b.z - a.z), b.x - a.x);
@@ -641,7 +685,7 @@
     addSolidFence(247.5, 269.2, 317.5, 269.2, "tall");   // south side, across the front of the yard and the notch, to the porch wing
     addSolidFence(357, 181.9, 357, 196.4, "tall");       // east end of the gap between the orange garage and 1104
     addSolidFence(248, 98, 302, 98, "low");      // alley north side, west of house 320 (on the map edge)
-    addSolidFence(372, 98, 404, 98, "low");      // alley north side, east of house 320
+    addSolidFence(372, 98, 404, 98, "slat");     // alley north side, east of house 320: the lower slat section at the fence's east end
     for (const style of Object.keys(solidRuns)) {
       const S = FENCE_STYLES[style], pos = [], nor = [], uv = [], idx = [];
       for (const { a, b, len, yaw } of solidRuns[style]) {
@@ -673,6 +717,27 @@
       const mesh = new THREE.Mesh(geo, S.material);
       mesh.frustumCulled = false;
       root.add(mesh);
+    }
+    {
+      // street furniture from secondalleywayview.png: a grey wheeled bin at the curb beside the drive, and a wooden pallet
+      // leaning on the tall fence's apron side (slats stepped to lean; a low see-through collider that can be vaulted but
+      // never stood on, so nobody gets a launch pad over the 1.8 m sealed-yard fence)
+      const bin = mapToWorld(218.5, 179);
+      box(bin.x, 0.08, bin.z, 0.6, 0.86, 0.56, 0, 0x6a6e72);
+      box(bin.x, 0.94, bin.z, 0.66, 0.09, 0.62, 0, 0x4f5458);
+      box(bin.x + 0.34, 0, bin.z, 0.1, 0.16, 0.5, 0, 0x2c2e30);   // wheels at the back
+      const binC = makeCollider(bin.x, bin.z, 0.34, 0.32, 1.03, 0);
+      binC.render = false; binC.fx = "metal";
+      addCollider(binC);
+      const pal = mapToWorld(262, 181.9), faceZ = pal.z - 0.05;
+      for (let i = 0; i < 5; i++) {
+        const y = 0.04 + i * 0.22, lean = 0.07 + 0.3 * (1 - y / 1.1);
+        box(pal.x, y, faceZ - lean - 0.07, 1.2, 0.12, 0.14, 0, 0xb39a6e);
+        for (const dx of [-0.52, 0, 0.52]) box(pal.x + dx, y - 0.02, faceZ - lean - 0.2, 0.1, 0.2, 0.1, 0, 0x9d8559);
+      }
+      const palC = makeCollider(pal.x, faceZ - 0.2, 0.62, 0.2, 1.1, 0);
+      palC.render = false; palC.fx = "wood"; palC.seeThrough = true; palC.noStand = true;
+      addCollider(palC);
     }
     {
       // curbs along every road edge (cosmetic lip, no collider)
@@ -827,6 +892,11 @@
     // ---- world queries -------------------------------------------------------
     const pxRectsWorldCheck = (px, py, rects) => rects.some((r) => inRect(px, py, r));
     const concreteRects = [...SIDEWALKS, ...DRIVEWAYS, ...FRONT_WALKS];
+    function pxInQuad(px, py, q) {
+      if (px < q[0][0] || px > q[1][0]) return false;
+      const k = (px - q[0][0]) / (q[1][0] - q[0][0]);
+      return py >= q[0][1] + (q[1][1] - q[0][1]) * k && py <= q[3][1] + (q[2][1] - q[3][1]) * k;
+    }
     function onFootpath(x, z) {
       for (const { half, pts } of footpaths) {
         for (let i = 0; i < pts.length - 1; i++) {
@@ -842,6 +912,7 @@
       if (feetY > 0.05) return "floor";
       if (pxRectsWorldCheck(p.x, p.y, ASPHALT)) return "asphalt";
       if (pxRectsWorldCheck(p.x, p.y, concreteRects)) return "concrete";
+      if (DRIVE_QUADS.some((q) => pxInQuad(p.x, p.y, q))) return "concrete";
       if (onFootpath(x, z)) return "concrete";
       return "grass";
     }
