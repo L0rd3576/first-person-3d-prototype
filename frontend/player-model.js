@@ -268,7 +268,7 @@
     const PANTS = {
       jeans: { name: "Jeans", kind: "jeans", color: 0x3b5578 },
       army: { name: "Army Pants", kind: "cargo", color: 0x5f6847, pattern: PATTERN.camo },
-      suit: { name: "Suit Pants", kind: "suit", color: 0x2a2e37, pattern: PATTERN.crease },
+      suit: { name: "Suit Pants", kind: "suit", color: 0x17181c, pattern: PATTERN.crease },
       work: { name: "Work Pants", kind: "work", color: 0x8b7048, pattern: PATTERN.kneePads },
       athletic: { name: "Athletic Pants", kind: "athletic", color: 0x2b2d31, accent: 0xf2f2f2 },
       shorts: { name: "Shorts", kind: "shorts", color: 0x9c8a66 },
