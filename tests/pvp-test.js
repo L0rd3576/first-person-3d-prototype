@@ -441,7 +441,75 @@
     }
   }
 
-  try { run(); } catch (e) { check("exception", false, e && e.stack || e); }
+  // ---- Map 2 ("Residential") checks, prefix M2 ----
+  function runMap2() {
+    const disp = (id) => getComputedStyle(document.getElementById(id)).display;
+    H.setMap("campus");
+    H.setPvpSetup(true);
+    check("M2.0a coop+quad setups show the map picker in PVP", disp("coop-pvp-map-options") === "flex" && disp("quad-pvp-map-options") === "flex");
+    check("M2.0b default map is campus and active", H.pvpMapId === "campus" && document.querySelector("#coop-pvp-map-options [data-pvp-map=campus]").classList.contains("active"));
+    const modeBefore = H.pvpMode;
+    document.querySelector("#coop-pvp-map-options [data-pvp-map=map2]").click();
+    check("M2.0c clicking Residential sets map2 without touching the mode", H.pvpMapId === "map2" && H.pvpMode === modeBefore && document.querySelector("#coop-pvp-map-options [data-pvp-map=map2]").classList.contains("active"), H.pvpMapId + "/" + H.pvpMode);
+    H.stepPvpMap(-1); const a = H.pvpMapId; H.stepPvpMap(-1); const b = H.pvpMapId; H.stepPvpMap(1); H.stepPvpMap(1); const c = H.pvpMapId;
+    check("M2.0d stepPvpMap steps and clamps", a === "campus" && b === "campus" && c === "map2", [a, b, c]);
+    H.setPvpSetup(false);
+    check("M2.0e PVE setup hides the map picker", disp("coop-pvp-map-options") === "none" && disp("quad-pvp-map-options") === "none");
+    H.setPvpMap("map2");
+    H.startPvpForTest(2, "deathmatch", "map2");
+    const W = H.map2World;
+    check("M2.1 map2 is the current world", !!W && H.currentWorld === W && H.selectedMapId === "map2" && W.root.visible && !(H.campusWorld && H.campusWorld.root.visible));
+    const bd = W.bounds, sx = bd.maxX - bd.minX, sz = bd.maxZ - bd.minZ;
+    check("M2.1 bounds span 100..140 m", sx >= 100 && sx <= 140 && sz >= 100 && sz <= 140, sx + "x" + sz);
+    // spawns
+    const sp = W.pvpSpawnPoints;
+    check("M2.2 8 spawn points", sp.length >= 8, sp.length);
+    check("M2.2 spawns walkable and inside", sp.every((p) => W.isWalkable(p[0], p[1], 0.8) && W.insidePlayableEdge(p[0], p[1], 2)));
+    const ref = W.mapToWorld(432, 408);
+    check("M2.2 S1 at the red dot, yaw -0.11", Math.hypot(sp[0][0] - ref.x, sp[0][1] - ref.z) < 1 && Math.abs(sp[0][2] + 0.11) < 0.05);
+    let minD = Infinity;
+    for (let i = 0; i < sp.length; i++) for (let j = i + 1; j < sp.length; j++) minD = Math.min(minD, Math.hypot(sp[i][0] - sp[j][0], sp[i][1] - sp[j][1]));
+    check("M2.2 spawns >= 15 m apart", minD >= 15, minD);
+    let badPick = 0;
+    for (let i = 0; i < 200; i++) { const r = H.pickPvpSpawnPoint(H.players[i % H.players.length]); if (!W.isWalkable(r.x, r.z, 0.4) || !W.insidePlayableEdge(r.x, r.z, 0)) badPick++; }
+    check("M2.2 pickPvpSpawnPoint results are walkable and inside", badPick === 0, badPick);
+    // signs
+    const roads = [[177.5, 98, "x"], [50, 411, "z"], [177.5, 535, "x"], [619, 411, "z"]];
+    check("M2.3 4 road closures at the orange marks", W.closures.roads.length === 4 && roads.every(([px, py, ax]) => { const w = W.mapToWorld(px, py); return W.closures.roads.some((r) => Math.hypot(r.x - w.x, r.z - w.z) < 1.5 && r.axis === ax); }), JSON.stringify(W.closures.roads));
+    const sws = [[120, 98], [240, 96], [54, 338], [52, 490], [118, 533], [238, 528], [604, 338], [608, 490]];
+    check("M2.3 8 sidewalk closures at the purple marks", W.closures.sidewalks.length === 8 && sws.every(([px, py]) => { const w = W.mapToWorld(px, py); return W.closures.sidewalks.some((s) => Math.hypot(s.x - w.x, s.z - w.z) < 1.5); }), JSON.stringify(W.closures.sidewalks));
+    // boundary
+    let escaped = 0;
+    const starts = [[sp[0][0], sp[0][1]], [0, 0]];
+    for (const [x0, z0] of starts) for (let k = 0; k < 64; k++) {
+      const a = (k / 64) * Math.PI * 2, body = { x: x0, y: 0, z: z0 };
+      const pos = new THREE.Vector3(x0, 0, z0);
+      for (let s = 0; s < 500; s++) {
+        pos.x += Math.cos(a) * 0.3; pos.z += Math.sin(a) * 0.3;
+        W.resolveCircle(pos, 0.35, 0, true);
+      }
+      if (!W.insidePlayableEdge(pos.x, pos.z, -0.6)) escaped++;
+    }
+    check("M2.4 no ray escapes the boundary", escaped === 0, escaped);
+    let leaked = 0;
+    for (const [dx, dz, cx, cz] of [[0, -1, 0, -61.82], [-1, 0, -25.18, 0], [0, 1, 0, 24.49], [1, 0, 87.2, 0]]) {
+      const pos = new THREE.Vector3(cx - dx * 4, 0, cz - dz * 4);
+      for (let s = 0; s < 67; s++) { pos.x += dx * 0.3; pos.z += dz * 0.3; W.resolveCircle(pos, 0.35, 0, true); }
+      if (!W.insidePlayableEdge(pos.x, pos.z, -0.6)) leaked++;
+    }
+    check("M2.4 barricades hold on the road centrelines", leaked === 0, leaked);
+    const a1 = W.mapToWorld(416, 300), a2 = W.mapToWorld(416, 190);
+    check("M2.5 1108 blocks the lawn -> back yard line", W.segmentBlocked(a1.x, a1.z, a2.x, a2.z, 0, false, 1.6, 1.6));
+    check("M2.5 4th Ave is open from S1 to the intersection", !W.segmentBlocked(sp[0][0], sp[0][1], 0, 0, 0, false, 1.6, 1.6));
+    H.zoneUi.layerKey = null; H.ensureZoneStaticLayer();
+    check("M2.6 minimap layer keyed to map2 with >=12 footprints", /^map2/.test(H.zoneUi.layerKey) && W.minimapFootprints().length >= 12, H.zoneUi.layerKey + " " + W.minimapFootprints().length);
+    H.resetGame();
+    H.startPvpForTest(2, "deathmatch", "campus");
+    check("M2.7 switching back restores campus", H.isCampusMap && H.currentWorld === H.campusWorld && H.campusWorld.root.visible && !W.root.visible);
+    H.resetGame();
+  }
+
+  try { run(); runMap2(); } catch (e) { check("exception", false, e && e.stack || e); }
   const pass = checks.every((c) => c.ok);
   window.__perfResults = JSON.stringify({ pass, checks });
 })();

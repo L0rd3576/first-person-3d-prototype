@@ -2748,10 +2748,14 @@
   .pvp-setup #coop-setup-mode-label, .pvp-setup #quad-setup-mode-label { display: block; font-size: 16px; font-weight: bold; letter-spacing: 1px; margin-bottom: 8px; }
   .pvp-setup #coop-setup-difficulty-label, .pvp-setup #quad-setup-difficulty-label,
   .pvp-setup #coop-difficulty-options, .pvp-setup #quad-difficulty-options { display: none; }
-  .pvp-mode-option { display: flex; flex-direction: column; align-items: flex-start; min-width: 170px; padding: 14px 20px; font-family: Arial, Helvetica, sans-serif; color: #fff; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.5); border-radius: 6px; cursor: pointer; pointer-events: auto; }
-  .pvp-mode-option:hover { background: rgba(255,255,255,0.2); }
-  .pvp-mode-option.active { border-color: #ffdc64; box-shadow: 0 0 8px rgba(255, 220, 100, 0.6); }
-  .pvp-mode-option .pvp-mode-desc { margin-top: 4px; font-size: 12px; opacity: 0.75; }
+  #coop-setup-map-label, #quad-setup-map-label, #coop-pvp-map-options, #quad-pvp-map-options { display: none; }
+  .pvp-setup #coop-pvp-map-options, .pvp-setup #quad-pvp-map-options { display: flex; align-items: stretch; gap: 12px; margin-bottom: 24px; }
+  .pvp-setup #quad-pvp-map-options { margin-bottom: 12px; }
+  .pvp-setup #coop-setup-map-label, .pvp-setup #quad-setup-map-label { display: block; font-size: 16px; font-weight: bold; letter-spacing: 1px; margin-bottom: 8px; }
+  .pvp-mode-option, .pvp-map-option { display: flex; flex-direction: column; align-items: flex-start; min-width: 170px; padding: 14px 20px; font-family: Arial, Helvetica, sans-serif; color: #fff; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.5); border-radius: 6px; cursor: pointer; pointer-events: auto; }
+  .pvp-mode-option:hover, .pvp-map-option:hover { background: rgba(255,255,255,0.2); }
+  .pvp-mode-option.active, .pvp-map-option.active { border-color: #ffdc64; box-shadow: 0 0 8px rgba(255, 220, 100, 0.6); }
+  .pvp-mode-option .pvp-mode-desc, .pvp-map-option .pvp-mode-desc { margin-top: 4px; font-size: 12px; opacity: 0.75; }
   .pvp-settings-open { display: none; margin-top: 14px; }
   .pvp-setup .pvp-settings-open { display: inline-block; pointer-events: auto; }
   .pvp-settings-hint { margin-left: 6px; opacity: 0.6; }
@@ -2910,6 +2914,11 @@
         <div class="pvp-mode-option" data-pvp-mode="deathmatch"><div class="difficulty-name">Deathmatch</div><div class="pvp-mode-desc">Most kills wins</div></div>
         <div class="pvp-mode-option" data-pvp-mode="gungame"><div class="difficulty-name">Gun Game</div><div class="pvp-mode-desc">Kill your way up the weapon ladder</div></div>
       </div>
+      <div id="coop-setup-map-label">Map <span class="pvp-settings-hint">L1 / R1</span></div>
+      <div id="coop-pvp-map-options">
+        <div class="pvp-map-option" data-pvp-map="campus"><div class="difficulty-name">Campus</div><div class="pvp-mode-desc">MSUM campus</div></div>
+        <div class="pvp-map-option" data-pvp-map="map2"><div class="difficulty-name">Residential</div><div class="pvp-mode-desc">4th Ave S</div></div>
+      </div>
       <button type="button" id="coop-pvp-settings-button" class="menu-button pvp-settings-open">Settings <span class="pvp-settings-hint">&#9633;</span></button>
       <div id="coop-setup-difficulty-label">Difficulty</div>
       <div id="coop-difficulty-options">
@@ -3007,6 +3016,11 @@
       <div id="quad-pvp-mode-options">
         <div class="pvp-mode-option" data-pvp-mode="deathmatch"><div class="difficulty-name">Deathmatch</div><div class="pvp-mode-desc">Most kills wins</div></div>
         <div class="pvp-mode-option" data-pvp-mode="gungame"><div class="difficulty-name">Gun Game</div><div class="pvp-mode-desc">Kill your way up the weapon ladder</div></div>
+      </div>
+      <div id="quad-setup-map-label">Map <span class="pvp-settings-hint">L1 / R1</span></div>
+      <div id="quad-pvp-map-options">
+        <div class="pvp-map-option" data-pvp-map="campus"><div class="difficulty-name">Campus</div><div class="pvp-mode-desc">MSUM campus</div></div>
+        <div class="pvp-map-option" data-pvp-map="map2"><div class="difficulty-name">Residential</div><div class="pvp-mode-desc">4th Ave S</div></div>
       </div>
       <button type="button" id="quad-pvp-settings-button" class="menu-button pvp-settings-open">Settings <span class="pvp-settings-hint">&#9633;</span></button>
       <div id="quad-setup-difficulty-label">Difficulty</div>
@@ -3342,6 +3356,8 @@
 <script src="grass-system.js"></script>
 <script src="vehicle-models.js"></script>
 <script src="campus-world.js"></script>
+<script src="world-queries.js"></script>
+<script src="map2-world.js"></script>
 <script src="procedural-spawn.js"></script>
 <script src="zombie-model.js"></script>
 <script src="player-model.js"></script>
@@ -7456,7 +7472,7 @@
       if (
         event.target.closest(".menu-button, .corner-back-button") ||
         event.target.closest(".mode-option:not(.mode-option-disabled)") ||
-        event.target.closest(".difficulty-option, .pvp-mode-option") ||
+        event.target.closest(".difficulty-option, .pvp-mode-option, .pvp-map-option") ||
         event.target.closest(".inventory-tab-button, .crafting-recipe-slot") ||
         event.target.closest(".crafting-craft-button:not(:disabled)")
       ) {
@@ -9782,10 +9798,10 @@
   // default map's building has no roof, so rain falls inside it).
   const weatherIndoorByCamera = new Map();
   function weatherGroundHeightAt(x, z) {
-    return isCampusMap && campusWorld ? campusWorld.groundHeightAt(x, z) : 0;
+    return isWorldMap && currentWorld ? currentWorld.groundHeightAt(x, z) : 0;
   }
   function isWeatherSheltered(x, z) {
-    return isCampusMap && campusWorld ? campusWorld.isInsideHollowBuilding(x, z) : false;
+    return isWorldMap && currentWorld ? currentWorld.isInsideHollowBuilding(x, z) : false;
   }
 
   rainMesh.onBeforeRender = function (_renderer, _scene, renderCamera) {
@@ -10046,7 +10062,7 @@
       let trees = 0, sheltered = 1;
       for (const viewerCamera of getWeatherViewerCameras()) {
         const p = viewerCamera.position;
-        if (isCampusMap && campusWorld) trees = Math.max(trees, campusWorld.treeDensityNear(p.x, p.z));
+        if (isWorldMap && currentWorld) trees = Math.max(trees, currentWorld.treeDensityNear(p.x, p.z));
         sheltered = Math.min(sheltered, isWeatherSheltered(p.x, p.z) ? 1 : 0);
       }
       windTreeNear = trees;
@@ -10175,7 +10191,7 @@
   // above, never a second weather or lighting system -- and handed to
   // everything that shows them: every material's shader patch
   // (environment-fx.js: cloud shadows, wet sheen, puddles, atmosphere),
-  // the campus's night windows and wind (campusWorld.environment), the
+  // the campus's night windows and wind (currentWorld.environment), the
   // ambient particles, contact shadows and eye adaptation. Once per frame,
   // only while the world runs; the few spatial samples (indoors or not)
   // are batched a few times a second. Cosmetic only.
@@ -10296,7 +10312,7 @@
       players.forEach((p, i) => {
         if (i < 4) envIndoorTargets[i] = isWeatherSheltered(p.camera.position.x, p.camera.position.z) ? 1 : 0;
       });
-      envTreeNear = isCampusMap && campusWorld ? campusWorld.treeDensityNear(players[0].camera.position.x, players[0].camera.position.z, 18) : 0;
+      envTreeNear = isWorldMap && currentWorld ? currentWorld.treeDensityNear(players[0].camera.position.x, players[0].camera.position.z, 18) : 0;
     }
     for (let i = 0; i < Math.min(4, players.length); i++) {
       s.indoor[i] += (envIndoorTargets[i] - s.indoor[i]) * Math.min(1, deltaSeconds * 3);
@@ -10328,15 +10344,15 @@
       .add(envSkyScratch.copy(sunLight.color).multiplyScalar(sunLight.intensity * 0.7));
     envLightScratch.r = Math.min(1.2, envLightScratch.r); envLightScratch.g = Math.min(1.2, envLightScratch.g); envLightScratch.b = Math.min(1.2, envLightScratch.b);
     const fovScale = sceneRenderHeight() * 0.5 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
-    ambientParticles.update(envParticleTime, isCampusMap ? leafAmountAll : 0, isCampusMap ? dustAmount : 0,
+    ambientParticles.update(envParticleTime, isWorldMap ? leafAmountAll : 0, isWorldMap ? dustAmount : 0,
       Math.cos(wind.angle) * windSpeed + weather.windX, Math.sin(wind.angle) * windSpeed + weather.windZ,
       envLightScratch, s.sunDirection, fovScale, players[0].campusGroundY || 0);
 
     // Streetlights: on through dusk (a little sooner under a dark storm),
     // off through the sunrise -- each lamp at its own point along this.
     s.streetLights = smoothstep01((n + 0.25 * weather.rainAmount * cloud * (1 - n) - 0.12) / 0.5);
-    if (isCampusMap && campusWorld) {
-      campusWorld.updateStreetLights(s.streetLights, envParticleTime, Math.max(weather.fogAmount, weather.rainAmount), fovScale);
+    if (isWorldMap && currentWorld) {
+      currentWorld.updateStreetLights(s.streetLights, envParticleTime, Math.max(weather.fogAmount, weather.rainAmount), fovScale);
     }
     updatePostLook(n, cloud);
   }
@@ -10355,7 +10371,7 @@
     const daylight = 1 - smoothstep01((n - 0.3) / 0.42);
     const clouds = 1 - 0.9 * smoothstep01((cloud - 0.3) / 0.55);
     const haze = 1 + 0.7 * weather.fogAmount + 0.25 * environmentState.atmosphereStrength / Math.max(0.01, cfg.ATMOSPHERE_HAZE_STRENGTH);
-    sunRayStrength = isCampusMap ? cfg.SUN_RAYS_STRENGTH * (0.2 + 0.8 * low) * daylight * clouds * haze * (1 - 0.5 * environmentState.indoor[0]) * (1 - 0.8 * weather.rainAmount) : 0;
+    sunRayStrength = isWorldMap ? cfg.SUN_RAYS_STRENGTH * (0.2 + 0.8 * low) * daylight * clouds * haze * (1 - 0.5 * environmentState.indoor[0]) * (1 - 0.8 * weather.rainAmount) : 0;
     sunRayColor.copy(sunLight.color).lerp(skyUniforms.glowColor.value, 0.4);
     // Grading: slightly warm by day, warmer at sunset/sunrise, cooler at
     // night, a little flatter and less saturated under overcast and rain.
@@ -10381,7 +10397,7 @@
   function updateContactShadows() {
     const cfg = ENVIRONMENT_CONFIG;
     contactShadows.begin();
-    if (isCampusMap) {
+    if (isWorldMap) {
       const viewers = getWeatherViewerCameras();
       const maxD2 = cfg.CONTACT_SHADOW_DISTANCE * cfg.CONTACT_SHADOW_DISTANCE;
       const near = (x, z) => viewers.some((c) => (c.position.x - x) ** 2 + (c.position.z - z) ** 2 < maxD2);
@@ -10647,10 +10663,10 @@
   // call so corners (where two walls disagree on push-out direction)
   // settle instead of oscillating.
   function resolveWallCollisions(position, radius, feetY = 0) {
-    if (isCampusMap) {
+    if (isWorldMap) {
       // Campus: buildings/props/trunks near the point, then the playable edge.
-      const b = campusWorld.bounds;
-      campusWorld.resolveCircle(position, radius, feetY, true);
+      const b = currentWorld.bounds;
+      currentWorld.resolveCircle(position, radius, feetY, true);
       position.x = Math.max(b.minX + radius, Math.min(b.maxX - radius, position.x));
       position.z = Math.max(b.minZ + radius, Math.min(b.maxZ - radius, position.z));
       return;
@@ -11170,7 +11186,7 @@
   // was replaced by the A* nav grid). Used by the concrete floor patch
   // right below and by the footstep surface check (see playFootstepSound).
   function isInsideBuilding(x, z) {
-    if (isCampusMap) return campusWorld.isInsideHollowBuilding(x, z);
+    if (isWorldMap) return currentWorld.isInsideHollowBuilding(x, z);
     return Math.abs(x) <= wallHalfWidthGame && Math.abs(z) <= wallHalfDepthGame;
   }
 
@@ -11420,8 +11436,8 @@
     // Campus: fences count -- nothing reaches, hits or explodes through one
     // (bullets don't use this, so you can still shoot through chain-link).
     // With standing heights (y1, y2) it's floor-aware: a floor slab between
-    // two floors blocks it (see campusWorld.segmentBlocked).
-    if (isCampusMap) return !campusWorld.segmentBlocked(x1, z1, x2, z2, radius, true, y1, y2);
+    // two floors blocks it (see currentWorld.segmentBlocked).
+    if (isWorldMap) return !currentWorld.segmentBlocked(x1, z1, x2, z2, radius, true, y1, y2);
     const dx = x2 - x1, dz = z2 - z1;
     const distance = Math.hypot(dx, dz);
     const steps = Math.max(1, Math.ceil(distance / LINE_OF_SIGHT_STEP));
@@ -11915,7 +11931,7 @@
   function spawnEnemyFromRandomSpawner(variant) {
     // Campus: no fixed spawners -- queue it for the procedural spawn
     // manager, which places it near the player (see CAMPUS MAP below).
-    if (isCampusMap) {
+    if (isWorldMap) {
       campusSpawner.request({ variant });
       return;
     }
@@ -11958,7 +11974,7 @@
   // campus-world.js; the tiny map is untouched and stays the default.
   // Everything map-specific that the rest of this file asks about --
   // collision, line of sight, pathfinding, where enemies appear -- is
-  // routed through `isCampusMap` checks in resolveWallCollisions,
+  // routed through `isWorldMap` checks in resolveWallCollisions,
   // hasLineOfSight, findGridPath and spawnEnemyFromRandomSpawner, so the
   // enemy/weapon/wave code itself is shared by both maps.
   //
@@ -11985,9 +12001,13 @@
   // Every run is on the campus (explicit request: the map picker is gone
   // and the old small "classic" floor plan is no longer offered anywhere --
   // its code is left in place but nothing in the menus reaches it).
-  let selectedMapId = "campus";
-  let isCampusMap = false;   // the map of the run in progress
+  let selectedMapId = "campus";  // "campus" | "map2" (map2, the Residential map, is PVP only)
+  let pvpMapId = "campus";       // the PVP setup screen's Map choice; copied into selectedMapId when a PVP match starts
+  let isCampusMap = false;   // the run in progress is on the campus specifically (PVE-only systems key off this)
+  let isWorldMap = false;    // ...on any built world (campus or map2); false = the tiny arena
+  let currentWorld = null;   // campusWorld | map2World | null -- what every generic world query goes through
   let campusWorld = null;    // built the first time a campus run starts
+  let map2World = null;      // built the first time a map2 PVP match starts
   let campusSpawner = null;
   let campusRecycler = null;
 
@@ -12057,7 +12077,6 @@
     });
     campusWorld.root.visible = false;
     for (const s of campusWorld.wetSurfaces) registerWetSurface(s.material, s.darken); // see WEATHER
-    weatherEnvironment = campusWorld.environment; // wind + heat haze uniforms, see WEATHER
     const b = campusWorld.bounds;
     campusSpawner = createProceduralSpawnManager(CAMPUS_SPAWN_CONFIG, {
       getPlayers: () => livingPlayersForCampus().map((p) => ({ x: p.camera.position.x, z: p.camera.position.z, yaw: p.yaw })),
@@ -12105,6 +12124,16 @@
     });
   }
 
+  // Map 2 ("Residential", map2-world.js): PVP only, no spawner/recycler (no zombies).
+  function ensureMap2World() {
+    if (map2World) return;
+    map2World = buildMap2World(THREE, scene, renderer, {
+      treeDrawDistance: CAMPUS_TREE_DRAW_DISTANCE,
+    });
+    map2World.root.visible = false;
+    for (const s of map2World.wetSurfaces) registerWetSurface(s.material, s.darken);
+  }
+
   // Set at the start of every run; animate() then pre-warms the GPU once
   // before that run's first frame (see prewarmRendererForRun).
   let rendererPrewarmPending = false;
@@ -12114,16 +12143,22 @@
   function applySelectedMap() {
     rendererPrewarmPending = true;
     isCampusMap = selectedMapId === "campus";
+    const isMap2 = selectedMapId === "map2";
     if (isCampusMap) ensureCampusWorld();
-    ground.visible = !isCampusMap;
-    grid.visible = !isCampusMap;
-    wallGroup.visible = !isCampusMap;
-    concreteFloor.visible = !isCampusMap;
+    if (isMap2) ensureMap2World();
+    currentWorld = isCampusMap ? campusWorld : isMap2 ? map2World : null;
+    isWorldMap = !!currentWorld;
+    if (currentWorld) weatherEnvironment = currentWorld.environment; // wind + heat haze uniforms, see WEATHER
+    ground.visible = !isWorldMap;
+    grid.visible = !isWorldMap;
+    wallGroup.visible = !isWorldMap;
+    concreteFloor.visible = !isWorldMap;
     if (campusWorld) campusWorld.root.visible = isCampusMap;
+    if (map2World) map2World.root.visible = isMap2;
     // The campus ground layers paint in order without writing depth (so
     // they never z-fight), which means the sky dome must go down first or
     // it paints over them.
-    skyDome.renderOrder = isCampusMap ? -100000 : -1;
+    skyDome.renderOrder = isWorldMap ? -100000 : -1;
     if (campusSpawner) campusSpawner.clear();
     if (campusRecycler) campusRecycler.reset();
     resetBarricades(); // boards back to their starting state (campus only)
@@ -12132,14 +12167,21 @@
 
   // Campus spawn: on the mall south of the library (co-op side by side).
   function placePlayersAtMapSpawn(list) {
-    if (!isCampusMap) return;
+    if (!isWorldMap) return;
     list.forEach((player, i) => {
       const offset = (i - (list.length - 1) / 2) * 2; // 1 player: 0; 2: -1/+1; 4: -3/-1/+1/+3
-      player.camera.position.set(campusWorld.spawn.x + offset, EYE_HEIGHT, campusWorld.spawn.z);
+      const fixed = currentWorld.pvpSpawnPoints; // map2: each player on their own spawn point, facing its yaw
+      if (fixed) {
+        const sp = fixed[i % fixed.length];
+        player.camera.position.set(sp[0], EYE_HEIGHT, sp[1]);
+        player.yaw = sp[2];
+      } else {
+        player.camera.position.set(currentWorld.spawn.x + offset, EYE_HEIGHT, currentWorld.spawn.z);
+      }
       player.campusGroundY = 0;
       applyCameraRotation(player);
     });
-    campusWorld.updateVisibility(list.map((p) => p.camera.position));
+    currentWorld.updateVisibility(list.map((p) => p.camera.position));
   }
 
   // Standing height on the campus (0, a construction-pit step, or a
@@ -12891,7 +12933,7 @@
   function findTurretPlacement(player) {
     const r = TURRET_CONFIG.radius;
     const p = player.camera.position;
-    const feetY = isCampusMap ? player.campusGroundY || 0 : 0;
+    const feetY = isWorldMap ? player.campusGroundY || 0 : 0;
     const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
     for (const distance of TURRET_CONFIG.placeDistances) {
       const x = p.x + fx * distance, z = p.z + fz * distance;
@@ -12899,8 +12941,8 @@
       resolveWallCollisions(turretPlaceProbe, r, feetY);
       if (activeBarricades.length) resolveBarricadeCollisions(turretPlaceProbe, r);
       if (Math.hypot(turretPlaceProbe.x - x, turretPlaceProbe.z - z) > 0.01) continue; // overlaps something solid
-      if (isCampusMap ? campusWorld.segmentBlocked(p.x, p.z, x, z, 0) : !hasLineOfSight(p.x, p.z, x, z, 0.05)) continue;
-      const y = isCampusMap ? campusSupportHeight(turretPlaceProbe, r, feetY) : 0;
+      if (isWorldMap ? currentWorld.segmentBlocked(p.x, p.z, x, z, 0) : !hasLineOfSight(p.x, p.z, x, z, 0.05)) continue;
+      const y = isWorldMap ? campusSupportHeight(turretPlaceProbe, r, feetY) : 0;
       if (Math.abs(y - feetY) > TURRET_CONFIG.maxPlaceStep) continue;
       let clear = true;
       for (const other of players) {
@@ -12931,7 +12973,7 @@
     player.carriedTurret = null;
     hideTurretCarryView(player);
     const p = player.camera.position;
-    deployTurretAt(turret, { x: p.x, y: isCampusMap ? player.campusGroundY || 0 : 0, z: p.z, yaw: player.yaw + Math.PI });
+    deployTurretAt(turret, { x: p.x, y: isWorldMap ? player.campusGroundY || 0 : 0, z: p.z, yaw: player.yaw + Math.PI });
   }
   function deployTurretAt(turret, spot) {
     const model = turret.model;
@@ -13055,7 +13097,7 @@
     const a = turret.model.group.position, b = e.mesh.position;
     // Standing heights (turret.model.group sits on its floor) so an enemy on
     // another floor is judged against the slabs/walls actually between them.
-    return isCampusMap ? !campusWorld.segmentBlocked(a.x, a.z, b.x, b.z, 0, false, a.y, e.campusGroundY || 0) : hasLineOfSight(a.x, a.z, b.x, b.z, 0.05);
+    return isWorldMap ? !currentWorld.segmentBlocked(a.x, a.z, b.x, b.z, 0, false, a.y, e.campusGroundY || 0) : hasLineOfSight(a.x, a.z, b.x, b.z, 0.05);
   }
   // Nearest enemy in range that it can see and turn to (a few sight checks at most).
   function findTurretTarget(turret) {
@@ -13095,7 +13137,7 @@
     // boards and glass don't block it -- turrets see and shoot straight
     // through both (explicit request; glass colliders are seeThrough, so
     // segmentBlocked already skips them).
-    const blocked = isCampusMap && campusWorld.segmentBlocked(turretMuzzle.x, turretMuzzle.z, turretAimPoint.x, turretAimPoint.z, 0, false, turret.model.group.position.y, e.campusGroundY || 0);
+    const blocked = isWorldMap && currentWorld.segmentBlocked(turretMuzzle.x, turretMuzzle.z, turretAimPoint.x, turretAimPoint.z, 0, false, turret.model.group.position.y, e.campusGroundY || 0);
     if (blocked) {
       turret.enemy = null;
       turret.searchTimer = 0;
@@ -13194,8 +13236,8 @@
   // the walls/slabs on its actual path, not a flat 2D projection. Omitted or
   // ground-to-ground, it's the plain check.
   function worldBlocksShot(origin, point, shooterFeetY, targetFeetY) {
-    return isCampusMap && (campusWorld.segmentBlocked(origin.x, origin.z, point.x, point.z, 0, false, shooterFeetY, targetFeetY) ||
-      campusWorld.vehicleBlocksShot(origin.x, origin.y, origin.z, point.x, point.y, point.z));
+    return isWorldMap && (currentWorld.segmentBlocked(origin.x, origin.z, point.x, point.z, 0, false, shooterFeetY, targetFeetY) ||
+      currentWorld.vehicleBlocksShot(origin.x, origin.y, origin.z, point.x, point.y, point.z));
   }
 
   // ---- Debug overlay (CAMPUS_SPAWN_CONFIG.debug / F8): spawn rings around
@@ -13401,7 +13443,7 @@
   };
 
   function zoneMapRect() {
-    if (isCampusMap && campusWorld) return campusWorld.bounds;
+    if (isWorldMap && currentWorld) return currentWorld.bounds;
     const h = PLATFORM_SIZE / 2 - PLAYER_MARGIN;
     return { minX: -h, maxX: h, minZ: -h, maxZ: h };
   }
@@ -13656,7 +13698,7 @@
   // map at up to ~2.5 px/m) so a frame is one clipped drawImage + circles.
   function ensureZoneStaticLayer() {
     const m = zoneMapRect();
-    const key = `${isCampusMap ? "campus" : "arena"}|${m.minX}|${m.maxX}|${m.minZ}|${m.maxZ}`;
+    const key = `${isWorldMap ? (isCampusMap ? "campus" : currentWorld.id || "world") : "arena"}|${m.minX}|${m.maxX}|${m.minZ}|${m.maxZ}`;
     if (zoneUi.layerKey === key && zoneUi.layer) return;
     zoneUi.layerKey = key;
     const mw = m.maxX - m.minX, mh = m.maxZ - m.minZ;
@@ -13667,9 +13709,13 @@
     const g = layer.getContext("2d");
     g.fillStyle = "#26352b";
     g.fillRect(0, 0, layer.width, layer.height);
-    if (isCampusMap && campusWorld && campusWorld.minimapFootprints) {
+    if (isWorldMap && currentWorld && currentWorld.minimapRoads) { // streets read as dark bands (map2; the campus has none)
+      g.fillStyle = "#3b4046";
+      for (const r of currentWorld.minimapRoads()) g.fillRect((r.minX - m.minX) * pxPerM, (r.minZ - m.minZ) * pxPerM, (r.maxX - r.minX) * pxPerM, (r.maxZ - r.minZ) * pxPerM);
+    }
+    if (isWorldMap && currentWorld && currentWorld.minimapFootprints) {
       g.fillStyle = "#8b9199";
-      for (const c of campusWorld.minimapFootprints()) {
+      for (const c of currentWorld.minimapFootprints()) {
         if (c.shape === "cylinder") {
           // Trunks/poles are too small to read, but round buildings (Nelson Hall's tower) must show.
           if (!(c.radius >= 2)) continue;
@@ -14328,11 +14374,11 @@
   }
 
   function updateCampusFrame(deltaSeconds) {
-    if (!isCampusMap) return;
+    if (!isWorldMap) return;
     campusRecycler.update(deltaSeconds);
     campusSpawner.update(deltaSeconds);
     const viewing = livingPlayersForCampus();
-    campusWorld.updateVisibility(viewing.map((p) => p.camera.position), viewing.map(campusViewCone), splitScreenLodScale());
+    currentWorld.updateVisibility(viewing.map((p) => p.camera.position), viewing.map(campusViewCone), splitScreenLodScale());
     if (CAMPUS_SPAWN_CONFIG.debug || campusSpawnDebug) updateCampusSpawnDebug();
   }
 
@@ -14945,7 +14991,7 @@
       ? activeBloodDecals.shift().decal
       : acquireBloodDecal();
 
-    const groundY = isCampusMap && campusWorld ? campusWorld.groundHeightAt(position.x, position.z) : 0; // sunken streets, pits
+    const groundY = isWorldMap && currentWorld ? currentWorld.groundHeightAt(position.x, position.z) : 0; // sunken streets, pits
     decal.mesh.position.set(position.x, groundY + BLOOD_DECAL_Y, position.z);
     decal.mesh.rotation.z = Math.random() * Math.PI * 2; // randomized per instance so pools don't look identical
     const size = BLOOD_DECAL_MIN_SIZE + Math.random() * (BLOOD_DECAL_MAX_SIZE - BLOOD_DECAL_MIN_SIZE);
@@ -15016,17 +15062,17 @@
   // Floor under a point (for debris to land on): the campus's support
   // height (floors indoors, roofs, pits), else the flat ground.
   function fxFloorAt(x, z, y) {
-    if (isCampusMap && campusWorld) return campusWorld.supportHeightAt(x, z, 0.05, y + 0.05);
+    if (isWorldMap && currentWorld) return currentWorld.supportHeightAt(x, z, 0.05, y + 0.05);
     return 0;
   }
 
   // First visible surface along a shot, for its effects only: the campus's
-  // buildings/props/cars/ground (campusWorld.raycast), the old map's ground,
+  // buildings/props/cars/ground (currentWorld.raycast), the old map's ground,
   // and barricade boards (wood).
   function fxRaycastWorld(origin, dir, maxDistance) {
     let hit = null;
-    if (isCampusMap && campusWorld) {
-      hit = campusWorld.raycast(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z, maxDistance);
+    if (isWorldMap && currentWorld) {
+      hit = currentWorld.raycast(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z, maxDistance);
     } else if (dir.y < -1e-4) {
       const t = origin.y / -dir.y;
       if (t < maxDistance) {
@@ -15108,7 +15154,7 @@
       0.25 + Math.random() * 0.45
     ).applyQuaternion(ejectQuatScratch);
     if (player.velocity) ejectVelScratch.add(player.velocity);
-    const floor = isCampusMap ? player.campusGroundY || 0 : 0;
+    const floor = isWorldMap ? player.campusGroundY || 0 : 0;
     shellCasings.eject(spec.casing, ejectWorldScratch, ejectVelScratch, floor, FX_CFG.SHELL_CASING_LIFETIME);
   }
 
@@ -15119,7 +15165,7 @@
     if (!FX_CFG.FOOTSTEP_PARTICLES_ENABLED) return;
     const distance = fxDistanceToViewers(x, z);
     if (distance > FX_CFG.FOOTSTEP_PARTICLE_DISTANCE) return;
-    const surface = isCampusMap && campusWorld ? campusWorld.groundMaterialAt(x, z, feetY) : (isInsideBuilding(x, z) ? "floor" : "grass");
+    const surface = isWorldMap && currentWorld ? currentWorld.groundMaterialAt(x, z, feetY) : (isInsideBuilding(x, z) ? "floor" : "grass");
     if (surface === "floor") return;
     const wet = isWeatherSheltered(x, z) ? 0 : weather.wetness;
     const puddle = wet > 0.05 && surface !== "grass" && surface !== "gravel" ? envFX.puddleAt(x, z, envU.envWet.value.y) : 0;
@@ -15129,7 +15175,7 @@
   function spawnEnemyFootstepFx(enemyState) {
     const pos = enemyState.mesh.position;
     const heavy = enemyState.boss ? 1.6 : enemyState.isBrute ? 1.3 : 1;
-    spawnFootstepFx(pos.x, pos.z, isCampusMap ? enemyState.campusGroundY || 0 : 0, 0.8 * heavy);
+    spawnFootstepFx(pos.x, pos.z, isWorldMap ? enemyState.campusGroundY || 0 : 0, 0.8 * heavy);
   }
 
   // Grass bending (grass-system.js's grassPushers): every grounded player
@@ -15140,7 +15186,7 @@
   const grassBodyLast = new WeakMap();   // body -> where it last left a mark
   const grassCandidates = [];
   function updateGrassPushers(deltaSeconds) {
-    const env = campusWorld && campusWorld.environment;
+    const env = currentWorld && currentWorld.environment;
     if (!env || !env.grassPushers) return;
     const cfg = FX_CFG;
     grassCandidates.length = 0;
@@ -15151,7 +15197,7 @@
       return d2;
     };
     const range2 = cfg.GRASS_INTERACTION_RANGE * cfg.GRASS_INTERACTION_RANGE;
-    if (cfg.GRASS_INTERACTION_ENABLED && isCampusMap) {
+    if (cfg.GRASS_INTERACTION_ENABLED && isWorldMap) {
       const body = (key, x, z, air, scale) => {
         const d2 = nearest2(x, z);
         if (d2 > range2) return;
@@ -18153,7 +18199,7 @@
     player.isSliding = false;
     player.currentEyeHeight = EYE_HEIGHT;
     moveWithWallCollision(player.camera.position, 0, 0, PLAYER_RADIUS, player.campusGroundY || 0); // still a valid spot?
-    player.camera.position.y = player.currentEyeHeight + (isCampusMap ? player.campusGroundY || 0 : 0);
+    player.camera.position.y = player.currentEyeHeight + (isWorldMap ? player.campusGroundY || 0 : 0);
 
     player.isDead = false;
     player.health = getMaxHealth(player);
@@ -19618,12 +19664,29 @@
   function updatePvpModeButtons() {
     pvpModeOptionEls.forEach((el) => el.classList.toggle("active", el.dataset.pvpMode === pvpMode));
   }
+  const pvpMapOptionEls = document.querySelectorAll(".pvp-map-option");
+  const PVP_MAP_ORDER = ["campus", "map2"];
+  function updatePvpMapButtons() {
+    pvpMapOptionEls.forEach((el) => el.classList.toggle("active", el.dataset.pvpMap === pvpMapId));
+  }
+  function stepPvpMap(direction) {
+    const next = Math.max(0, Math.min(PVP_MAP_ORDER.length - 1, PVP_MAP_ORDER.indexOf(pvpMapId) + direction));
+    if (PVP_MAP_ORDER[next] === pvpMapId) return;
+    pvpMapId = PVP_MAP_ORDER[next];
+    updatePvpMapButtons();
+    playClip("menu_click_01");
+  }
+  pvpMapOptionEls.forEach((el) => el.addEventListener("click", function () {
+    pvpMapId = el.dataset.pvpMap;
+    updatePvpMapButtons();
+  }));
+  updatePvpMapButtons();
   function setPvpSetup(on) {
     pvpSetupSelected = on;
     document.getElementById("title-coop-setup").classList.toggle("pvp-setup", on);
     document.getElementById("title-quad-setup").classList.toggle("pvp-setup", on);
     if (!on && typeof closePvpSettings === "function") closePvpSettings();
-    if (on) { pvpMode = "deathmatch"; updatePvpModeButtons(); }
+    if (on) { pvpMode = "deathmatch"; updatePvpModeButtons(); updatePvpMapButtons(); }
   }
   function stepPvpMode(direction) {
     const next = Math.max(0, Math.min(PVP_MODE_ORDER.length - 1, PVP_MODE_ORDER.indexOf(pvpMode) + direction));
@@ -19674,6 +19737,25 @@
     event.stopImmediatePropagation();
   }, true);
   let pvpSettingsSquareWasPressed = false;
+  const pvpMapPadPrev = new Map(); // L1 / R1 (buttons 4 / 5) step the map on the PVP setup screens
+  function pollPvpMapButtons() {
+    if (isPvpSettingsOpen()) return;
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    pads.forEach((pad, i) => {
+      if (!pad) return;
+      const l = !!(pad.buttons[4] && pad.buttons[4].pressed), r = !!(pad.buttons[5] && pad.buttons[5].pressed);
+      const prev = pvpMapPadPrev.get(i) || { l: false, r: false };
+      if (l && !prev.l) stepPvpMap(-1);
+      if (r && !prev.r) stepPvpMap(1);
+      pvpMapPadPrev.set(i, { l, r });
+    });
+  }
+  document.addEventListener("keydown", function (event) { // keyboard: [ / ] step the map on the PVP setup screens
+    if (!pvpSetupSelected || isPvpSettingsOpen()) return;
+    if (!(titlePanels["coop-setup"].classList.contains("active") || titlePanels["quad-setup"].classList.contains("active"))) return;
+    if (event.code === "BracketLeft") stepPvpMap(-1);
+    else if (event.code === "BracketRight") stepPvpMap(1);
+  });
   function pollPvpSettingsOpenButton() { // called each frame from the PVP setup screens' branch of animate()
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const pressed = pads.some((pad) => pad && pad.buttons[CONTROLS_NAV_REBIND_BUTTON_INDEX] && pad.buttons[CONTROLS_NAV_REBIND_BUTTON_INDEX].pressed);
@@ -19974,6 +20056,7 @@
     // it here defensively guarantees a clean run regardless of anything
     // that happened while the title screen was up.
     resetGame();
+    selectedMapId = "campus"; // singleplayer (PVE) is always the campus
     applySelectedMap();
     placePlayersAtMapSpawn([players[0]]);
     // Must come after resetGame() (which unconditionally clears it) --
@@ -20765,6 +20848,7 @@
     players[1].camera.position.set(1, EYE_HEIGHT, 0);
     applyCameraRotation(players[0]);
     applyCameraRotation(players[1]);
+    selectedMapId = pvpSetupSelected ? pvpMapId : "campus"; // only PVP can pick another map; PVE co-op is the campus
     applySelectedMap();
     placePlayersAtMapSpawn([players[0], players[1]]);
     updateCameraAspectsForRenderMode(); // both cameras go from singleplayer's implicit full-window aspect to their own half's, immediately -- not just on the next resize event
@@ -21319,7 +21403,7 @@
       const angle = aimAssistForwardScratch.angleTo(aimAssistToEnemyScratch);
       if (angle >= bestAngle) continue;
       if (!hasLineOfSight(origin.x, origin.z, tp.x, tp.z, 0.15,
-        isCampusMap ? targetStandingY(player) : undefined, isCampusMap ? targetStandingY(t) : undefined)) continue;
+        isWorldMap ? targetStandingY(player) : undefined, isWorldMap ? targetStandingY(t) : undefined)) continue;
       best = { enemyState: null, angle, pos: tp, faceY };
       bestAngle = angle;
     }
@@ -21341,7 +21425,7 @@
       const angle = aimAssistForwardScratch.angleTo(aimAssistToEnemyScratch);
       if (angle >= bestAngle) continue;
       if (!hasLineOfSight(origin.x, origin.z, enemyState.mesh.position.x, enemyState.mesh.position.z, 0.15,
-        isCampusMap ? targetStandingY(player) : undefined, isCampusMap ? enemyState.campusGroundY || 0 : undefined)) continue;
+        isWorldMap ? targetStandingY(player) : undefined, isWorldMap ? enemyState.campusGroundY || 0 : undefined)) continue;
       best = enemyState;
       bestAngle = angle;
     }
@@ -21664,11 +21748,11 @@
       // A dead player's body stays where they fell (the death animation
       // plays there) even if their camera moves on.
       if (player.isDead && !rig.deadPos) {
-        rig.deadPos = { x: player.camera.position.x, z: player.camera.position.z, y: isCampusMap ? player.campusGroundY || 0 : 0, yaw: player.yaw };
+        rig.deadPos = { x: player.camera.position.x, z: player.camera.position.z, y: isWorldMap ? player.campusGroundY || 0 : 0, yaw: player.yaw };
       } else if (!player.isDead) {
         rig.deadPos = null;
       }
-      const at = rig.deadPos || { x: player.camera.position.x, z: player.camera.position.z, y: (isCampusMap ? player.campusGroundY || 0 : 0) + player.jumpOffset, yaw: player.yaw };
+      const at = rig.deadPos || { x: player.camera.position.x, z: player.camera.position.z, y: (isWorldMap ? player.campusGroundY || 0 : 0) + player.jumpOffset, yaw: player.yaw };
       human.root.position.set(at.x, at.y, at.z);
       // The model faces local +Z; a camera looks down -Z at the same yaw.
       const bodyYaw = at.yaw + Math.PI;
@@ -22069,6 +22153,7 @@
       coopSpectatingLabelEls[i].textContent = "";
       coopSpectatorFullscreenButtonEls[i].innerHTML = `${readyIconHTML(i === 0 ? matchP1Scheme : "controller")}Give Screen Area`;
     });
+    selectedMapId = pvpSetupSelected ? pvpMapId : "campus";
     applySelectedMap();
     placePlayersAtMapSpawn(players.slice());
     updateCameraAspectsForRenderMode();
@@ -22527,7 +22612,7 @@
     player.yaw = spot.yaw;
     player.pitch = 0;
     applyCameraRotation(player);
-    if (isCampusMap) campusWorld.updateVisibility(players.map((p) => p.camera.position));
+    if (isWorldMap) currentWorld.updateVisibility(players.map((p) => p.camera.position));
     player.pvpAwaitingSpawn = false;
     player.pvpIsPrematch = false;
     player.pvpProtectedFor = PVP_SPAWN_PROTECTION_SECONDS;
@@ -22548,38 +22633,51 @@
     const R = Math.max(10, z.radius - PVP_SPAWN.ZONE_EDGE_MARGIN);
     let best = null;
     let bestHidden = null;
+    const fixedPoints = isWorldMap && currentWorld.pvpSpawnPoints; // map2: hand-placed spawn points instead of a random ring
+    const spawnTuning = (isWorldMap && currentWorld.pvpSpawnTuning) || PVP_SPAWN;
     for (let n = 0; n < PVP_SPAWN.CANDIDATES; n++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = R * Math.sqrt(Math.random());
-      const x = z.center.x + Math.cos(a) * r;
-      const zz = z.center.z + Math.sin(a) * r;
-      if (isCampusMap) {
-        if (!campusWorld.insidePlayableEdge(x, zz, 2)) continue;
-        if (!campusWorld.isWalkable(x, zz, PVP_SPAWN.CLEARANCE)) continue;
+      let x, zz, fixedYaw;
+      if (fixedPoints) {
+        const fp = fixedPoints[n % fixedPoints.length];
+        x = fp[0]; zz = fp[1]; fixedYaw = fp[2];
+        if (n >= fixedPoints.length) { // later passes jitter the point a little (must stay walkable)
+          const jx = x + (Math.random() - 0.5) * 3, jz = zz + (Math.random() - 0.5) * 3;
+          if (currentWorld.isWalkable(jx, jz, PVP_SPAWN.CLEARANCE) && currentWorld.insidePlayableEdge(jx, jz, 2)) { x = jx; zz = jz; }
+        }
+        if (Math.hypot(x - z.center.x, zz - z.center.z) > Math.max(10, z.radius - 2)) continue; // outside the shrinking zone
+      } else {
+        const a = Math.random() * Math.PI * 2;
+        const r = R * Math.sqrt(Math.random());
+        x = z.center.x + Math.cos(a) * r;
+        zz = z.center.z + Math.sin(a) * r;
+      }
+      if (isWorldMap) {
+        if (!currentWorld.insidePlayableEdge(x, zz, 2)) continue;
+        if (!currentWorld.isWalkable(x, zz, PVP_SPAWN.CLEARANCE)) continue;
       } else if (x < rect.minX || x > rect.maxX || zz < rect.minZ || zz > rect.maxZ) continue;
       const inNext = !z.next || Math.hypot(x - z.next.x, zz - z.next.z) < z.next.radius - 4;
       let minD = Infinity;
       for (const o of others) minD = Math.min(minD, Math.hypot(o.camera.position.x - x, o.camera.position.z - zz));
-      if (minD < PVP_SPAWN.MIN_DISTANCE) continue;
+      if (minD < spawnTuning.MIN_DISTANCE) continue;
       let visible = 0;
       for (const o of others) {
         const ox = o.camera.position.x, oz = o.camera.position.z;
-        const blocked = isCampusMap
-          ? campusWorld.segmentBlocked(ox, oz, x, zz, 0, false, targetStandingY(o), 0)
+        const blocked = isWorldMap
+          ? currentWorld.segmentBlocked(ox, oz, x, zz, 0, false, targetStandingY(o), 0)
           : !hasLineOfSight(ox, oz, x, zz, 0);
         if (!blocked) visible++;
       }
-      const score = Math.min(minD, PVP_SPAWN.DISTANCE_CAP) + (inNext ? 20 : 0) - visible * PVP_SPAWN.VISIBLE_PENALTY + Math.random() * 5;
-      const cand = { x, z: zz, score };
+      const score = Math.min(minD, spawnTuning.DISTANCE_CAP) + (inNext ? 20 : 0) - visible * PVP_SPAWN.VISIBLE_PENALTY + Math.random() * 5;
+      const cand = { x, z: zz, score, yaw: fixedYaw };
       if (visible === 0 && (!bestHidden || score > bestHidden.score)) bestHidden = cand;
       if (!best || score > best.score) best = cand;
     }
     let pick = bestHidden || best;
     if (!pick) {
-      const spawn = isCampusMap ? campusWorld.spawn : { x: 0, z: 0 };
+      const spawn = isWorldMap ? currentWorld.spawn : { x: 0, z: 0 };
       pick = { x: spawn.x + (players.indexOf(player) - 1.5) * 2, z: spawn.z };
     }
-    const yaw = Math.atan2(-(z.center.x - pick.x), -(z.center.z - pick.z)); // face the zone centre
+    const yaw = pick.yaw !== undefined ? pick.yaw : Math.atan2(-(z.center.x - pick.x), -(z.center.z - pick.z)); // a fixed point keeps its own facing; else face the zone centre
     return { x: pick.x, z: pick.z, yaw };
   }
 
@@ -23680,7 +23778,7 @@
 
     if (isPvpMatchActive) { firePvpHitscan(player, def, slot); return; }
     let hits = raycastEnemies(raycaster);
-    if (isCampusMap) hits = hits.filter((h) => !worldBlocksShot(player.camera.position, h.point, targetStandingY(player), h.object.userData.enemyRef?.campusGroundY || 0));
+    if (isWorldMap) hits = hits.filter((h) => !worldBlocksShot(player.camera.position, h.point, targetStandingY(player), h.object.userData.enemyRef?.campusGroundY || 0));
     hits = filterHitsByBarricades(raycaster, hits);
     // Impact effects (visual only -- the hit itself is already decided).
     const fxPower = (FX_WEAPON[slot.weaponId] || { power: 1 }).power;
@@ -23781,7 +23879,7 @@
       const feetY = pos.y - target.currentEyeHeight; // camera.y = eye + jumpOffset + groundY
       if (y < feetY || y > pos.y + PVP_PLAYER_HIT_TOP_MARGIN) continue; // crouch/slide shrink it automatically
       const point = new THREE.Vector3(origin.x + direction.x * t, y, origin.z + direction.z * t);
-      if (isCampusMap && worldBlocksShot(origin, point, targetStandingY(shooter), targetStandingY(target))) continue;
+      if (isWorldMap && worldBlocksShot(origin, point, targetStandingY(shooter), targetStandingY(target))) continue;
       const zone = pvpHitZone(target, point, y - feetY);
       out.push({ target, distance: t, point, zone, isHeadshot: zone === "head" });
     }
@@ -23867,7 +23965,7 @@
       }
       let hits = raycastEnemies(raycaster);
       let bodyHit = findNearestEnemyBodyHit(raycaster.ray);
-      if (isCampusMap) {
+      if (isWorldMap) {
         hits = hits.filter((h) => !worldBlocksShot(player.camera.position, h.point, targetStandingY(player), h.object.userData.enemyRef?.campusGroundY || 0));
         if (bodyHit && worldBlocksShot(player.camera.position, raycaster.ray.at(bodyHit.distance, pelletBodyHitPoint), targetStandingY(player), bodyHit.enemyState.campusGroundY || 0)) bodyHit = null;
       }
@@ -24437,7 +24535,7 @@
         if (distance > 0 && (batSweepForwardScratch.x * dx + batSweepForwardScratch.z * dz) / distance < 0) continue;
         if (Math.abs(targetStandingY(target) - targetStandingY(player)) >= 1.5) continue;
         if (!hasLineOfSight(player.camera.position.x, player.camera.position.z, target.camera.position.x, target.camera.position.z, 0,
-          isCampusMap ? targetStandingY(player) : undefined, isCampusMap ? targetStandingY(target) : undefined)) continue;
+          isWorldMap ? targetStandingY(player) : undefined, isWorldMap ? targetStandingY(target) : undefined)) continue;
         pvpTargets.push({ target, distance });
       }
       if (pvpTargets.length === 0) {
@@ -25088,7 +25186,7 @@
       const halfWidth = distance > radius ? Math.asin(radius / distance) : Math.PI;
       if (bearing + halfWidth < minYaw || bearing - halfWidth > maxYaw) continue;
       if (!hasLineOfSight(camX, camZ, enemyState.mesh.position.x, enemyState.mesh.position.z, 0,
-        isCampusMap ? targetStandingY(player) : undefined, isCampusMap ? enemyState.campusGroundY || 0 : undefined)) continue;
+        isWorldMap ? targetStandingY(player) : undefined, isWorldMap ? enemyState.campusGroundY || 0 : undefined)) continue;
 
       sweep.hitEnemies.add(enemyState);
       playKatanaHitFeedback(player, enemyState);
@@ -25120,7 +25218,7 @@
         const bearing = Math.atan2(dx * rightX + dz * rightZ, dx * forward.x + dz * forward.z);
         const halfWidth = distance > radius ? Math.asin(radius / distance) : Math.PI;
         if (bearing + halfWidth < minYaw || bearing - halfWidth > maxYaw) continue;
-        if (!hasLineOfSight(camX, camZ, tx, tz, 0, isCampusMap ? targetStandingY(player) : undefined, isCampusMap ? targetStandingY(target) : undefined)) continue;
+        if (!hasLineOfSight(camX, camZ, tx, tz, 0, isWorldMap ? targetStandingY(player) : undefined, isWorldMap ? targetStandingY(target) : undefined)) continue;
         sweep.hitEnemies.add(target);
         playKatanaImpactAudio();
         damagePvpPlayer(player, target, sweep.damage, false);
@@ -25371,11 +25469,11 @@
   // true, then flips the foot -- shared by both the gait's own footfalls
   // (updateGait) and the jump-landing one in updateMovement.
   // Which footstep set a body at (x, z) with its feet at feetY hears: on
-  // the campus, whatever it's standing on (see campusWorld.surfaceAt --
+  // the campus, whatever it's standing on (see currentWorld.surfaceAt --
   // streets, sidewalks, lots, bleachers... are hard); elsewhere, the
   // building's concrete floor or the grass outside it.
   function footstepSurfaceAt(x, z, feetY) {
-    if (isCampusMap) return campusWorld.surfaceAt(x, z, feetY);
+    if (isWorldMap) return currentWorld.surfaceAt(x, z, feetY);
     return isInsideBuilding(x, z) ? "concrete" : "grass";
   }
 
@@ -25911,11 +26009,11 @@
     // jumpOffset so the player actually falls instead of teleporting to
     // the new ground height (explicit bug report: walking off the side of
     // the bleachers dropped you straight to the bottom).
-    if (isCampusMap) {
+    if (isWorldMap) {
       const feetY = (player.campusGroundY || 0) + player.jumpOffset;
       const supportY = campusSupportHeight(player.camera.position, PLAYER_RADIUS, feetY);
       const drop = feetY - supportY;
-      player.jumpOffset = (wasGrounded && drop <= campusWorld.stepUpHeight + 0.01) ? 0 : Math.max(0, drop);
+      player.jumpOffset = (wasGrounded && drop <= currentWorld.stepUpHeight + 0.01) ? 0 : Math.max(0, drop);
       player.campusGroundY = supportY;
     }
 
@@ -25935,7 +26033,7 @@
     // landing charge FALL_DAMAGE_PER_METER for every meter fallen past
     // FALL_DAMAGE_SAFE_HEIGHT (a plain jump never hurts). Skipped for a
     // boss throw, which has its own landing damage below.
-    const absoluteFeetY = (isCampusMap ? player.campusGroundY : 0) + player.jumpOffset;
+    const absoluteFeetY = (isWorldMap ? player.campusGroundY : 0) + player.jumpOffset;
     if (!wasGrounded) {
       player.fallPeakY = Math.max(player.fallPeakY ?? absoluteFeetY, absoluteFeetY);
       if (player.isGrounded) {
@@ -25960,11 +26058,11 @@
     if (player.isGrounded && !wasGrounded) landGait(player, landingSpeed, isCrouching || isDowned);
     updateGait(player, deltaSeconds, isCrouching || isDowned); // a crawl is as quiet as a crouch-walk
 
-    player.camera.position.y = player.currentEyeHeight + player.jumpOffset + (isCampusMap ? player.campusGroundY : 0);
+    player.camera.position.y = player.currentEyeHeight + player.jumpOffset + (isWorldMap ? player.campusGroundY : 0);
 
-    if (isCampusMap) {
+    if (isWorldMap) {
       // Campus: the playable area's edge (the grass border beyond is off limits).
-      const b = campusWorld.bounds;
+      const b = currentWorld.bounds;
       player.camera.position.x = Math.max(b.minX + PLAYER_MARGIN, Math.min(b.maxX - PLAYER_MARGIN, player.camera.position.x));
       player.camera.position.z = Math.max(b.minZ + PLAYER_MARGIN, Math.min(b.maxZ - PLAYER_MARGIN, player.camera.position.z));
     } else {
@@ -26555,7 +26653,7 @@
 
     // Lands on the ground -- or on a bleacher step / roof it came down onto.
     const feetY = mesh.position.y - halfHeight;
-    const landY = isCampusMap ? campusWorld.supportHeightAt(mesh.position.x, mesh.position.z, radius, Math.max(feetY, 0)) : 0;
+    const landY = isWorldMap ? currentWorld.supportHeightAt(mesh.position.x, mesh.position.z, radius, Math.max(feetY, 0)) : 0;
     if (feetY <= landY && thrown.velocity.y <= 0) {
       mesh.position.y = landY + halfHeight;
       enemyState.campusGroundY = landY;
@@ -26582,7 +26680,7 @@
   function easeEnemyGroundY(enemyState, deltaSeconds) {
     const target = enemyState.campusGroundY || 0;
     let y = enemyState.visualGroundY ?? target;
-    if (y > target + campusWorld.stepUpHeight + 0.01 || (enemyState.groundFallSpeed || 0) > 0) {
+    if (y > target + currentWorld.stepUpHeight + 0.01 || (enemyState.groundFallSpeed || 0) > 0) {
       enemyState.groundFallSpeed = (enemyState.groundFallSpeed || 0) + ENEMY_FALL_GRAVITY * deltaSeconds;
       y = Math.max(target, y - enemyState.groundFallSpeed * deltaSeconds);
       if (y <= target) enemyState.groundFallSpeed = 0;
@@ -26605,15 +26703,15 @@
 
   function targetStandingY(target) {
     if (target.isTurretTarget) return target.camera.position.y;
-    return isCampusMap ? target.campusGroundY || 0 : 0;
+    return isWorldMap ? target.campusGroundY || 0 : 0;
   }
 
   // ------------------------------------------------------------------
   // ZOMBIE CAR CLIMBING. Ground navigation treats a parked car as solid, so
   // a player standing on one used to be unreachable: too high to hit from the
   // ground, no stair route to it. Now a zombie whose target is up on a
-  // climbable car (campusWorld.carAt, which reuses the car hitbox data) claims
-  // one of the car's edge slots (campusWorld.carClimbSlots), walks there on
+  // climbable car (currentWorld.carAt, which reuses the car hitbox data) claims
+  // one of the car's edge slots (currentWorld.carClimbSlots), walks there on
   // the normal grid path, then runs a scripted traversal -- approach -> climb
   // -> roof -> (descend) -- driven entirely by one phase timer so the body
   // and the pose (zombieSystem.setClimb) can't drift apart. The scan only
@@ -26660,7 +26758,7 @@
   // and only where the zombie can actually stand.
   const carSlotCandidates = [];
   function pickCarClimbSlot(car, enemyState, x, z, radius, exclude) {
-    const slots = campusWorld.carClimbSlots(car);
+    const slots = currentWorld.carClimbSlots(car);
     carSlotCandidates.length = 0;
     const away = Math.hypot(x - car.x, z - car.z) || 1;
     for (const slot of slots) {
@@ -26673,7 +26771,7 @@
     carSlotCandidates.sort((a, b) => a.cost - b.cost);
     for (let i = 0; i < Math.min(4, carSlotCandidates.length); i++) {
       const c = carSlotCandidates[i];
-      if (campusWorld.isWalkable(c.stx, c.stz, radius * 0.9)) return c;
+      if (currentWorld.isWalkable(c.stx, c.stz, radius * 0.9)) return c;
     }
     return null;
   }
@@ -26688,7 +26786,7 @@
     const ty = targetStandingY(target), rise = ty - feetY;
     if (rise < CAR_CLIMB_MIN_RISE_M || rise > C.CAR_CLIMB_MAX_HEIGHT) return;
     const tx = target.camera.position.x, tz = target.camera.position.z;
-    const car = campusWorld.carAt(tx, tz, 0.45);
+    const car = currentWorld.carAt(tx, tz, 0.45);
     if (!car || !C.CLIMBABLE_CLASSES.includes(car.cls) || car.climbers >= C.CAR_CLIMB_MAX_ZOMBIES_PER_CAR) return;
     if (ty < car.bodyTop - 0.35 || ty > car.roofY + 0.35) return; // standing on the car itself, not something beside it
     const mesh = enemyState.mesh;
@@ -26721,7 +26819,7 @@
     const target = enemyState.targetPlayer;
     if (!target || target.isDead || target.isDowned) { releaseCarClimb(enemyState, 0.3); return false; }
     const tx = target.camera.position.x, tz = target.camera.position.z, ty = targetStandingY(target);
-    const targetOnCar = !target.isTurretTarget && campusWorld.carAt(tx, tz, 0.45) === car && ty >= car.bodyTop - 0.35 && ty <= car.roofY + 0.35;
+    const targetOnCar = !target.isTurretTarget && currentWorld.carAt(tx, tz, 0.45) === car && ty >= car.bodyTop - 0.35 && ty <= car.roofY + 0.35;
     const zombie = enemyState.zombie;
     const speed = enemyState.speed;
 
@@ -26748,7 +26846,7 @@
       if (dist < 0.3) {
         // hands on the car: fix the whole traversal now, from where it's standing
         const inX = slot.ex - slot.nx * 0.75, inZ = slot.ez - slot.nz * 0.75;
-        let landingY = campusWorld.supportHeightAt(inX, inZ, radius * 0.5, car.roofY + 0.05);
+        let landingY = currentWorld.supportHeightAt(inX, inZ, radius * 0.5, car.roofY + 0.05);
         landingY = Math.max(landingY, car.bodyTop);
         cc.phase = "climb";
         cc.t = 0;
@@ -26837,11 +26935,11 @@
           else if (od < room) { const push = (room - od) * 0.5; mesh.position.x += (ox / od) * push; mesh.position.z += (oz / od) * push; }
         }
       }
-      campusWorld.clampToCarTop(car, mesh.position, radius * 0.4); // never walks off the edge except by the climb down
+      currentWorld.clampToCarTop(car, mesh.position, radius * 0.4); // never walks off the edge except by the climb down
       updateEnemyFootsteps(enemyState, Math.hypot(mesh.position.x - preX, mesh.position.z - preZ));
       if (dist > 0.05) turnEnemyToward(enemyState, dx, dz, ENEMY_TURN_SPEED * deltaSeconds);
       // ride the car's own surface (hood / roof heights)
-      const surface = Math.max(campusWorld.supportHeightAt(mesh.position.x, mesh.position.z, radius * 0.5, car.roofY + 0.05), car.bodyTop);
+      const surface = Math.max(currentWorld.supportHeightAt(mesh.position.x, mesh.position.z, radius * 0.5, car.roofY + 0.05), car.bodyTop);
       enemyState.campusGroundY = surface;
       enemyState.visualGroundY = (enemyState.visualGroundY ?? surface) + (surface - (enemyState.visualGroundY ?? surface)) * Math.min(1, 12 * deltaSeconds);
       enemyState.groundFallSpeed = 0;
@@ -26857,7 +26955,7 @@
         cc.A = { x: slot.ex + slot.nx * radius * 0.85, z: slot.ez + slot.nz * radius * 0.85 };
         const gx = slot.ex + slot.nx * 0.75, gz = slot.ez + slot.nz * 0.75;
         cc.G = { x: gx, z: gz };
-        cc.groundY = campusWorld.supportHeightAt(gx, gz, radius * 0.5, car.groundY + campusWorld.stepUpHeight);
+        cc.groundY = currentWorld.supportHeightAt(gx, gz, radius * 0.5, car.groundY + currentWorld.stepUpHeight);
         enemyState.hasLineOfSightCached = false;
       } else if (!targetOnCar && cc.roofT > 60) { releaseCarClimb(enemyState, C.CAR_CLIMB_COOLDOWN); return false; } // safety net: no way down found
       return true;
@@ -26882,11 +26980,11 @@
 
   // Which edge to climb down at: the walkable spot on the ground closest to the target.
   function pickCarExitSlot(car, enemyState, tx, tz, radius) {
-    const slots = campusWorld.carClimbSlots(car);
+    const slots = currentWorld.carClimbSlots(car);
     const ranked = slots.map((slot) => ({ slot, d: Math.hypot(slot.ex + slot.nx * 0.75 - tx, slot.ez + slot.nz * 0.75 - tz) })).sort((a, b) => a.d - b.d);
     for (const r of ranked.slice(0, 4)) {
       if (r.slot.owner && r.slot.owner !== enemyState && !r.slot.owner.isRemoved && r.slot.owner.carClimb) continue; // someone's coming up there
-      if (campusWorld.isWalkable(r.slot.ex + r.slot.nx * 0.75, r.slot.ez + r.slot.nz * 0.75, radius * 0.9)) return r.slot;
+      if (currentWorld.isWalkable(r.slot.ex + r.slot.nx * 0.75, r.slot.ez + r.slot.nz * 0.75, radius * 0.9)) return r.slot;
     }
     return null;
   }
@@ -26920,7 +27018,7 @@
       const enemyState = enemies[enemyIndex];
       // Campus: dormant enemies are skipped entirely; far ones run a
       // reduced chase (see campusEnemyDetail in the CAMPUS MAP section).
-      const campusDetail = isCampusMap ? campusEnemyDetail(enemyState) : "full";
+      const campusDetail = isWorldMap ? campusEnemyDetail(enemyState) : "full";
       if (campusDetail === "skip") continue;
       const lowDetail = campusDetail === "reduced";
       const mesh = enemyState.mesh;
@@ -26999,7 +27097,7 @@
       // Campus: where its feet are (ground, or up on a bleacher step) --
       // collisions step up from here, and it can only hit what's within
       // ENEMY_VERTICAL_REACH_M above or below it.
-      const enemyFeetY = isCampusMap ? enemyState.campusGroundY || 0 : 0;
+      const enemyFeetY = isWorldMap ? enemyState.campusGroundY || 0 : 0;
       const withinReachVertically = Math.abs(targetStandingY(targetPlayer) - enemyFeetY) <= ENEMY_VERTICAL_REACH_M * enemyState.sizeScale;
 
       // Running into an enemy while sliding cancels the slide immediately
@@ -27036,7 +27134,7 @@
         // is reached by stair portal -- the route's stair part, from
         // rawPath.stairFrom on, is kept point by point, not string-pulled.)
         const rawPath = findGridPath(mesh.position.x, mesh.position.z, targetPlayer.camera.position.x, targetPlayer.camera.position.z,
-          isCampusMap ? enemyFeetY : undefined, isCampusMap ? targetStandingY(targetPlayer) : undefined);
+          isWorldMap ? enemyFeetY : undefined, isWorldMap ? targetStandingY(targetPlayer) : undefined);
         if (rawPath && rawPath.stairFrom !== undefined) {
           const leg = simplifyGridPath(mesh.position.x, mesh.position.z, rawPath.slice(0, rawPath.stairFrom), enemyRadius);
           enemyState.pathWaypoints = [...leg, ...rawPath.slice(rawPath.stairFrom)];
@@ -27063,13 +27161,13 @@
         enemyState.losCheckTimer = NAV_LOS_CHECK_INTERVAL + Math.random() * NAV_LOS_CHECK_JITTER;
         enemyState.hasLineOfSightCached = hasLineOfSight(
           mesh.position.x, mesh.position.z, targetPlayer.camera.position.x, targetPlayer.camera.position.z, enemyRadius,
-          isCampusMap ? enemyFeetY : undefined, isCampusMap ? targetStandingY(targetPlayer) : undefined
+          isWorldMap ? enemyFeetY : undefined, isWorldMap ? targetStandingY(targetPlayer) : undefined
         );
       }
       // Campus: a target on another floor (up a stair, on the floor above)
       // is only ever reached by the planned route -- never by beelining
       // under or over it.
-      const sameFloor = !isCampusMap || Math.abs(targetStandingY(targetPlayer) - enemyFeetY) <= SAME_FLOOR_HEIGHT_M;
+      const sameFloor = !isWorldMap || Math.abs(targetStandingY(targetPlayer) - enemyFeetY) <= SAME_FLOOR_HEIGHT_M;
       if (enemyState.pathWaypoints.length > 0 && enemyState.hasLineOfSightCached && sameFloor) {
         enemyState.pathWaypoints = [];
       }
@@ -27139,8 +27237,8 @@
         // atan2(x, z) of that (already-normalized) direction vector.
         turnEnemyToward(enemyState, enemyMoveDir.x, enemyMoveDir.z, ENEMY_TURN_SPEED * deltaSeconds);
       }
-      if (isCampusMap) enemyState.campusGroundY = campusSupportHeight(mesh.position, enemyRadius, enemyFeetY);
-      mesh.position.y = (ENEMY_SIZE.height / 2) * enemyState.sizeScale + (isCampusMap ? easeEnemyGroundY(enemyState, deltaSeconds) : 0);
+      if (isWorldMap) enemyState.campusGroundY = campusSupportHeight(mesh.position, enemyRadius, enemyFeetY);
+      mesh.position.y = (ENEMY_SIZE.height / 2) * enemyState.sizeScale + (isWorldMap ? easeEnemyGroundY(enemyState, deltaSeconds) : 0);
       } // !carDriven
 
       // Walk only on real chase movement -- being shoved by knockback
@@ -27619,11 +27717,11 @@
 
   function renderViews() {
     // Eye adaptation: each view draws at its own player's exposure.
-    const exposureOf = (index) => (isCampusMap ? environmentState.exposure[index] || 1 : 1);
+    const exposureOf = (index) => (isWorldMap ? environmentState.exposure[index] || 1 : 1);
     renderer.shadowMap.autoUpdate = shadowFrameParity === 1;
     // Streetlights: the lit lamps nearest this view's camera light the world.
     const prepareLightsFor = (cam) => {
-      if (isCampusMap && campusWorld) campusWorld.prepareLights(cam.position.x, cam.position.z);
+      if (isWorldMap && currentWorld) currentWorld.prepareLights(cam.position.x, cam.position.z);
       else envFX.setLocalLights(null, 0);
     };
     if (!isCoopMatchActive) {
@@ -27710,7 +27808,7 @@
       }
       // Zombies (and grass) at this view's own distance.
       const vx = viewCamera.position.x, vz = viewCamera.position.z;
-      if (isCampusMap && campusWorld) campusWorld.prepareView(vx, vz, lodScale);
+      if (isWorldMap && currentWorld) currentWorld.prepareView(vx, vz, lodScale);
       prepareLightsFor(viewCamera);
       for (const enemyState of enemies) {
         if (!enemyState.zombie || enemyState.dormant) continue;
@@ -27735,7 +27833,7 @@
     scene.autoUpdate = true;
     stormAtmosphereEnd();
     for (const enemyState of enemies) if (enemyState.zombie) zombieSystem.restoreLod(enemyState.zombie);
-    if (isCampusMap && campusWorld) campusWorld.endViews();
+    if (isWorldMap && currentWorld) currentWorld.endViews();
     // Restore the full-target viewport -- otherwise the NEXT
     // renderer.render(scene, camera) call (singleplayer, after this co-op
     // match ends) would still be constrained to whatever half was drawn
@@ -28529,7 +28627,7 @@
     // Effects that stay hidden until they're first needed (surface
     // effects, streetlight halos) and the sun-ray pass: compiled now too.
     const hiddenUntilNeeded = [fxParticles.points, fxSparks.points, fxDecals.mesh, ...shellCasings.meshes,
-      ...(isCampusMap && campusWorld ? campusWorld.prewarmObjects() : [])];
+      ...(isWorldMap && currentWorld ? currentWorld.prewarmObjects() : [])];
     const wasVisible = hiddenUntilNeeded.map((o) => o.visible);
     hiddenUntilNeeded.forEach((o) => { o.visible = true; });
     renderer.compile(scene, cam);
@@ -28562,7 +28660,7 @@
     // and countdown timer.
     // (PVP Settings panel open: the setup screens' pads/countdowns pause underneath it.)
     const pvpSettingsUp = isPvpSettingsOpen();
-    if (pvpSetupSelected && (titlePanels["coop-setup"].classList.contains("active") || titlePanels["quad-setup"].classList.contains("active"))) pollPvpSettingsOpenButton();
+    if (pvpSetupSelected && (titlePanels["coop-setup"].classList.contains("active") || titlePanels["quad-setup"].classList.contains("active"))) { pollPvpSettingsOpenButton(); pollPvpMapButtons(); }
     if (titlePanels["coop-setup"].classList.contains("active")) {
       if (!pvpSettingsUp) {
         pollCoopSetupGamepads(deltaSeconds);
@@ -28799,6 +28897,13 @@
       get waveState() { return waveState; },
       get waveNumber() { return waveNumber; },
       setMap(id) { selectedMapId = id; },
+      get currentWorld() { return currentWorld; },
+      get map2World() { return map2World; },
+      get isWorldMap() { return isWorldMap; },
+      get selectedMapId() { return selectedMapId; },
+      get pvpMapId() { return pvpMapId; },
+      setPvpMap(id) { pvpMapId = id; updatePvpMapButtons(); },
+      stepPvpMap,
       startRun() {
         resetGame();
         applySelectedMap();
@@ -28867,9 +28972,10 @@
       // Customization (setup screens), for checking the previews by hand.
       humanSystem, p1ModelPreview, coopSetup, updateCoopSetupUI, quadSetup, updateQuadSetupUI, resetQuadSetup, resetCoopSetup, applyCustomizationToCharacter, cycleCustomization, resetCustomization, createCustomization, CUSTOMIZE_CATEGORIES,
       // PVP smoke test (#pvptest, tests/pvp-test.js).
-      startPvpForTest(n, mode) {
+      startPvpForTest(n, mode, mapId = "campus") {
         resetGame();
         pvpSetupSelected = true;
+        pvpMapId = mapId;
         pvpMode = mode || "deathmatch";
         if (n === 2) {
           resetCoopSetup();

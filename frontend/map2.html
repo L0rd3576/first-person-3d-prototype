@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Map 2 Greybox</title>
+<style>html, body { margin: 0; height: 100%; overflow: hidden; background: #9ec7ea; } canvas { display: block; }</style>
+</head>
+<body>
+<script src="vendor/three.min.js"></script>
+<script src="environment-fx.js"></script>
+<script src="tree-models.js"></script>
+<script src="vehicle-models.js"></script>
+<script src="campus-world.js"></script>
+<script src="world-queries.js"></script>
+<script src="map2-world.js"></script>
+<script>
+(function () {
+  "use strict";
+  // Headless viewer for the "Residential" map, used to render comparison
+  // shots against the reference images (no gameplay). Debug camera:
+  //   map2.html#cam=px,py,eyeHeight,yawDeg,pitchDeg
+  // px/py are pixels of topdownview.png (640 x 590); yaw 0 looks north
+  // (-z), pitch -89 looks straight down. Optional &fov=deg.
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(1);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x9ec7ea);
+  scene.fog = new THREE.Fog(0xb9d3ea, 120, 420);
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 700);
+  camera.rotation.order = "YXZ";
+  scene.add(new THREE.AmbientLight(0xffffff, 0.62));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.75);
+  sun.position.set(-0.6, 1, 0.4);
+  scene.add(sun);
+  const world = buildMap2World(THREE, scene, renderer, {});
+  const hash = window.location.hash || "";
+  if (/nofog/.test(hash)) scene.fog = null;
+  const cam = /cam=([-\d.,]+)/.exec(hash);
+  const fov = /fov=([\d.]+)/.exec(hash);
+  if (fov) { camera.fov = Number(fov[1]); camera.updateProjectionMatrix(); }
+  const [px, py, h, yawDeg, pitchDeg] = (cam ? cam[1] : "320,295,180,0,-89").split(",").map(Number);
+  const at = world.mapToWorld(px, py);
+  camera.position.set(at.x, h, at.z);
+  camera.rotation.set((pitchDeg * Math.PI) / 180, (yawDeg * Math.PI) / 180, 0);
+  function frame() {
+    requestAnimationFrame(frame);
+    world.updateVisibility([{ x: at.x, z: at.z }], [{ x: at.x, z: at.z, fx: 0, fz: -1, cos: -1 }], 1);
+    renderer.render(scene, camera);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

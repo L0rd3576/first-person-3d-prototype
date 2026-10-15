@@ -13,6 +13,206 @@
 (function () {
   "use strict";
 
+  // ------------------------------------------------------------------
+  // ROAD CLOSED / SIDEWALK CLOSED barricade rows, shared by the campus and
+  // map2-world.js (window.campusKit). list: [px, py, axis, widthPx, options].
+  // ctx: { mapToWorld, groundHeightAt, makeCollider, addCollider(c, px, py),
+  //   canvasTexture, mapScale, sidewalkWidthPx, mapCenter, barrierHeight }.
+  // Returns { rows, sidewalkSigns } (world positions) for tests.
+  // ------------------------------------------------------------------
+  function buildClosureBarricades(THREE, root, list, ctx) {
+    const { mapToWorld, groundHeightAt, makeCollider, addCollider, canvasTexture, mapScale, sidewalkWidthPx, mapCenter, barrierHeight } = ctx;
+    const stripeTexture = canvasTexture(256, 32, (ctx, w, h) => {
+      ctx.fillStyle = "#f4f2ec";
+      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = "#ee6f1c";
+      for (let x = -h; x < w + h; x += 44) {
+        ctx.beginPath();
+        ctx.moveTo(x, h);
+        ctx.lineTo(x + 22, h);
+        ctx.lineTo(x + 22 + h, 0);
+        ctx.lineTo(x + h, 0);
+        ctx.closePath();
+        ctx.fill();
+      }
+    });
+    const signTexture = canvasTexture(256, 160, (ctx, w, h) => {
+      ctx.fillStyle = "#f7f7f5";
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = "#151515";
+      ctx.lineWidth = 7;
+      ctx.strokeRect(9, 9, w - 18, h - 18);
+      ctx.fillStyle = "#151515";
+      ctx.font = "bold 50px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("ROAD", w / 2, h * 0.34);
+      ctx.fillText("CLOSED", w / 2, h * 0.68);
+    });
+    const white = new THREE.MeshLambertMaterial({ color: 0xf2f0ea });
+    const faces = (front) => [white, white, white, white, front, front]; // BoxGeometry: +x -x +y -y +z -z
+    const boardMaterials = faces(new THREE.MeshLambertMaterial({ map: stripeTexture }));
+    // the sign reads only on its front (toward the map); its back is blank
+    const signMaterials = [white, white, white, white, new THREE.MeshLambertMaterial({ map: signTexture }), white];
+    const metal = new THREE.MeshLambertMaterial({ color: 0x9aa1a8 });
+    const burlap = new THREE.MeshLambertMaterial({ color: 0xb36a33 });
+    const coneOrange = new THREE.MeshLambertMaterial({ color: 0xf2661d });
+    const box = new THREE.BoxGeometry(1, 1, 1);
+    const coneGeo = new THREE.ConeGeometry(0.17, 0.66, 10);
+    coneGeo.translate(0, 0.04 + 0.33, 0); // sits on its base
+    const coneBase = new THREE.MeshLambertMaterial({ color: 0x1d1d1d });
+
+    const rows = [], sidewalkSigns = [];
+    const parts = { board: [], sign: [], metal: [], bag: [], cone: [], coneBase: [], swPanel: [], swSign: [], swFoot: [] };
+    // SIDEWALK CLOSED barricades (gamemapsidewalksign.jpg): an orange
+    // plastic panel with open vertical slots and a white sign, about 60%
+    // the height of the road barricades, on both sidewalks of every closed
+    // street. The slots are an alpha-tested texture (still one cheap
+    // opaque pass).
+    const swPanelTexture = canvasTexture(256, 128, (ctx, w, h) => {
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#ec5a1a";
+      ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 11; i++) {
+        const x = 14 + i * 21.5;
+        ctx.clearRect(x, 34, 11, 70); // slots
+      }
+      ctx.fillStyle = "#c9460f";
+      ctx.fillRect(0, 0, w, 6);
+      ctx.fillRect(0, h - 8, w, 8);
+    });
+    // A molded panel with real thickness: slotted faces front and back,
+    // solid orange edges.
+    const swSlotted = new THREE.MeshLambertMaterial({ map: swPanelTexture, alphaTest: 0.5 });
+    const swOrange = new THREE.MeshLambertMaterial({ color: 0xe0561a });
+    const swPanelMaterial = [swOrange, swOrange, swOrange, swOrange, swSlotted, swSlotted];
+    const swSignTexture = canvasTexture(256, 96, (ctx, w, h) => {
+      ctx.fillStyle = "#f7f7f5";
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = "#151515";
+      ctx.lineWidth = 6;
+      ctx.strokeRect(7, 7, w - 14, h - 14);
+      ctx.fillStyle = "#151515";
+      ctx.font = "bold 34px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("SIDEWALK", w / 2, h * 0.33);
+      ctx.fillText("CLOSED", w / 2, h * 0.7);
+    });
+    const swSignMaterials = [white, white, white, white, new THREE.MeshLambertMaterial({ map: swSignTexture }), white];
+    const SW_PANEL_DEPTH_M = 0.09;
+    const swSidewalkOffsetPx = sidewalkWidthPx / 2;
+    // Invisible wall across the whole street (road + sidewalks) at every
+    // barricade, tall enough that nobody jumps or flies over it.
+    const barrierExtraPx = sidewalkWidthPx + 2;
+    const unitMatrix = new THREE.Matrix4();
+    const localMatrix = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const yAxis = new THREE.Vector3(0, 1, 0);
+    const put = (list, lx, ly, lz, sx, sy, sz) => {
+      localMatrix.compose(new THREE.Vector3(lx, ly, lz), new THREE.Quaternion(), new THREE.Vector3(sx, sy, sz));
+      list.push(new THREE.Matrix4().multiplyMatrices(unitMatrix, localMatrix));
+    };
+    const UNIT_W = 2.4;
+    for (const [px, py, axis, widthPx, options = {}] of list) {
+      const center = mapToWorld(px, py);
+      const along = axis === "x" ? { x: 1, z: 0 } : { x: 0, z: 1 };
+      // Local +z (the barricade's front: sign text, sandbags) faces into the map.
+      let yaw = Math.atan2(-along.z, along.x);
+      const facePoint = options.face ? mapToWorld(options.face[0], options.face[1]) : mapCenter;
+      const inX = facePoint.x - center.x, inZ = facePoint.z - center.z;
+      if (Math.sin(yaw) * inX + Math.cos(yaw) * inZ < 0) yaw += Math.PI;
+      q.setFromAxisAngle(yAxis, yaw);
+      rows.push({ x: center.x, z: center.z, axis, yaw, length: widthPx * mapScale });
+      const length = widthPx * mapScale;
+      const count = Math.max(2, Math.round(length / 2.5));
+      const spacing = length / count;
+      const signIndex = Math.floor((count - 1) / 2);
+      for (let i = 0; i < count; i++) {
+        const t = -length / 2 + spacing * (i + 0.5);
+        // Every other unit sits a little forward/back, like the photo.
+        const stagger = i % 2 === 0 ? 0.25 : -0.25;
+        const cx = center.x + along.x * t + along.z * stagger;
+        const cz = center.z + along.z * t + along.x * stagger;
+        unitMatrix.compose(new THREE.Vector3(cx, groundHeightAt(cx, cz), cz), q, new THREE.Vector3(1, 1, 1));
+        for (const lx of [-0.95, 0.95]) {
+          put(parts.metal, lx, 0.73, 0, 0.05, 1.46, 0.05);   // leg
+          put(parts.metal, lx, 0.025, 0, 0.07, 0.05, 0.85);  // foot
+          put(parts.bag, lx, 0.09, 0.28, 0.42, 0.17, 0.26);  // sandbag
+        }
+        for (const y of [0.45, 0.86, 1.27]) put(parts.board, 0, y, 0, UNIT_W, 0.24, 0.035);
+        if (i === signIndex) {
+          for (const lx of [-0.45, 0.45]) put(parts.metal, lx, 1.8, 0, 0.05, 0.7, 0.05);
+          put(parts.sign, 0, 1.86, 0.02, 1.3, 0.8, 0.04);
+        }
+        const collider = makeCollider(cx, cz, UNIT_W / 2, 0.45, 1.4, yaw);
+        collider.render = false;
+        collider.seeThrough = true;
+        collider.fx = "wood";
+        addCollider(collider, px, py);
+      }
+      // cones (on square black bases) just outside each end of the row
+      for (const end of [-1, 1]) {
+        const t = end * (length / 2 + 0.5);
+        const ex = center.x + along.x * t, ez = center.z + along.z * t;
+        unitMatrix.compose(new THREE.Vector3(ex, groundHeightAt(ex, ez), ez), q, new THREE.Vector3(1, 1, 1));
+        for (const [cx0, cz0] of [[0, 0.6], [0.1, -0.7]]) {
+          put(parts.cone, cx0, 0, cz0, 1, 1, 1);
+          put(parts.coneBase, cx0, 0.02, cz0, 0.42, 0.04, 0.42);
+        }
+      }
+      // SIDEWALK CLOSED barricade on each sidewalk, in line with the row
+      // (options.sidewalks: explicit [px, py] spots instead; swWidthScale widens the panel)
+      const swScale = options.swWidthScale || 1;
+      const swSpots = options.sidewalks
+        ? options.sidewalks.map(([sxp, syp]) => mapToWorld(sxp, syp))
+        : [-1, 1].map((side) => {
+          const t = side * (widthPx / 2 + swSidewalkOffsetPx) * mapScale;
+          return { x: center.x + along.x * t, z: center.z + along.z * t };
+        });
+      for (const spot of swSpots) {
+        unitMatrix.compose(new THREE.Vector3(spot.x, 0, spot.z), q, new THREE.Vector3(1, 1, 1));
+        put(parts.swPanel, 0, 0.62, 0, 2.0 * swScale, 1.0, SW_PANEL_DEPTH_M); // panel, 0.12 -> 1.12 m
+        put(parts.swSign, 0, 0.92, 0.04, 0.95, 0.36, 0.03);   // sign, top ~1.1 m
+        for (const lx of [-0.85 * swScale, 0.85 * swScale]) put(parts.swFoot, lx, 0.06, 0, 0.18, 0.12, 0.5); // feet
+        // solid, like the road barricades (you can see and shoot through the slots)
+        const swCollider = makeCollider(spot.x, spot.z, 1.0 * swScale, 0.25, 1.12, yaw);
+        swCollider.render = false;
+        swCollider.seeThrough = true;
+        swCollider.fx = "metal";
+        addCollider(swCollider, px, py);
+        sidewalkSigns.push({ x: spot.x, z: spot.z, axis, yaw });
+      }
+      // invisible barrier across the full street width (map-edge closures only)
+      if (options.barrier === false) continue;
+      const barrierLength = (widthPx + barrierExtraPx * 2) * mapScale;
+      const barrier = makeCollider(center.x, center.z, barrierLength / 2, 0.3, barrierHeight, yaw);
+      barrier.render = false;
+      barrier.seeThrough = true;
+      barrier.noImpact = true; // invisible: shots never mark it
+      addCollider(barrier, px, py);
+    }
+    const addInstanced = (geometry, material, matrices) => {
+      if (matrices.length === 0) return;
+      const mesh = new THREE.InstancedMesh(geometry, material, matrices.length);
+      matrices.forEach((m, i) => mesh.setMatrixAt(i, m));
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.frustumCulled = false; // spread over the whole map edge; cheap enough to always draw
+      root.add(mesh);
+    };
+    addInstanced(box, boardMaterials, parts.board);
+    addInstanced(box, signMaterials, parts.sign);
+    addInstanced(box, metal, parts.metal);
+    addInstanced(box, burlap, parts.bag);
+    addInstanced(coneGeo, coneOrange, parts.cone);
+    addInstanced(box, coneBase, parts.coneBase);
+    addInstanced(box, swPanelMaterial, parts.swPanel);
+    addInstanced(box, swSignMaterials, parts.swSign);
+    addInstanced(box, new THREE.MeshLambertMaterial({ color: 0x222222 }), parts.swFoot);
+    return { rows, sidewalkSigns };
+
+  }
+
   function buildCampusWorld(THREE, scene, renderer, options = {}) {
     const root = new THREE.Group();
     root.name = "CampusWorld";
@@ -4461,170 +4661,16 @@
     // simple box collider (you can see and shoot over/through them).
     // ------------------------------------------------------------------
     {
-      const stripeTexture = canvasTexture(256, 32, (ctx, w, h) => {
-        ctx.fillStyle = "#f4f2ec";
-        ctx.fillRect(0, 0, w, h);
-        ctx.fillStyle = "#ee6f1c";
-        for (let x = -h; x < w + h; x += 44) {
-          ctx.beginPath();
-          ctx.moveTo(x, h);
-          ctx.lineTo(x + 22, h);
-          ctx.lineTo(x + 22 + h, 0);
-          ctx.lineTo(x + h, 0);
-          ctx.closePath();
-          ctx.fill();
-        }
-      });
-      const signTexture = canvasTexture(256, 160, (ctx, w, h) => {
-        ctx.fillStyle = "#f7f7f5";
-        ctx.fillRect(0, 0, w, h);
-        ctx.strokeStyle = "#151515";
-        ctx.lineWidth = 7;
-        ctx.strokeRect(9, 9, w - 18, h - 18);
-        ctx.fillStyle = "#151515";
-        ctx.font = "bold 50px Arial";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("ROAD", w / 2, h * 0.34);
-        ctx.fillText("CLOSED", w / 2, h * 0.68);
-      });
-      const white = new THREE.MeshLambertMaterial({ color: 0xf2f0ea });
-      const faces = (front) => [white, white, white, white, front, front]; // BoxGeometry: +x -x +y -y +z -z
-      const boardMaterials = faces(new THREE.MeshLambertMaterial({ map: stripeTexture }));
-      // the sign reads only on its front (toward the map); its back is blank
-      const signMaterials = [white, white, white, white, new THREE.MeshLambertMaterial({ map: signTexture }), white];
-      const metal = new THREE.MeshLambertMaterial({ color: 0x9aa1a8 });
-      const burlap = new THREE.MeshLambertMaterial({ color: 0xb36a33 });
-      const coneOrange = new THREE.MeshLambertMaterial({ color: 0xf2661d });
+      // (the barricade rows: see buildClosureBarricades above)
       const box = new THREE.BoxGeometry(1, 1, 1);
-      const coneGeo = new THREE.ConeGeometry(0.17, 0.66, 10);
-      coneGeo.translate(0, 0.04 + 0.33, 0); // sits on its base
-      const coneBase = new THREE.MeshLambertMaterial({ color: 0x1d1d1d });
-
-      const parts = { board: [], sign: [], metal: [], bag: [], cone: [], coneBase: [], swPanel: [], swSign: [], swFoot: [] };
-      // SIDEWALK CLOSED barricades (gamemapsidewalksign.jpg): an orange
-      // plastic panel with open vertical slots and a white sign, about 60%
-      // the height of the road barricades, on both sidewalks of every closed
-      // street. The slots are an alpha-tested texture (still one cheap
-      // opaque pass).
-      const swPanelTexture = canvasTexture(256, 128, (ctx, w, h) => {
-        ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = "#ec5a1a";
-        ctx.fillRect(0, 0, w, h);
-        for (let i = 0; i < 11; i++) {
-          const x = 14 + i * 21.5;
-          ctx.clearRect(x, 34, 11, 70); // slots
-        }
-        ctx.fillStyle = "#c9460f";
-        ctx.fillRect(0, 0, w, 6);
-        ctx.fillRect(0, h - 8, w, 8);
-      });
-      // A molded panel with real thickness: slotted faces front and back,
-      // solid orange edges.
-      const swSlotted = new THREE.MeshLambertMaterial({ map: swPanelTexture, alphaTest: 0.5 });
-      const swOrange = new THREE.MeshLambertMaterial({ color: 0xe0561a });
-      const swPanelMaterial = [swOrange, swOrange, swOrange, swOrange, swSlotted, swSlotted];
-      const swSignTexture = canvasTexture(256, 96, (ctx, w, h) => {
-        ctx.fillStyle = "#f7f7f5";
-        ctx.fillRect(0, 0, w, h);
-        ctx.strokeStyle = "#151515";
-        ctx.lineWidth = 6;
-        ctx.strokeRect(7, 7, w - 14, h - 14);
-        ctx.fillStyle = "#151515";
-        ctx.font = "bold 34px Arial";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("SIDEWALK", w / 2, h * 0.33);
-        ctx.fillText("CLOSED", w / 2, h * 0.7);
-      });
-      const swSignMaterials = [white, white, white, white, new THREE.MeshLambertMaterial({ map: swSignTexture }), white];
-      const SW_PANEL_DEPTH_M = 0.09;
-      const swSidewalkOffsetPx = SIDEWALK_WIDTH_PX / 2;
-      const mapCenter = mapToWorld((MAP_BOUNDS[0] + MAP_BOUNDS[2]) / 2, (MAP_BOUNDS[1] + MAP_BOUNDS[3]) / 2);
-      // Invisible wall across the whole street (road + sidewalks) at every
-      // barricade, tall enough that nobody jumps or flies over it.
+      const metal = new THREE.MeshLambertMaterial({ color: 0x9aa1a8 });
       const BARRIER_HEIGHT_M = 200;
-      const barrierExtraPx = SIDEWALK_WIDTH_PX + 2;
-      const unitMatrix = new THREE.Matrix4();
-      const localMatrix = new THREE.Matrix4();
-      const q = new THREE.Quaternion();
-      const yAxis = new THREE.Vector3(0, 1, 0);
-      const put = (list, lx, ly, lz, sx, sy, sz) => {
-        localMatrix.compose(new THREE.Vector3(lx, ly, lz), new THREE.Quaternion(), new THREE.Vector3(sx, sy, sz));
-        list.push(new THREE.Matrix4().multiplyMatrices(unitMatrix, localMatrix));
-      };
-      const UNIT_W = 2.4;
-      for (const [px, py, axis, widthPx, options = {}] of BARRICADES) {
-        const center = mapToWorld(px, py);
-        const along = axis === "x" ? { x: 1, z: 0 } : { x: 0, z: 1 };
-        // Local +z (the barricade's front: sign text, sandbags) faces into the map.
-        let yaw = Math.atan2(-along.z, along.x);
-        const facePoint = options.face ? mapToWorld(options.face[0], options.face[1]) : mapCenter;
-        const inX = facePoint.x - center.x, inZ = facePoint.z - center.z;
-        if (Math.sin(yaw) * inX + Math.cos(yaw) * inZ < 0) yaw += Math.PI;
-        q.setFromAxisAngle(yAxis, yaw);
-        const length = widthPx * MAP_SCALE;
-        const count = Math.max(2, Math.round(length / 2.5));
-        const spacing = length / count;
-        const signIndex = Math.floor((count - 1) / 2);
-        for (let i = 0; i < count; i++) {
-          const t = -length / 2 + spacing * (i + 0.5);
-          // Every other unit sits a little forward/back, like the photo.
-          const stagger = i % 2 === 0 ? 0.25 : -0.25;
-          const cx = center.x + along.x * t + along.z * stagger;
-          const cz = center.z + along.z * t + along.x * stagger;
-          unitMatrix.compose(new THREE.Vector3(cx, groundHeightAt(cx, cz), cz), q, new THREE.Vector3(1, 1, 1));
-          for (const lx of [-0.95, 0.95]) {
-            put(parts.metal, lx, 0.73, 0, 0.05, 1.46, 0.05);   // leg
-            put(parts.metal, lx, 0.025, 0, 0.07, 0.05, 0.85);  // foot
-            put(parts.bag, lx, 0.09, 0.28, 0.42, 0.17, 0.26);  // sandbag
-          }
-          for (const y of [0.45, 0.86, 1.27]) put(parts.board, 0, y, 0, UNIT_W, 0.24, 0.035);
-          if (i === signIndex) {
-            for (const lx of [-0.45, 0.45]) put(parts.metal, lx, 1.8, 0, 0.05, 0.7, 0.05);
-            put(parts.sign, 0, 1.86, 0.02, 1.3, 0.8, 0.04);
-          }
-          const collider = makeCollider(cx, cz, UNIT_W / 2, 0.45, 1.4, yaw);
-          collider.render = false;
-          collider.seeThrough = true;
-          collider.fx = "wood";
-          const zone = zones[ZONES.indexOf(zoneAt(px, py))];
-          zone.colliders.push(collider);
-        }
-        // cones (on square black bases) just outside each end of the row
-        for (const end of [-1, 1]) {
-          const t = end * (length / 2 + 0.5);
-          const ex = center.x + along.x * t, ez = center.z + along.z * t;
-          unitMatrix.compose(new THREE.Vector3(ex, groundHeightAt(ex, ez), ez), q, new THREE.Vector3(1, 1, 1));
-          for (const [cx0, cz0] of [[0, 0.6], [0.1, -0.7]]) {
-            put(parts.cone, cx0, 0, cz0, 1, 1, 1);
-            put(parts.coneBase, cx0, 0.02, cz0, 0.42, 0.04, 0.42);
-          }
-        }
-        // SIDEWALK CLOSED barricade on each sidewalk, in line with the row
-        for (const side of [-1, 1]) {
-          const t = side * (widthPx / 2 + swSidewalkOffsetPx) * MAP_SCALE;
-          unitMatrix.compose(new THREE.Vector3(center.x + along.x * t, 0, center.z + along.z * t), q, new THREE.Vector3(1, 1, 1));
-          put(parts.swPanel, 0, 0.62, 0, 2.0, 1.0, SW_PANEL_DEPTH_M); // panel, 0.12 -> 1.12 m
-          put(parts.swSign, 0, 0.92, 0.04, 0.95, 0.36, 0.03);   // sign, top ~1.1 m
-          for (const lx of [-0.85, 0.85]) put(parts.swFoot, lx, 0.06, 0, 0.18, 0.12, 0.5); // feet
-          // solid, like the road barricades (you can see and shoot through the slots)
-          const sx = center.x + along.x * t, sz = center.z + along.z * t;
-          const swCollider = makeCollider(sx, sz, 1.0, 0.25, 1.12, yaw);
-          swCollider.render = false;
-          swCollider.seeThrough = true;
-          swCollider.fx = "metal";
-          zones[ZONES.indexOf(zoneAt(px, py))].colliders.push(swCollider);
-        }
-        // invisible barrier across the full street width (map-edge closures only)
-        if (options.barrier === false) continue;
-        const barrierLength = (widthPx + barrierExtraPx * 2) * MAP_SCALE;
-        const barrier = makeCollider(center.x, center.z, barrierLength / 2, 0.3, BARRIER_HEIGHT_M, yaw);
-        barrier.render = false;
-        barrier.seeThrough = true;
-        barrier.noImpact = true; // invisible: shots never mark it
-        zones[ZONES.indexOf(zoneAt(px, py))].colliders.push(barrier);
-      }
+      const mapCenter = mapToWorld((MAP_BOUNDS[0] + MAP_BOUNDS[2]) / 2, (MAP_BOUNDS[1] + MAP_BOUNDS[3]) / 2);
+      buildClosureBarricades(THREE, root, BARRICADES, {
+        mapToWorld, groundHeightAt, makeCollider, canvasTexture, mapScale: MAP_SCALE, sidewalkWidthPx: SIDEWALK_WIDTH_PX, mapCenter,
+        barrierHeight: BARRIER_HEIGHT_M,
+        addCollider: (c, px, py) => zones[ZONES.indexOf(zoneAt(px, py))].colliders.push(c),
+      });
       // ---- The playable area's edge: invisible walls strung between the
       // border-row houses (north, west, south), so the only way past a house
       // row is... nowhere. They also close every street through the row, so
@@ -4692,15 +4738,6 @@
         mesh.frustumCulled = false; // spread over the whole map edge; cheap enough to always draw
         root.add(mesh);
       };
-      addInstanced(box, boardMaterials, parts.board);
-      addInstanced(box, signMaterials, parts.sign);
-      addInstanced(box, metal, parts.metal);
-      addInstanced(box, burlap, parts.bag);
-      addInstanced(coneGeo, coneOrange, parts.cone);
-      addInstanced(box, coneBase, parts.coneBase);
-      addInstanced(box, swPanelMaterial, parts.swPanel);
-      addInstanced(box, swSignMaterials, parts.swSign);
-      addInstanced(box, new THREE.MeshLambertMaterial({ color: 0x222222 }), parts.swFoot);
 
       // ---- Railway along the east edge, just past 20th St: ballast, ties
       // and two rails about 10 m east of the sidewalk, then a chain-link
@@ -7139,4 +7176,5 @@
   }
 
   window.buildCampusWorld = buildCampusWorld;
+  window.campusKit = { buildClosureBarricades };
 })();
