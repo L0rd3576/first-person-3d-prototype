@@ -14412,8 +14412,8 @@
 
   function updateCampusFrame(deltaSeconds) {
     if (!isWorldMap) return;
-    campusRecycler.update(deltaSeconds);
-    campusSpawner.update(deltaSeconds);
+    if (campusRecycler) campusRecycler.update(deltaSeconds); // PVE campus only; null on map2
+    if (campusSpawner) campusSpawner.update(deltaSeconds);
     const viewing = livingPlayersForCampus();
     currentWorld.updateVisibility(viewing.map((p) => p.camera.position), viewing.map(campusViewCone), splitScreenLodScale());
     if (CAMPUS_SPAWN_CONFIG.debug || campusSpawnDebug) updateCampusSpawnDebug();
