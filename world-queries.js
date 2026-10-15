@@ -9,7 +9,8 @@
 // campus keeps its own copy: rewiring it onto this module was judged too
 // risky for the campus. A collider is { cx, cz, halfX, halfZ, height, yaw,
 // cos, sin, minX..maxZ } (campus-world.js makeCollider) plus optional
-// shape: "cylinder" + radius, base, seeThrough, isTree, noImpact, fx, vehicle.
+// shape: "cylinder" + radius, base, seeThrough, isTree, noImpact, fx, vehicle,
+// noStand (blocks bodies, never a floor: railings), ceiling (shots only: hollow-house roof).
 (function () {
   "use strict";
 
@@ -83,6 +84,7 @@
     const toWorld = (c, lx, lz) => ({ x: c.cx + lx * c.cos + lz * c.sin, z: c.cz - lx * c.sin + lz * c.cos });
 
     function blocksBody(c, feetY, grounded, bodyHeight) {
+      if (c.ceiling) return false; // hollow-house roof slab: solid to shots, never a head-bump / push-out for bodies under it
       if (feetY >= c.height - 0.01) return false;
       if (c.base && feetY + bodyHeight <= c.base) return false;
       if (grounded && c.height - feetY <= STEP_UP_M) return false;
@@ -134,7 +136,7 @@
     function supportHeightAt(x, z, radius, fromY) {
       let support = groundHeightAt(x, z);
       forEachColliderIn(x - radius, z - radius, x + radius, z + radius, (c) => {
-        if (c.height > fromY + 0.01 || c.height <= support) return;
+        if (c.ceiling || c.noStand || c.height > fromY + 0.01 || c.height <= support) return; // railings / roof slabs block but never carry you
         if (c.shape === "cylinder") {
           const r = c.radius + radius;
           if ((x - c.cx) ** 2 + (z - c.cz) ** 2 < r * r) support = c.height;

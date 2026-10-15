@@ -645,7 +645,132 @@
     H.resetGame();
   }
 
-  try { run(); runMap2(); runMap2Storm(); runCars(); } catch (e) { check("exception", false, e && e.stack || e); }
+
+  // ---- Porch steps, railings and the hollow houses 1108 / 1114 (prefix HS) ----
+  function runHouses() {
+    H.startPvpForTest(2, "deathmatch", "map2");
+    H.players.forEach((q) => H.pvpRespawnPlayer(q));
+    const W = H.map2World, P = H.players;
+    const STEP = W.stepUpHeight, R = 0.35;
+    // walk like the game does: resolveCircle for walls, then the support height (campusSupportHeight) for the feet
+    function walkPath(from, to, feet0, grounded) {
+      const dist = Math.hypot(to.x - from.x, to.z - from.z), n = Math.max(1, Math.ceil(dist / 0.15));
+      const pos = new THREE.Vector3(from.x, feet0, from.z);
+      let feet = feet0, maxJump = 0;
+      for (let i = 0; i < n; i++) {
+        pos.x += (to.x - from.x) / n; pos.z += (to.z - from.z) / n;
+        W.resolveCircle(pos, R, feet, grounded);
+        if (grounded) { const f = W.supportHeightAt(pos.x, pos.z, R, feet + STEP); maxJump = Math.max(maxJump, Math.abs(f - feet)); feet = f; }
+      }
+      return { x: pos.x, z: pos.z, feet, maxJump, arrived: Math.hypot(pos.x - to.x, pos.z - to.z) < 0.25 };
+    }
+    const doors = W.houses.filter((h) => h.door);
+    check("HS.1 every porch house exposes its door record", doors.length >= 9, doors.length);
+
+    // 1. steps: walkable stair heights, monotone climb, no popping, ends on the slab
+    let stairFail = [], railFail = [], tested = 0;
+    for (const h of doors) {
+      const d = h.door, along = { x: Math.abs(d.nz), z: Math.abs(d.nx) };
+      const at = (u, v) => ({ x: d.x + d.nx * u + along.x * v, z: d.z + d.nz * u + along.z * v }); // u out from the wall, v sideways
+      const stepD = 0.32;
+      const s2 = at(d.slabD + stepD * 1.5, 0), s1 = at(d.slabD + stepD * 0.5, 0), slab = at(d.slabD / 2, 0);
+      const e2 = W.supportHeightAt(s2.x, s2.z, 0.05, 0.6), e1 = W.supportHeightAt(s1.x, s1.z, 0.05, 0.6), es = W.supportHeightAt(slab.x, slab.z, 0.05, 0.6);
+      if (Math.abs(e2 - d.slabH / 3) > 0.02 || Math.abs(e1 - d.slabH * 2 / 3) > 0.02 || Math.abs(es - d.slabH) > 0.02) stairFail.push(h.name + " heights " + [e2, e1, es].map((v) => v.toFixed(2)));
+      const start = at(d.slabD + stepD * 2 + 0.8, 0);
+      if (!W.isWalkable(start.x, start.z, 0.4)) continue; // something (a fence, a car) in the way of this approach
+      tested++;
+      const r = walkPath(start, at(d.slabD / 2, 0), 0, true);
+      if (!r.arrived || Math.abs(r.feet - d.slabH) > 0.02 || r.maxJump > 0.3) stairFail.push(h.name + " arrived=" + r.arrived + " feet=" + r.feet.toFixed(2) + " jump=" + r.maxJump.toFixed(2));
+      // 2. railings: the slab side rails stop a sideways walk, shots hit them, sight passes, they are never a floor
+      for (const k of [-1, 1]) {
+        const rr = walkPath(at(d.slabD / 2, 0), at(d.slabD / 2, k * (d.slabW / 2 + 1.2)), d.slabH, true);
+        const ray = W.raycast(at(d.slabD / 2, k * (d.slabW / 2 + 2)).x, d.slabH + 0.5, at(d.slabD / 2, k * (d.slabW / 2 + 2)).z, -along.x * k, 0, -along.z * k, 6);
+        const o = at(d.slabD / 2, k * (d.slabW / 2 + 2)), i = at(d.slabD / 2, 0);
+        const top = W.supportHeightAt(at(d.slabD / 2, k * (d.slabW / 2 - 0.05)).x, at(d.slabD / 2, k * (d.slabW / 2 - 0.05)).z, 0.02, 5);
+        const rail = ray && ray.collider && ray.collider.noStand;
+        if (rr.arrived || Math.abs((rr.x - i.x) * along.x + (rr.z - i.z) * along.z) > d.slabW / 2 - 0.05 || !rail || Math.abs(ray.distance - 1.95) > 0.2 || W.segmentBlocked(o.x, o.z, i.x, i.z, 0, false, d.slabH, d.slabH) || top > d.slabH + 0.02) {
+          railFail.push(h.name + " k=" + k + " arrived=" + rr.arrived + " rail=" + !!rail + " d=" + (ray && ray.distance.toFixed(2)) + " top=" + top.toFixed(2));
+        }
+      }
+    }
+    check("HS.2 steps give stair support heights 1/3, 2/3, 1 of the slab and can be walked up without popping", stairFail.length === 0 && tested >= 8, tested + " tested; " + stairFail.join(" | "));
+    check("HS.3 porch railings block walking and shots, not sight, and are never a floor", railFail.length === 0, railFail.join(" | "));
+
+    // 3. hollow houses
+    const hol = W.houses.filter((h) => h.hollow);
+    check("HS.4 exactly 1108 and 1114 are hollow", hol.length === 2 && hol.map((h) => h.name).sort().join() === "1108,1114", hol.map((h) => h.name));
+    for (const h of hol) {
+      const d = h.door, n = { x: d.nx, z: d.nz }, along = { x: Math.abs(n.z), z: Math.abs(n.x) };
+      const half = Math.abs(n.x) ? h.halfX : h.halfZ, halfAlong = Math.abs(n.x) ? h.halfZ : h.halfX;
+      const at = (u, v) => ({ x: h.x + n.x * u + along.x * v, z: h.z + n.z * u + along.z * v }); // u toward the front, v sideways
+      const L = "HS." + h.name + " ";
+      const centre = at(0, 0), out = at(half + 4, 0);
+      const wi = walkPath(out, centre, 0, true);
+      check(L + "walk in through the open doorway to the middle, level on the floor (0.34)", wi.arrived && Math.abs(wi.feet - 0.34) < 0.02 && wi.maxJump < 0.3, JSON.stringify(wi));
+      const wo = walkPath(centre, out, 0.34, true);
+      check(L + "...and back out", wo.arrived && Math.abs(wo.feet) < 0.02, JSON.stringify(wo));
+      check(L + "floor support 0.34 inside, doorway threshold 0.34", Math.abs(W.supportHeightAt(centre.x, centre.z, R, 0.84) - 0.34) < 0.01 && Math.abs(W.supportHeightAt(at(half - 0.15, 0).x, at(half - 0.15, 0).z, 0.05, 0.84) - 0.34) < 0.01);
+      // walls: from inside toward each wall and the front wall away from the door; from outside into wall, window and back wall
+      const inside = (r) => Math.abs((r.x - h.x) * n.x + (r.z - h.z) * n.z) < half - 0.2 && Math.abs((r.x - h.x) * along.x + (r.z - h.z) * along.z) < halfAlong - 0.2;
+      const blocks = [at(0, halfAlong + 3), at(0, -halfAlong - 3), at(-half - 3, 0), at(half + 3, 3.2), at(half + 3, -3.2)].map((t) => walkPath(centre, t, 0.34, true));
+      check(L + "walls block from inside (both sides, back, front wall beside the doorway)", blocks.every((r) => !r.arrived && inside(r)), blocks.map((r) => r.arrived + "/" + inside(r)).join(" "));
+      const outs = [[at(-half - 4, 0), at(0, 0)], [at(half + 4, 4), at(0, 4)], [at(0, halfAlong + 4), at(0, 0)], [at(half + 4, -4), at(0, -4)]].map(([a, b]) => walkPath(a, b, 0, true));
+      check(L + "walls block from outside (back, front beside the door, both sides)", outs.every((r) => !r.arrived && !inside(r)), outs.map((r) => r.arrived + "/" + inside(r)).join(" "));
+      const jump = walkPath(at(half + 1.5, 0), at(half - 1.5, 0), 1.2, false); // airborne through the doorway: the lintel stops it
+      check(L + "a jump cannot go through the doorway (lintel)", !jump.arrived || Math.abs((jump.x - h.x) * n.x + (jump.z - h.z) * n.z) > half - 0.2, JSON.stringify(jump));
+      const head = { x: centre.x, y: 1.7, z: centre.z };
+      const hb = new THREE.Vector3(centre.x, 1.7, centre.z); W.resolveCircle(hb, R, 1.7, false);
+      check(L + "no head-bump push-out under the roof at a jump apex", Math.hypot(hb.x - head.x, hb.z - head.z) < 1e-6);
+      // sight and shots
+      const door = at(half + 6, 0), side = at(half + 6, 5), back = at(-half - 6, 0);
+      const sb = (a, b) => W.segmentBlocked(a.x, a.z, b.x, b.z, 0, false, 0.34, 0.34);
+      check(L + "sight: out through the doorway is open, through the front wall / back wall is blocked", !sb(centre, door) && sb(centre, side) && sb(centre, back) && sb(door, back));
+      const shot = (o, dir, y, dy) => W.raycast(o.x, y, o.z, dir.x, dy || 0, dir.z, 40);
+      const rDoor = shot(centre, { x: n.x, z: n.z }, 1.7), rBack = shot(centre, { x: -n.x, z: -n.z }, 1.7), rSide = shot(centre, { x: along.x, z: along.z }, 1.7);
+      check(L + "shots: out the doorway fly free (>14 m), back/side walls stop them at the wall", (!rDoor || rDoor.distance > 14) && rBack && Math.abs(rBack.distance - (half - 0.3)) < 0.2 && rSide && Math.abs(rSide.distance - (halfAlong - 0.3)) < 0.2, [rDoor && rDoor.distance, rBack && rBack.distance, rSide && rSide.distance].join("/"));
+      const rUp = shot(centre, { x: 0, z: 0 }, 1.7, 1), rTop = W.raycast(centre.x, h.height + 5, centre.z, 0, -1, 0, 30);
+      check(L + "shots: the ceiling/roof is solid from inside and from above", rUp && rUp.collider && rUp.collider.ceiling && Math.abs(rUp.y - 3.2) < 0.05 && rTop && !rTop.ground && Math.abs(rTop.y - h.height) < 0.05, (rUp && rUp.y) + "/" + (rTop && rTop.y));
+      const lintelShot = shot(at(half + 2, 0), { x: -n.x, z: -n.z }, 2.5);
+      check(L + "shots at lintel height hit it; at head height they pass the doorway", lintelShot && Math.abs(lintelShot.distance - 2) < 0.2 && !!shot(at(half + 2, 0), { x: -n.x, z: -n.z }, 1.7) && shot(at(half + 2, 0), { x: -n.x, z: -n.z }, 1.7).distance > 3);
+      // minimap: wall ring with the doorway gap, nothing across the interior
+      const feet = W.minimapFootprints().filter((c) => c.style === "house" && Math.abs(c.cx - h.x) < Math.max(half, halfAlong) + 1 && Math.abs(c.cz - h.z) < Math.max(half, halfAlong) + 1);
+      const covers = (pt) => feet.some((c) => Math.abs(pt.x - c.cx) <= c.halfX && Math.abs(pt.z - c.cz) <= c.halfZ);
+      check(L + "minimap: wall ring with an open doorway and an empty middle", feet.length >= 4 && !covers(centre) && !covers(at(half - 0.15, 0)) && covers(at(-half + 0.15, 0)) && covers(at(half - 0.15, 3)), feet.length);
+      check(L + "interior is walkable at spawn clearance", W.isWalkable(centre.x, centre.z, 0.8));
+    }
+    // other houses stay solid boxes
+    const solids = W.houses.filter((h) => !h.hollow);
+    check("HS.5 every other house is still a solid block (middle not walkable, minimap fills it)", solids.every((h) => !W.isWalkable(h.x, h.z, 0.4) && W.minimapFootprints().some((c) => Math.abs(c.cx - h.x) <= c.halfX && Math.abs(c.cz - h.z) <= c.halfZ)), solids.length);
+    check("HS.6 fixed spawns stay valid and outside the hollow houses", W.pvpSpawnPoints.every((s) => W.isWalkable(s[0], s[1], 0.8) && hol.every((h) => Math.abs(s[0] - h.x) > h.halfX + 0.5 || Math.abs(s[1] - h.z) > h.halfZ + 0.5)));
+
+    // 4. real game loop: a player walks forward up the steps and through the 1108 doorway, never clips
+    const h = hol[0], d = h.door, n = { x: d.nx, z: d.nz };
+    const p = P[0];
+    place(P[1], W.spawn.x, W.spawn.z, 0);
+    const halfF = Math.abs(n.x) ? h.halfX : h.halfZ, startPos = { x: h.x + n.x * (halfF + 5), z: h.z + n.z * (halfF + 5) };
+    place(p, startPos.x, startPos.z, Math.atan2(n.x, n.z));
+    p.health = P[1].health = 100; p.pvpProtectedFor = P[1].pvpProtectedFor = 0;
+    const real = p.input, fake = Object.create(real);
+    fake.isActionHeld = (a) => a === "moveForward";
+    fake.wasActionJustPressed = () => false;
+    p.input = fake;
+    let popped = 0, below = 0, prevFeet = 0, prevX = startPos.x, prevZ = startPos.z, reachedFeet = 0, insideFrames = 0;
+    try {
+      for (let i = 0; i < 30 * 4; i++) {
+        H.updateCoopMatchFrame(DT);
+        const x = p.camera.position.x, zz = p.camera.position.z, feet = p.campusGroundY + p.jumpOffset;
+        if (Math.hypot(x - prevX, zz - prevZ) > 0.6 || Math.abs(feet - prevFeet) > 0.3) popped++;
+        if (feet < -0.02) below++;
+        const u = (x - h.x) * n.x + (zz - h.z) * n.z, v = (x - h.x) * Math.abs(n.z) + (zz - h.z) * Math.abs(n.x);
+        if (u < halfF - 0.5 && Math.abs(v) < 1) { insideFrames++; reachedFeet = feet; }
+        prevX = x; prevZ = zz; prevFeet = feet;
+      }
+    } finally { p.input = real; }
+    check("HS.7 game loop: walking forward up the stoop steps and through the doorway of " + h.name, insideFrames >= 10 && Math.abs(reachedFeet - 0.34) < 0.03 && popped === 0 && below === 0, "inside=" + insideFrames + " feet=" + reachedFeet.toFixed(2) + " popped=" + popped + " below=" + below);
+    H.resetGame();
+  }
+
+  try { run(); runMap2(); runMap2Storm(); runCars(); runHouses(); } catch (e) { check("exception", false, e && e.stack || e); }
   const pass = checks.every((c) => c.ok);
   window.__perfResults = JSON.stringify({ pass, checks });
 })();

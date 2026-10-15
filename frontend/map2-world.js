@@ -55,8 +55,8 @@
   const HOUSES = [
     ["1104", [300, 188, 363, 272], "S", { storeys: 1.5, form: "gable-ns", wall: 0xd8d1bc, roof: 0x55585c, porch: "deck", number: "1104" }],
     ["1104w", [298, 150, 345, 188], "S", { storeys: 1, form: "gable-ew", wall: 0xd8d1bc, roof: 0x45484c, nodoor: true }],
-    ["1108", [383, 210, 450, 275], "S", { storeys: 1, form: "gable-ew", wall: 0xe3d6a8, roof: 0x8a7c6c, porch: "stoop", number: "1108" }],
-    ["1114", [466, 210, 540, 272], "S", { storeys: 1, form: "gable-ew", wall: 0xf1f1ee, roof: 0x7a5a48, porch: "stoop", number: "1114", chimney: [-0.22, -0.1], shutters: true }],
+    ["1108", [383, 210, 450, 275], "S", { storeys: 1, form: "gable-ew", wall: 0xe3d6a8, roof: 0x8a7c6c, porch: "stoop", number: "1108", hollow: true }],
+    ["1114", [466, 210, 540, 272], "S", { storeys: 1, form: "gable-ew", wall: 0xf1f1ee, roof: 0x7a5a48, porch: "stoop", number: "1114", chimney: [-0.22, -0.1], shutters: true, hollow: true }],
     ["1118", [595, 195, 640, 268], "S", { storeys: 2, form: "gable-ns", wall: 0xecebe6, roof: 0x7d8186, porch: "porch", number: "1118" }],
     ["1118w", [570, 175, 630, 195], "S", { storeys: 1, form: "gable-ew", wall: 0xecebe6, roof: 0x6a6e73, nodoor: true }],
     ["320", [302, 15, 372, 97], "W", { storeys: 1.5, form: "hip", wall: 0xbfa886, roof: 0x5b4e44, porch: "stoop", number: "320" }],
@@ -234,7 +234,7 @@
       for (let y = 0; y < h; y += 4) ctx.fillRect(0, y, w, 1);
     });
     const sidingMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff, map: sidingTexture });
-    const lists = { prop: [], siding: [], gable: [], hip: [], gableEnd: [] };
+    const lists = { prop: [], siding: [], gable: [], hip: [], gableEnd: [], interior: [] };
     const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpS = new THREE.Vector3(), tmpP = new THREE.Vector3();
     const yUp = new THREE.Vector3(0, 1, 0);
     const color = new THREE.Color();
@@ -279,6 +279,8 @@
       g.computeVertexNormals();
       return g;
     })();
+    // hollow-house interiors: a little emissive so the rooms never go pitch black under the shadowless map lighting
+    const interiorMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x2e2a24 });
     const roofMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
     const endMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide, map: sidingTexture });
 
@@ -288,6 +290,9 @@
     const houseRecords = [];
     const plates = [];  // { text, x, y, z, yaw }
 
+    const HOLLOW_WALL_T = 0.3, HOLLOW_DOOR_W = 1.4, HOLLOW_DOOR_H = 2.2;
+    const HOLLOW_FLOOR_Y = 0.34; // = the stoop slab height, so the doorway is level
+    const HOLLOW_WALL_COLOR = 0xe9e3d3, HOLLOW_FLOOR_COLOR = 0x7d6244, HOLLOW_CEIL_COLOR = 0xf1eee6;
     const FACE = { N: { x: 0, z: -1 }, S: { x: 0, z: 1 }, E: { x: 1, z: 0 }, W: { x: -1, z: 0 } };
     const WOOD = 0x8a6a4a, WHITE = 0xf4f3ee, DARK = 0x3a3d40, FOUNDATION = 0x5a5d60, BRICK = 0x8c4a3a;
 
@@ -300,8 +305,11 @@
       const long = Math.abs(out.x) === 1 ? D : W; // facade length of the front
       const form = o.form;
       // walls (siding), on a dark foundation band
-      put("siding", cx, 0.5 + (wallH - 0.5) / 2, cz, W, wallH - 0.5, D, 0, o.wall);
-      box(cx, 0, cz, W + 0.08, 0.5, D + 0.08, 0, FOUNDATION);
+      const hollow = !!o.hollow;
+      if (!hollow) {
+        put("siding", cx, 0.5 + (wallH - 0.5) / 2, cz, W, wallH - 0.5, D, 0, o.wall);
+        box(cx, 0, cz, W + 0.08, 0.5, D + 0.08, 0, FOUNDATION);
+      }
       // roof
       const ridgeNS = form === "gable-ns";
       let roofTop = wallH;
@@ -331,12 +339,65 @@
         box(hx, roofTop - 1.6, hz, 0.8, 2.2, 0.8, 0, BRICK);
         box(hx, roofTop + 0.6, hz, 0.95, 0.12, 0.95, 0, 0x6b6e70);
       }
-      // collider: the whole footprint, up to the ridge
-      if (!o.backdrop) {
+      // collider: the whole footprint, up to the ridge (hollow houses: wall ring + floor + roof slab instead)
+      const record = { name, x: cx, z: cz, halfX: W / 2, halfZ: D / 2, height: roofTop, hollow, door: null };
+      if (hollow) buildHollowShell();
+      else if (!o.backdrop) {
         const c = makeCollider(cx, cz, W / 2, D / 2, roofTop, 0);
         c.style = "house";
         addCollider(c);
-        houseRecords.push({ name, x: cx, z: cz, halfX: W / 2, halfZ: D / 2, height: roofTop });
+      }
+      if (!o.backdrop) houseRecords.push(record);
+
+      // Hollow house: a 0.3 m wall ring (front doorway left open, lintel above it), a real floor flush with the
+      // stoop, a ceiling and lined interior walls. The roof is a ceiling-flagged slab (shots only, no head-bump).
+      function buildHollowShell() {
+        const T = HOLLOW_WALL_T, fl = HOLLOW_FLOOR_Y, DW = HOLLOW_DOOR_W, DH = HOLLOW_DOOR_H;
+        const doorU0 = o.doorU || 0;
+        function wallPiece(side, u0, u1, y0, y1) {
+          const n = FACE[side], nxa = Math.abs(n.x), nza = Math.abs(n.z);
+          const al = nxa ? { x: 0, z: 1 } : { x: 1, z: 0 };
+          const half = nxa ? W / 2 : D / 2, um = (u0 + u1) / 2, len = u1 - u0;
+          const px = cx + n.x * (half - T / 2) + al.x * um, pz = cz + n.z * (half - T / 2) + al.z * um;
+          const sx = nxa * T + al.x * len, sz = nza * T + al.z * len;
+          const ys = Math.max(y0, 0.5);
+          if (y1 > ys) put("siding", px, (ys + y1) / 2, pz, sx, y1 - ys, sz, 0, o.wall);
+          if (y0 < 0.5) box(px + n.x * 0.02, 0, pz + n.z * 0.02, sx + nxa * 0.04, Math.min(y1, 0.5), sz + nza * 0.04, 0, FOUNDATION); // proud of the outside only
+          const c = makeCollider(px, pz, sx / 2, sz / 2, y1, 0);
+          if (y0 > 0) c.base = y0;
+          c.style = "house";
+          addCollider(c);
+          const yi = Math.max(y0, fl);
+          put("interior", cx + n.x * (half - T - 0.02) + al.x * um, (yi + y1) / 2, cz + n.z * (half - T - 0.02) + al.z * um, nxa * 0.04 + al.x * len, y1 - yi, nza * 0.04 + al.z * len, 0, HOLLOW_WALL_COLOR);
+        }
+        for (const side of ["N", "S", "E", "W"]) {
+          const n = FACE[side], L = Math.abs(n.x) === 1 ? D - 2 * T : W;
+          if (side !== front) { wallPiece(side, -L / 2, L / 2, 0, wallH); continue; }
+          wallPiece(side, -L / 2, doorU0 - DW / 2, 0, wallH);   // either side of the doorway
+          wallPiece(side, doorU0 + DW / 2, L / 2, 0, wallH);
+          wallPiece(side, doorU0 - DW / 2, doorU0 + DW / 2, DH, wallH); // lintel (sight passes under/over it, a jump hits it)
+          const al = Math.abs(n.x) === 1 ? { x: 0, z: 1 } : { x: 1, z: 0 };
+          const half = Math.abs(n.x) === 1 ? W / 2 : D / 2;
+          for (const k of [-1, 1]) { // white door jambs on the wall ends, proud of both faces
+            const u = doorU0 + k * (DW / 2 + 0.05);
+            box(cx + n.x * (half - T / 2) + al.x * u, fl, cz + n.z * (half - T / 2) + al.z * u, Math.abs(n.x) * (T + 0.06) + al.x * 0.1, DH - fl, Math.abs(n.z) * (T + 0.06) + al.z * 0.1, 0, WHITE);
+          }
+          // threshold through the wall thickness, flush with the stoop and the floor
+          const sill = makeCollider(cx + n.x * (half - T / 2) + al.x * doorU0, cz + n.z * (half - T / 2) + al.z * doorU0, (Math.abs(n.x) * T + al.x * DW) / 2, (Math.abs(n.z) * T + al.z * DW) / 2, fl, 0);
+          sill.render = false; sill.seeThrough = true; sill.fx = "wood";
+          addCollider(sill);
+          put("interior", cx + n.x * (half - T / 2) + al.x * doorU0, fl / 2, cz + n.z * (half - T / 2) + al.z * doorU0, Math.abs(n.x) * T + al.x * DW, fl, Math.abs(n.z) * T + al.z * DW, 0, HOLLOW_FLOOR_COLOR);
+        }
+        // floor + ceiling
+        put("interior", cx, fl / 2, cz, W - 2 * T, fl, D - 2 * T, 0, HOLLOW_FLOOR_COLOR);
+        put("interior", cx, wallH - 0.05, cz, W - 2 * T, 0.1, D - 2 * T, 0, HOLLOW_CEIL_COLOR);
+        const floor = makeCollider(cx, cz, (W - 2 * T) / 2, (D - 2 * T) / 2, fl, 0);
+        floor.render = false; floor.seeThrough = true; floor.fx = "wood";
+        addCollider(floor);
+        // roof slab on top of the walls: solid to shots, never pushes a body under it
+        const roofSlab = makeCollider(cx, cz, W / 2, D / 2, roofTop, 0);
+        roofSlab.base = wallH; roofSlab.ceiling = true; roofSlab.style = "house";
+        addCollider(roofSlab);
       }
       // windows on every facade; door + steps on the front
       const doorU = o.doorU || 0;
@@ -373,6 +434,11 @@
             const px = cx + n.x * half + along.x * u, pz = cz + n.z * half + along.z * u;
             box(px + n.x * 0.03, wy - 0.1, pz + n.z * 0.03, 1.3 * Math.abs(along.x) + 0.07 * Math.abs(n.x), 1.55, 1.3 * Math.abs(along.z) + 0.07 * Math.abs(n.z), 0, WHITE);
             box(px + n.x * 0.06, wy, pz + n.z * 0.06, 1.1 * Math.abs(along.x) + 0.05 * Math.abs(n.x), wh, 1.1 * Math.abs(along.z) + 0.05 * Math.abs(n.z), 0, 0x39495a);
+            if (hollow) { // inside faces of the (still solid) window
+              const ix = cx + n.x * (half - HOLLOW_WALL_T - 0.055) + along.x * u, iz = cz + n.z * (half - HOLLOW_WALL_T - 0.055) + along.z * u;
+              box(ix, wy - 0.1, iz, 1.3 * Math.abs(along.x) + 0.07 * Math.abs(n.x), 1.55, 1.3 * Math.abs(along.z) + 0.07 * Math.abs(n.z), 0, WHITE);
+              box(ix - n.x * 0.025, wy, iz - n.z * 0.025, 1.1 * Math.abs(along.x) + 0.05 * Math.abs(n.x), wh, 1.1 * Math.abs(along.z) + 0.05 * Math.abs(n.z), 0, 0x39495a);
+            }
             if (o.shutters && isFront) {
               for (const k of [-1, 1]) {
                 box(px + along.x * k * 0.78 + n.x * 0.06, wy, pz + along.z * k * 0.78 + n.z * 0.06, 0.36 * Math.abs(along.x) + 0.06 * Math.abs(n.x), wh, 0.36 * Math.abs(along.z) + 0.06 * Math.abs(n.z), 0, 0x1c1c1e);
@@ -381,10 +447,10 @@
           }
         }
         if (!isFront || o.nodoor) continue;
-        // door + trim
+        // door + trim (hollow houses: just the open doorway)
         const dx = cx + n.x * half + along.x * doorU, dz = cz + n.z * half + along.z * doorU;
-        box(dx + n.x * 0.05, 0, dz + n.z * 0.05, 1.05 * Math.abs(along.x) + 0.1 * Math.abs(n.x), 2.1, 1.05 * Math.abs(along.z) + 0.1 * Math.abs(n.z), 0, o.doorColor || 0xf6f6f2);
-        box(dx + n.x * 0.04, 2.1, dz + n.z * 0.04, 1.3 * Math.abs(along.x) + 0.08 * Math.abs(n.x), 0.14, 1.3 * Math.abs(along.z) + 0.08 * Math.abs(n.z), 0, WHITE);
+        if (!hollow) box(dx + n.x * 0.05, 0, dz + n.z * 0.05, 1.05 * Math.abs(along.x) + 0.1 * Math.abs(n.x), 2.1, 1.05 * Math.abs(along.z) + 0.1 * Math.abs(n.z), 0, o.doorColor || 0xf6f6f2);
+        if (!hollow) box(dx + n.x * 0.04, 2.1, dz + n.z * 0.04, 1.3 * Math.abs(along.x) + 0.08 * Math.abs(n.x), 0.14, 1.3 * Math.abs(along.z) + 0.08 * Math.abs(n.z), 0, WHITE);
         if (o.number) plates.push({ text: o.number, x: dx + along.x * 0.95 + n.x * 0.05, y: 1.7, z: dz + along.z * 0.95 + n.z * 0.05, yaw: faceYaw });
         // porch / deck / stoop in front of the door
         const kind = o.porch;
@@ -402,20 +468,32 @@
           const stepD = 0.32;
           const stx = dx + n.x * (slabD + stepD * (s - 0.5)), stz = dz + n.z * (slabD + stepD * (s - 0.5));
           box(stx, 0, stz, 1.3 * nz + stepD * nx, sh, 1.3 * nx + stepD * nz, 0, slabColor);
+          const stc = makeCollider(stx, stz, (1.3 * nz + stepD * nx) / 2, (1.3 * nx + stepD * nz) / 2, sh, 0); // walkable riser
+          stc.render = false; stc.seeThrough = true; stc.fx = "wood";
+          addCollider(stc);
         }
+        record.door = { x: dx, z: dz, nx: n.x, nz: n.z, kind, slabD, slabW, slabH };
         const sc = makeCollider(sx0, sz0, (slabW * nz + slabD * nx) / 2, (slabW * nx + slabD * nz) / 2, slabH, 0);
         sc.render = false; sc.seeThrough = true; sc.fx = "wood";
         addCollider(sc);
         // railings: along both sides and the front edge (leaving the steps open)
         const railColor = kind === "stoop" ? 0xe8e8e4 : 0x7a5c3e;
+        // thin solid rail: blocks bodies and shots (not sight, like the low fences) but can be vaulted and never carries you
+        const addRailCollider = (rx, rz, sx, sz) => {
+          const rc = makeCollider(rx, rz, Math.max(sx, 0.08) / 2, Math.max(sz, 0.08) / 2, slabH + 0.9, 0);
+          rc.render = false; rc.seeThrough = true; rc.noStand = true; rc.fx = "wood";
+          addCollider(rc);
+        };
         for (const k of [-1, 1]) {
           const rx = dx + along.x * k * (slabW / 2 - 0.05) + n.x * (slabD / 2), rz = dz + along.z * k * (slabW / 2 - 0.05) + n.z * (slabD / 2);
           box(rx, slabH, rz, 0.05 * nz + (slabD - 0.1) * nx, 0.9, 0.05 * nx + (slabD - 0.1) * nz, 0, railColor);
+          addRailCollider(rx, rz, 0.05 * nz + (slabD - 0.1) * nx, 0.05 * nx + (slabD - 0.1) * nz);
         }
         if (kind !== "stoop") {
           for (const k of [-1, 1]) {
             const rx = dx + along.x * k * (slabW / 2 - 0.6 + 0.0) * 1.0 + n.x * (slabD - 0.05), rz = dz + along.z * k * (slabW / 2 - 0.6) + n.z * (slabD - 0.05);
             box(rx, slabH, rz, (slabW / 2 - 1.0) * nz + 0.05 * nx, 0.9, (slabW / 2 - 1.0) * nx + 0.05 * nz, 0, railColor);
+            addRailCollider(rx, rz, (slabW / 2 - 1.0) * nz + 0.05 * nx, (slabW / 2 - 1.0) * nx + 0.05 * nz);
           }
         }
         if (kind === "porch") {
@@ -682,6 +760,7 @@
     }
     flush("prop", unitBox, propMaterial);
     flush("siding", unitBox, sidingMaterial);
+    flush("interior", unitBox, interiorMaterial);
     flush("gable", gableGeo, roofMaterial);
     flush("hip", hipGeo, roofMaterial);
     flush("gableEnd", gableEndGeo, endMaterial);
