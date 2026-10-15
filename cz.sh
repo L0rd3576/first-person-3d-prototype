@@ -1,0 +1,2 @@
+cd "C:/Users/lrafy/OneDrive/Desktop/New folder"
+claude -p "Read CLAUDE.md and CUSTOMIZE_SPEC.md and implement it fully. Look at your rendered screenshots to verify visually; iterate until things look good." --model claude-sonnet-5-5 --effort high --max-turns 250 --allowedTools "Read,Grep,Glob,Edit,Write,Bash" --permission-mode acceptEdits > C:/Users/lrafy/AppData/Local/hermes/cache/scratch/cz.log 2>&1

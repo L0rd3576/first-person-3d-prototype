@@ -1,0 +1,2 @@
+cd "C:/Users/lrafy/OneDrive/Desktop/New folder"
+claude -p "Read CUSTOMIZE_SPEC2.md and implement it fully. Verify visually with rendered screenshots (harness previously at C:\Users\lrafy\cz-scratch) and with tests." --model claude-sonnet-5-5 --effort high --max-turns 250 --allowedTools "Read,Grep,Glob,Edit,Write,Bash" --permission-mode acceptEdits > C:/Users/lrafy/AppData/Local/hermes/cache/scratch/cz2.log 2>&1
