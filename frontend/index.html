@@ -13720,10 +13720,12 @@
     else if (pos.endsWith("right")) s.right = "16px";
     else { s.left = "50%"; s.transform = "translateX(-50%)"; }
   }
+  // The Residential (map2) mode has no minimap at all.
+  function minimapOn() { return ZONE_CONFIG.MINIMAP_ENABLED && !(selectedMapId === "map2" && currentWorld === map2World); }
   function setZoneUiVisible(visible) {
     if (!zoneUi.root) { if (!visible) return; buildZoneUi(); }
     zoneUi.visible = visible;
-    zoneUi.root.style.display = visible && ZONE_CONFIG.MINIMAP_ENABLED ? "block" : "none";
+    zoneUi.root.style.display = visible && minimapOn() ? "block" : "none";
     if (!visible) { for (const v of zoneUi.vignettes) v.style.display = "none"; zoneUi.hasView = false; }
   }
 
@@ -13811,7 +13813,7 @@
       v.style.left = r.x + "px"; v.style.top = r.y + "px"; v.style.width = r.width + "px"; v.style.height = r.height + "px";
       v.style.opacity = String(Math.min(1, 0.35 + p.zoneOutsideSeconds / (ZONE_CONFIG.ZONE_DAMAGE_START_DELAY * 2)));
     }
-    if (!ZONE_CONFIG.MINIMAP_ENABLED) return;
+    if (!minimapOn()) return;
     updateMinimapView(deltaSeconds);
     const left = z.phaseDuration - z.phaseTime;
     let text = "", cls = "";

@@ -563,10 +563,10 @@
     }
     check("M2S.4 shrinks monotonically and smoothly (small steps)", monotone && maxJump < 3, "maxStep=" + maxJump.toFixed(2));
     check("M2S.4 halfway it is halfway", mid && Math.abs(mid.r - (r0 + f.radius) / 2) < 1 && Math.abs(mid.x - (c0.x + f.x) / 2) < 1 && Math.abs(mid.z - (c0.z + f.z) / 2) < 1, JSON.stringify(mid));
-    check("M2S.4 HUD says the storm is closing", /Storm closing/.test(label1), label1);
+    check("M2S.4 map2 has no minimap (hidden)", H.zoneUi.root && H.zoneUi.root.style.display === "none", H.zoneUi.root && H.zoneUi.root.style.display);
     check("M2S.5 after 5 minutes it is exactly the final circle and holds", Math.abs(z.radius - f.radius) < 1e-6 && Math.abs(z.center.x - f.x) < 1e-6 && Math.abs(z.center.z - f.z) < 1e-6 && z.phase === "stay", z.phase + " r=" + z.radius);
     H.updateZone(60); H.updateZone(60);
-    check("M2S.5 still the final circle 2 minutes later", Math.abs(z.radius - f.radius) < 1e-6 && Math.abs(z.center.x - f.x) < 1e-6 && z.next === null && /Final circle/.test(H.zoneUi.label.textContent), z.radius);
+    check("M2S.5 still the final circle 2 minutes later", Math.abs(z.radius - f.radius) < 1e-6 && Math.abs(z.center.x - f.x) < 1e-6 && z.next === null, z.radius);
     // damage outside the final circle works as usual; inside it does not
     const out = P[0], inn = P[1];
     place(out, f.x + f.radius + 30, f.z, 0);
