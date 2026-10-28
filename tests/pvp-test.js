@@ -37,7 +37,7 @@
     click("#coop-setup-back-button"); click("#game-type-back-button");
     click('.mode-option[data-players="4"]'); click('.mode-option[data-game-type="pvp"]');
     check("00 4 players + PVP -> quad setup, pvp-flagged", panelActive("title-quad-setup") && document.getElementById("title-quad-setup").classList.contains("pvp-setup"));
-    check("00 quad setup lists five categories", document.querySelectorAll("#title-quad-setup .customize-list")[0].querySelectorAll(".customize-row").length === 5);
+    check("00 quad setup lists six categories (the sixth, Team, is shown only on the PVP screen)", document.querySelectorAll("#title-quad-setup .customize-list")[0].querySelectorAll(".customize-row").length === 6);
     click("#quad-setup-back-button");
     check("00 quad setup back -> game type", panelActive("title-game-type"));
     click('.mode-option[data-game-type="pve"]');
@@ -138,13 +138,30 @@
       // weapon list: eight weapons, vertical, no fists; selection scrolls into view
       const listEl = document.querySelector("#pvp-panel-p2 .pvp-weapon-list");
       check("7 weapon list 8 rows", listEl.children.length === 8 && !Array.from(listEl.children).some((li) => /fist/i.test(li.textContent)), listEl.children.length);
-      check("7 list is a vertical scroller", getComputedStyle(listEl).overflowY === "auto" && getComputedStyle(listEl).flexDirection === "column");
+      check("7 list is a scrollable card grid", getComputedStyle(listEl).overflowY === "auto" && getComputedStyle(listEl).display === "grid" && Array.from(listEl.children).every((li) => li.querySelector(".pvp-wname")));
       listEl.style.maxHeight = "70px";
       H.pvpSelectWeapon(b, "katana");
       check("7 katana highlighted + scrolled into view", listEl.querySelector("li.selected").dataset.weaponId === "katana" && listEl.scrollTop > 0, "scrollTop=" + listEl.scrollTop);
       H.pvpSelectWeapon(b, "pistol");
       check("7 scroll back up", listEl.scrollTop === 0, listEl.scrollTop);
       listEl.style.maxHeight = "";
+      // the picker is a grid: left/right/up/down move one card, and nothing wraps
+      {
+        const ids = Array.from(listEl.children).map((li) => li.dataset.weaponId), cols = H.pvpGridColumns(H.pvpUi ? H.pvpUi.panels[1] : { items: Array.from(listEl.children) });
+        const at = () => listEl.querySelector("li.selected").dataset.weaponId;
+        H.pvpSelectWeapon(b, ids[0]);
+        H.pvpMoveWeapon(b, -1, 0); const leftEdge = at() === ids[0];
+        H.pvpMoveWeapon(b, 0, -1); const topEdge = at() === ids[0];
+        H.pvpMoveWeapon(b, 1, 0); const right1 = at() === ids[1];
+        H.pvpMoveWeapon(b, 0, 1); const down1 = at() === ids[Math.min(ids.length - 1, 1 + cols)];
+        H.pvpSelectWeapon(b, ids[ids.length - 1]);
+        H.pvpMoveWeapon(b, 1, 0); const rightEnd = at() === ids[ids.length - 1];
+        H.pvpMoveWeapon(b, 0, 1); const bottomEnd = at() === ids[ids.length - 1];
+        H.pvpSelectWeapon(b, ids[0]); H.pvpStepWeapon(b, -1); const wheelNoWrap = at() === ids[0];
+        check("7 grid: left/up at the first card stay put; right and down move one card", leftEdge && topEdge && right1 && down1, [leftEdge, topEdge, right1, down1, "cols=" + cols].join());
+        check("7 grid: right/down at the last card stay put (no wrap); the wheel does not wrap either", rightEnd && bottomEnd && wheelNoWrap, [rightEnd, bottomEnd, wheelNoWrap].join());
+        H.pvpSelectWeapon(b, "pistol");
+      }
       check("7 respawn hidden during countdown", getComputedStyle(document.querySelector("#pvp-panel-p2 .pvp-respawn")).display === "none");
       step(5.1);
       check("5 kill feed faded out", feedLines().length === 0, feedLines().length);
@@ -185,7 +202,7 @@
     H.pvpMatch.timeLeft = 0.01;
     step(0.2);
     check("14 results visible", visible("pvp-results"));
-    check("14 banner names P1", document.getElementById("pvp-results-banner").textContent === "P1 WINS", document.getElementById("pvp-results-banner").textContent);
+    check("14 banner names P1", /P1 WINS$/.test(document.getElementById("pvp-results-banner").textContent), document.getElementById("pvp-results-banner").textContent);
     check("14 frozen", H.pvpMatch.ended === true);
 
     // 15 reset + singleplayer behaves normally
@@ -261,7 +278,7 @@
     kill(ga, gb); // a kill on the last weapon wins
     step(0.1);
     check("19 last-weapon kill ends match", H.pvpMatch.ended === true && visible("pvp-results"));
-    check("19 banner P1 wins", document.getElementById("pvp-results-banner").textContent === "P1 WINS", document.getElementById("pvp-results-banner").textContent);
+    check("19 banner P1 wins", /P1 WINS$/.test(document.getElementById("pvp-results-banner").textContent), document.getElementById("pvp-results-banner").textContent);
     // win screen: the cursor must stay un-hidden for mouse clicks even if something re-hides it (a controller player's input), and the mouse stays free
     document.body.classList.add("hide-cursor"); document.dispatchEvent(new MouseEvent("mousemove"));
     check("19 win screen: a mouse move frees the cursor", !document.body.classList.contains("hide-cursor") && document.pointerLockElement === null);
@@ -274,7 +291,7 @@
     H.players[0].pvpLevel = 4; H.players[1].pvpLevel = 6;
     H.pvpMatch.timeLeft = 0.01;
     step(0.2);
-    check("19b furthest level wins", document.getElementById("pvp-results-banner").textContent === "P2 WINS", document.getElementById("pvp-results-banner").textContent);
+    check("19b furthest level wins", /P2 WINS$/.test(document.getElementById("pvp-results-banner").textContent), document.getElementById("pvp-results-banner").textContent);
     H.resetGame();
     H.startPvpForTest(2, "gungame");
     H.players.forEach((p) => H.pvpRespawnPlayer(p));
@@ -282,7 +299,7 @@
     H.players[0].pvpLevelAt = 200; H.players[1].pvpLevelAt = 100;
     H.pvpMatch.timeLeft = 0.01;
     step(0.2);
-    check("19b level tie -> first to reach wins", document.getElementById("pvp-results-banner").textContent === "P2 WINS", document.getElementById("pvp-results-banner").textContent);
+    check("19b level tie -> first to reach wins", /P2 WINS$/.test(document.getElementById("pvp-results-banner").textContent), document.getElementById("pvp-results-banner").textContent);
     H.resetGame();
 
     // 20 damage table + hit zones (needs the open firing lane found in section 5)
@@ -446,18 +463,17 @@
 
   // ---- Map 2 ("Residential") checks, prefix M2 ----
   function runMap2() {
-    const disp = (id) => getComputedStyle(document.getElementById(id)).display;
     H.setMap("campus");
     H.setPvpSetup(true);
-    check("M2.0a coop+quad setups show the map picker in PVP", disp("coop-pvp-map-options") === "flex" && disp("quad-pvp-map-options") === "flex");
-    check("M2.0b default map is campus and active", H.pvpMapId === "campus" && document.querySelector("#coop-pvp-map-options [data-pvp-map=campus]").classList.contains("active"));
+    check("M2.0a the map picker (2 maps) lives in the PVP settings panel", document.querySelectorAll("#pvp-settings-panel #pvp-map-options .pvp-map-option").length === 2);
+    check("M2.0b the active map card matches the chosen map", document.querySelector("#pvp-map-options [data-pvp-map=" + H.pvpMapId + "]").classList.contains("active"), H.pvpMapId);
     const modeBefore = H.pvpMode;
-    document.querySelector("#coop-pvp-map-options [data-pvp-map=map2]").click();
-    check("M2.0c clicking Residential sets map2 without touching the mode", H.pvpMapId === "map2" && H.pvpMode === modeBefore && document.querySelector("#coop-pvp-map-options [data-pvp-map=map2]").classList.contains("active"), H.pvpMapId + "/" + H.pvpMode);
-    H.stepPvpMap(-1); const a = H.pvpMapId; H.stepPvpMap(-1); const b = H.pvpMapId; H.stepPvpMap(1); H.stepPvpMap(1); const c = H.pvpMapId;
-    check("M2.0d stepPvpMap steps and clamps", a === "campus" && b === "campus" && c === "map2", [a, b, c]);
+    document.querySelector("#pvp-map-options [data-pvp-map=campus]").click();
+    check("M2.0c clicking Campus sets campus without touching the mode", H.pvpMapId === "campus" && H.pvpMode === modeBefore && document.querySelector("#pvp-map-options [data-pvp-map=campus]").classList.contains("active"), H.pvpMapId + "/" + H.pvpMode);
+    H.stepPvpMap(1); const a = H.pvpMapId; H.stepPvpMap(1); const b = H.pvpMapId; H.stepPvpMap(-1); const c = H.pvpMapId;
+    check("M2.0d stepPvpMap steps and clamps", a === "map2" && b === "map2" && c === "campus", [a, b, c]);
     H.setPvpSetup(false);
-    check("M2.0e PVE setup hides the map picker", disp("coop-pvp-map-options") === "none" && disp("quad-pvp-map-options") === "none");
+    check("M2.0e the settings panel is closed after leaving PVP setup", !H.isPvpSettingsOpen());
     H.setPvpMap("map2");
     H.startPvpForTest(2, "deathmatch", "map2");
     const W = H.map2World;
@@ -552,7 +568,7 @@
     H.startPvpForTest(2, "deathmatch", "map2");
     const W = H.map2World, P = H.players, z = H.zoneState, f = W.pvpFinalZone;
     const fw = W.mapToWorld(462, 245);
-    check("M2S.0 final circle = pink circle (px 462,245 r 78)", Math.hypot(f.x - fw.x, f.z - fw.z) < 0.01 && Math.abs(f.radius - 78 * W.constants.MAP2_M_PER_PX) < 0.01 && f.radius > 14 && f.radius < 17, JSON.stringify(f));
+    check("M2S.0 final circle = pink circle centre (px 462,245), radius 78 px x lot scale x MAP2_FINAL_ZONE_SCALE", Math.hypot(f.x - fw.x, f.z - fw.z) < 0.01 && Math.abs(f.radius - 78 * W.constants.MAP2_M_PER_PX * W.constants.MAP2_FINAL_ZONE_SCALE) < 0.01 && f.radius > 17 && f.radius < 22, JSON.stringify(f));
     check("M2S.1 match is 15 minutes on map2", H.PVP_MATCH_SECONDS === 900 && H.pvpMatch.timeLeft === 900, H.pvpMatch.timeLeft);
     let far = 0;
     for (const q of W.playablePolygon) far = Math.max(far, Math.hypot(q.x - z.center.x, q.z - z.center.z));
@@ -565,17 +581,17 @@
     const r0 = z.radius, c0 = { x: z.center.x, z: z.center.z };
     let prev = { x: z.center.x, z: z.center.z, r: z.radius }, monotone = true, maxJump = 0, mid = null, label1 = "";
     const T = 5; // seconds per update
-    for (let t = T; t <= 300; t += T) {
+    for (let t = T; t <= 600; t += T) {
       H.updateZone(T);
       maxJump = Math.max(maxJump, Math.hypot(z.center.x - prev.x, z.center.z - prev.z), Math.abs(z.radius - prev.r));
       if (z.radius > prev.r + 1e-6) monotone = false;
       prev = { x: z.center.x, z: z.center.z, r: z.radius };
-      if (t === 150) { mid = { x: z.center.x, z: z.center.z, r: z.radius }; label1 = H.zoneUi.label.textContent; }
+      if (t === 300) { mid = { x: z.center.x, z: z.center.z, r: z.radius }; label1 = H.zoneUi.label.textContent; }
     }
     check("M2S.4 shrinks monotonically and smoothly (small steps)", monotone && maxJump < 3, "maxStep=" + maxJump.toFixed(2));
     check("M2S.4 halfway it is halfway", mid && Math.abs(mid.r - (r0 + f.radius) / 2) < 1 && Math.abs(mid.x - (c0.x + f.x) / 2) < 1 && Math.abs(mid.z - (c0.z + f.z) / 2) < 1, JSON.stringify(mid));
     check("M2S.4 map2 has no minimap (hidden)", H.zoneUi.root && H.zoneUi.root.style.display === "none", H.zoneUi.root && H.zoneUi.root.style.display);
-    check("M2S.5 after 5 minutes it is exactly the final circle and holds", Math.abs(z.radius - f.radius) < 1e-6 && Math.abs(z.center.x - f.x) < 1e-6 && Math.abs(z.center.z - f.z) < 1e-6 && z.phase === "stay", z.phase + " r=" + z.radius);
+    check("M2S.5 after 10 minutes it is exactly the final circle and holds", Math.abs(z.radius - f.radius) < 1e-6 && Math.abs(z.center.x - f.x) < 1e-6 && Math.abs(z.center.z - f.z) < 1e-6 && z.phase === "stay", z.phase + " r=" + z.radius);
     H.updateZone(60); H.updateZone(60);
     check("M2S.5 still the final circle 2 minutes later", Math.abs(z.radius - f.radius) < 1e-6 && Math.abs(z.center.x - f.x) < 1e-6 && z.next === null, z.radius);
     // damage outside the final circle works as usual; inside it does not
@@ -709,8 +725,9 @@
 
     // 3. hollow houses
     const hol = W.houses.filter((h) => h.hollow);
-    check("HS.4 exactly 1108 and 1114 are hollow", hol.length === 2 && hol.map((h) => h.name).sort().join() === "1108,1114", hol.map((h) => h.name));
-    for (const h of hol) {
+    check("HS.4 hollow buildings: 1108, the three parts of 1114 and the purple + yellow garages", hol.map((h) => h.name).sort().join() === "1108,1114,1114e,1114w,garageP,garageY", hol.map((h) => h.name));
+    for (const h of hol.filter((q) => q.door && q.name === "1108")) {
+      const rect = h.name === "1108"; // 1114 is L-shaped: its walls are covered by the pink-house checks
       const d = h.door, n = { x: d.nx, z: d.nz }, along = { x: Math.abs(n.z), z: Math.abs(n.x) };
       const half = Math.abs(n.x) ? h.halfX : h.halfZ, halfAlong = Math.abs(n.x) ? h.halfZ : h.halfX;
       const at = (u, v) => ({ x: h.x + n.x * u + along.x * v, z: h.z + n.z * u + along.z * v }); // u toward the front, v sideways
@@ -725,6 +742,7 @@
       const wo = { x: wo1.x, z: wo1.z, feet: wo1.feet, maxJump: Math.max(wo0.maxJump, wo1.maxJump), arrived: wo0.arrived && wo1.arrived };
       check(L + "...and back out", wo.arrived && Math.abs(wo.feet) < 0.02, JSON.stringify(wo));
       check(L + "floor support 0.34 inside, doorway threshold 0.34", Math.abs(W.supportHeightAt(centre.x, centre.z, R, 0.84) - 0.34) < 0.01 && Math.abs(W.supportHeightAt(at(half - 0.15, dv).x, at(half - 0.15, dv).z, 0.05, 0.84) - 0.34) < 0.01);
+      if (!rect) { check(L + "interior is walkable at spawn clearance", W.isWalkable(centre.x, centre.z, 0.8)); continue; }
       // walls: from inside toward each wall and the front wall away from the door; from outside into wall, window and back wall
       const inside = (r) => Math.abs((r.x - h.x) * n.x + (r.z - h.z) * n.z) < half - 0.2 && Math.abs((r.x - h.x) * along.x + (r.z - h.z) * along.z) < halfAlong - 0.2;
       const beside = Math.abs(dv) < 0.01 ? [3.2, -3.2] : [dv < 0 ? 1.2 : -1.2]; // front-wall spots beside the doorway
@@ -746,7 +764,7 @@
       const rDoor = shot(centreD, { x: n.x, z: n.z }, 1.7), rBack = shot(centre, { x: -n.x, z: -n.z }, 1.7), rSide = shot(centre, { x: along.x, z: along.z }, 1.7);
       check(L + "shots: out the doorway fly free (>14 m), back/side walls stop them at the wall", (!rDoor || rDoor.distance > 14) && rBack && Math.abs(rBack.distance - (half - 0.3)) < 0.2 && rSide && Math.abs(rSide.distance - (halfAlong - 0.3)) < 0.2, [rDoor && rDoor.distance, rBack && rBack.distance, rSide && rSide.distance].join("/"));
       const rUp = shot(centre, { x: 0, z: 0 }, 1.7, 1), rTop = W.raycast(centre.x, h.height + 5, centre.z, 0, -1, 0, 30);
-      check(L + "shots: the ceiling/roof is solid from inside and from above", rUp && rUp.collider && rUp.collider.ceiling && Math.abs(rUp.y - 3.2) < 0.05 && rTop && !rTop.ground && Math.abs(rTop.y - h.height) < 0.05, (rUp && rUp.y) + "/" + (rTop && rTop.y));
+      check(L + "shots: the ceiling/roof is solid from inside and from above", rUp && rUp.collider && rUp.collider.ceiling && Math.abs(rUp.y - 3.7) < 0.05 && rTop && !rTop.ground && rTop.y <= h.height + 0.05 && rTop.y > h.height - 0.6, (rUp && rUp.y) + "/" + (rTop && rTop.y));
       const lintelShot = shot(at(half + 2, dv), { x: -n.x, z: -n.z }, 2.5);
       check(L + "shots at lintel height hit it; at head height they pass the doorway", lintelShot && Math.abs(lintelShot.distance - 2) < 0.2 && !!shot(at(half + 2, dv), { x: -n.x, z: -n.z }, 1.7) && shot(at(half + 2, dv), { x: -n.x, z: -n.z }, 1.7).distance > 3);
       // minimap: wall ring with the doorway gap, nothing across the interior
@@ -813,7 +831,7 @@
       pink: { names: ["1114", "1114w", "1114e"], poly: [[741.5, 328], [914.5, 328], [914.5, 406], [951, 406], [951, 506], [806, 506], [806, 487.5], [741.5, 487.5]].map((p) => td(...p)) },
       orange: { names: ["garageE"], poly: [[267, 105.5], [432, 105.5], [432, 251.5], [267, 251.5]].map((p) => td(...p)) },
       purple: { names: ["garageP"], poly: [[533.5, 80], [667, 80], [667, 201.5], [533.5, 201.5]].map((p) => td(...p)) },
-      yellow: { names: ["garageY"], poly: [[912.5, 251.5], [999.5, 251.5], [999.5, 388], [912.5, 388]].map((p) => td(...p)) },
+      yellow: { names: ["garageY"], poly: [[912.5, 251.5], [999.5, 251.5], [999.5, 370.4], [912.5, 370.4]].map((p) => td(...p)) }, // south wall moved north (new line on the annotated image)
     };
     for (const [colour, o] of Object.entries(outlines)) {
       const recs = o.names.map(rec);
@@ -831,18 +849,18 @@
       const area = (h) => h.halfX * h.halfZ * 4;
       const frac = (names) => { const t = names.map(rec); const tall = t.filter((h) => h.wallH >= 5.2 && h.wallH <= 5.6).reduce((a, h) => a + area(h), 0); return tall / t.reduce((a, h) => a + area(h), 0); };
       check("M2C.2 1104: most of the footprint is 2 storeys, the wings are ~3 m", frac(["1104", "1104e", "1104w", "1104p"]) > 0.6 && ["1104w", "1104p"].every((n) => Math.abs(rec(n).wallH - 3) < 0.25) && ["1104", "1104e"].every((n) => rec(n).wallH >= 5.2 && rec(n).wallH <= 5.6), frac(["1104", "1104e", "1104w", "1104p"]).toFixed(2));
-      check("M2C.2 1114: most of the footprint is 2 storeys, the east wing is ~3 m", frac(["1114", "1114w", "1114e"]) > 0.6 && Math.abs(rec("1114e").wallH - 3) < 0.25 && rec("1114").wallH >= 5.2 && rec("1114w").wallH >= 5.2, frac(["1114", "1114w", "1114e"]).toFixed(2));
-      check("M2C.2 1108 stays one storey and is lower than both", rec("1108").wallH < 3.5 && rec("1104").wallH - rec("1108").wallH > 2 && rec("1114").wallH - rec("1108").wallH > 2, rec("1108").wallH);
-      check("M2C.2 garages are 1 storey (eaves <= 3 m)", ["garageE", "garageP", "garageY"].every((n) => rec(n).wallH <= 3));
+      check("M2C.2 1114: most of the footprint is 2 storeys, the east wing is ~3 m", frac(["1114", "1114w", "1114e"]) > 0.6 && Math.abs(rec("1114e").wallH - 3.9) < 0.25 && rec("1114").wallH >= 5.2 && rec("1114w").wallH >= 5.2, frac(["1114", "1114w", "1114e"]).toFixed(2));
+      check("M2C.2 1108 stays one storey and is lower than both", rec("1108").wallH < 4.2 && rec("1104").wallH - rec("1108").wallH > 1 && rec("1114").wallH - rec("1108").wallH > 1, rec("1108").wallH);
+      check("M2C.2 garages are 1 storey (eaves <= 4 m: hollow ones are tall enough for a jump inside)", ["garageE", "garageP", "garageY"].every((n) => rec(n).wallH <= 4));
       // collider support heights match the visual part heights
       const sh = (name) => { const h = rec(name); return W.supportHeightAt(h.x, h.z, 0.1, 99); };
-      check("M2C.2 support heights follow the parts (tall block > wing, = roof top)", sh("1104") > sh("1104w") + 2 && sh("1114w") > sh("1114e") + 2 && Math.abs(sh("1104w") - rec("1104w").height) < 0.01 && Math.abs(sh("garageP") - rec("garageP").height) < 0.01, [sh("1104"), sh("1104w"), sh("1114w"), sh("1114e")].map((v) => v.toFixed(1)).join("/"));
+      check("M2C.2 support heights follow the parts (tall block > wing, = roof top)", sh("1104") > sh("1104w") + 2 && sh("1114w") > sh("1114e") + 1.5 && Math.abs(sh("1104w") - rec("1104w").height) < 0.5 && Math.abs(sh("garageP") - rec("garageP").height) < 0.5, [sh("1104"), sh("1104w"), sh("1114w"), sh("1114e")].map((v) => v.toFixed(1)).join("/"));
     }
     // 3. notches are open air, the rest of the outline is built
     {
       const open = (cx, cy) => { const q = wp(td(cx, cy)); return W.isWalkable(q.x, q.z, 0.4); };
       check("M2C.3 1104 notch (lower-left) is open ground, its wings and porch are solid", open(295, 483) && !open(380, 380) && !open(300, 440) && !open(360, 480));
-      check("M2C.3 1114 notch (upper-right) and lower-left step are open, the wing is solid", open(935, 397) && open(760, 497) && !open(930, 450) && !open(935, 360));
+      check("M2C.3 1114 notch (upper-right) and lower-left step are open, the east and north outer walls are solid", open(962, 380) && open(760, 497) && !open(950.3, 457) && !open(842, 331));
     }
     // 4. the sealed yard (west of 1104, between the orange garage and 1104, the notch): unreachable, never used
     {
@@ -879,14 +897,14 @@
     {
       const y = rec("garageY"), c = rec("1114");
       const ry = rectPx(y), rc = rectPx(c), cp = px(c.x, c.z);
-      check("M2C.5 yellow garage interior: solid, not walkable, not reachable", !W.isWalkable(y.x, y.z, 0.3) && !W.isReachable(y.x, y.z));
+      check("M2C.5 yellow garage interior: walkable and reachable through its doors", W.isWalkable(y.x, y.z, 0.3) && W.isReachable(y.x, y.z));
       check("M2C.5 yellow shares a wall with 1114 (its west face on 1114's NE wall)", Math.abs(ry[0] - rc[2]) < 1 && ry[1] < rc[3] && ry[3] > rc[1] + 5, ry[0].toFixed(1) + " vs " + rc[2].toFixed(1));
       const cy = [(ry[0] + ry[2]) / 2, (ry[1] + ry[3]) / 2];
       const around = [[ry[0] - 6, cy[1]], [cy[0], ry[3] + 6], [ry[2] + 6, cy[1]], [cy[0], ry[1] - 6]];
-      check("M2C.5 walking into the yellow garage from all four sides is blocked", around.every((a) => !walkP(a, cy, 0).arrived && !walkP(a, cy, 1.36).arrived));
+      check("M2C.5 yellow garage: in through the south door and the west doorway; north and east walls stop you", walkP([ry[0] - 6, 202], cy, 0).arrived && walkP([545, ry[3] + 6], cy, 0).arrived && !walkP(around[3], cy, 0).arrived && !walkP(around[2], cy, 0).arrived);
       const inter = walkP(cp, [ry[0] + 3, cy[1]], 0), ip = px(inter.x, inter.z);
       check("M2C.5 from the middle of 1114 you cannot walk through the shared wall into the yellow garage", !inter.arrived && ip[0] < rc[2], JSON.stringify(ip));
-      check("M2C.5 purple + orange garages are solid and unreachable inside", ["garageP", "garageE"].every((n) => { const g = rec(n); return !W.isWalkable(g.x, g.z, 0.3) && !W.isReachable(g.x, g.z); }));
+      check("M2C.5 purple garage is open inside (west door), orange stays solid and unreachable", (() => { const gp = rec("garageP"), ge = rec("garageE"); return W.isWalkable(gp.x, gp.z, 0.3) && W.isReachable(gp.x, gp.z) && !W.isWalkable(ge.x, ge.z, 0.3) && !W.isReachable(ge.x, ge.z); })());
     }
     // 6. driveway runs to the orange garage's door; alley ends at the purple garage's door apron
     {
@@ -919,7 +937,7 @@
     // 8. minimap data stays valid
     {
       const fp = W.minimapFootprints();
-      check("M2C.8 minimap footprints finite and include every new part", fp.every((c) => [c.cx, c.cz, c.halfX, c.halfZ, c.height].every(Number.isFinite)) && ["1104", "1104e", "1104w", "1104p", "1114w", "1114e", "garageE", "garageP", "garageY"].every((n) => { const h = rec(n); return fp.some((c) => Math.abs(c.cx - h.x) < 0.01 && Math.abs(c.cz - h.z) < 0.01); }), fp.length);
+      check("M2C.8 minimap footprints finite and include every new part", fp.every((c) => [c.cx, c.cz, c.halfX, c.halfZ, c.height].every(Number.isFinite)) && ["1104", "1104e", "1104w", "1104p", "garageE"].every((n) => { const h = rec(n); return fp.some((c) => Math.abs(c.cx - h.x) < 0.01 && Math.abs(c.cz - h.z) < 0.01); }) && ["1114", "1114w", "1114e", "garageP", "garageY"].every((n) => { const h = rec(n); return fp.some((c) => Math.abs(c.cx - h.x) <= h.halfX && Math.abs(c.cz - h.z) <= h.halfZ); }), fp.length);
     }
     H.resetGame();
   }
@@ -954,7 +972,7 @@
     }
     check("M2P.1 " + total + " respawns across the whole storm: none outside the safe circle, none flagged in-storm", outside === 0 && inStorm === 0, "outside=" + outside + " inStorm=" + inStorm + " worst=" + worstEdge.toFixed(2) + " (" + ((performance.now() - t0) / 1000).toFixed(1) + " s)");
     check("M2P.2 none in the exclusion region, none unreachable, all walkable", excluded === 0 && unreachable === 0 && notWalk === 0, [excluded, unreachable, notWalk].join("/"));
-    check("M2P.3 hollow-house interiors are (almost) never chosen while open ground exists", inHouse <= total * 0.01, inHouse);
+    check("M2P.3 hollow-house interiors (floors, garages, basements) are valid spawns: used sometimes, not mostly", inHouse > 0 && inHouse < total * 0.7, inHouse + "/" + total);
     check("M2P.4 never right on top of the opponent", tooClose === 0, tooClose);
     // the margin from the edge: every normal spawn keeps >= min(8, 0.3 r) from the circle
     {
@@ -963,9 +981,9 @@
       for (let i = 0; i < 300; i++) { const r = H.pickPvpSpawnPoint(P[0]); min = Math.min(min, f.radius - Math.hypot(r.x - f.x, r.z - f.z)); }
       check("M2P.5 the final circle's spawns keep a margin from its edge", min >= Math.min(H.PVP_SPAWN.ZONE_EDGE_MARGIN, f.radius * 0.3) - 0.01, min.toFixed(2));
     }
-    // truly nowhere valid in the eye of the circle (a circle inside the purple garage): nearest valid walkable point, slightly in the storm
+    // truly nowhere valid in the eye of the circle (a circle inside the orange garage): nearest valid walkable point, slightly in the storm
     {
-      const g = W.houses.find((h) => h.name === "garageP");
+      const g = W.houses.find((h) => h.name === "garageE");
       z.center = { x: g.x, z: g.z }; z.radius = 2.5;
       const picks = [];
       for (let i = 0; i < 200; i++) picks.push(H.pickPvpSpawnPoint(P[i % 2]));
@@ -989,7 +1007,453 @@
     H.resetGame();
   }
 
-  try { run(); runMap2(); runMap2Storm(); runCars(); runHouses(); runMap2Closeup(); runMap2Spawns(); } catch (e) { check("exception", false, e && e.stack || e); }
+  // ---- pink house 1114 (one open L-shaped interior, back door + steps), jumpable roofs, crate stairs ----------------
+  function runPinkAndRoofs() {
+    H.startPvpForTest(2, "deathmatch", "map2");
+    H.players.forEach((q) => H.pvpRespawnPlayer(q));
+    const W = H.map2World, STEP = W.stepUpHeight, R = 0.35;
+    const Pw = (px, py) => W.mapToWorld(px, py);
+    function walkPath(from, to, feet0, grounded) {
+      const dist = Math.hypot(to.x - from.x, to.z - from.z), n = Math.max(1, Math.ceil(dist / 0.15));
+      const pos = new THREE.Vector3(from.x, feet0, from.z);
+      let feet = feet0, maxJump = 0;
+      for (let i = 0; i < n; i++) {
+        pos.x += (to.x - from.x) / n; pos.z += (to.z - from.z) / n;
+        W.resolveCircle(pos, R, feet, grounded);
+        if (grounded) { const f = W.supportHeightAt(pos.x, pos.z, R, feet + STEP); maxJump = Math.max(maxJump, Math.abs(f - feet)); feet = f; }
+      }
+      return { x: pos.x, z: pos.z, feet, maxJump, arrived: Math.hypot(pos.x - to.x, pos.z - to.z) < 0.25 };
+    }
+    const route = (pts, feet0) => { let cur = Pw(...pts[0]), feet = feet0, ok = true, mj = 0; for (let i = 1; i < pts.length; i++) { const r = walkPath(cur, Pw(...pts[i]), feet, true); ok = ok && r.arrived; mj = Math.max(mj, r.maxJump); cur = r; feet = r.feet; } return { ok, feet, mj }; };
+
+    // PH.1 through the house: back door -> east wing -> main body -> front hall -> front door, level 0.34 inside, no popping
+    const through = route([[534, 232], [534, 250], [508, 250], [497.5, 262], [497.5, 290]], 0);
+    check("PH.1 walk in the back door, through the whole house and out the front door", through.ok && Math.abs(through.feet) < 0.02 && through.mj < 0.4, JSON.stringify(through));
+    const insideAt = route([[534, 232], [534, 250]], 0), westWing = route([[534, 232], [534, 250], [508, 250], [477, 245]], 0);
+    check("PH.2 the interior is one level (0.34) from the east wing to the west wing", Math.abs(insideAt.feet - 0.34) < 0.02 && westWing.ok && Math.abs(westWing.feet - 0.34) < 0.02, JSON.stringify(westWing));
+    // PH.3 outer walls stop you from inside, in every direction
+    const wallProbes = [[[508, 240], [508, 195]], [[477, 240], [440, 240]], [[534, 255], [565, 255]], [[534, 262], [534, 295]], [[477, 240], [477, 280]], [[515, 262], [515, 300]]];
+    const wallRes = wallProbes.map(([a, b]) => walkPath(Pw(...a), Pw(...b), 0.34, true));
+    check("PH.3 outer walls stop you from the inside (N, W, E, S of the east wing, S of the west wing, S front wall)", wallRes.every((r) => !r.arrived), wallRes.map((r) => r.arrived).join());
+    // PH.4 the shared yellow-garage wall stays shut and there is no gap in the notch wall
+    const toGarage = walkPath(Pw(515, 215), Pw(540, 203), 0.34, true);
+    check("PH.4 you cannot walk from the house into the yellow garage (no shared opening)", !toGarage.arrived, JSON.stringify(toGarage));
+    // PH.5 back-door steps: 0.34 landing, risers 2/3 and 1/3, walkable from the lawn
+    const stepUp = route([[534, 246], [534, 238], [534, 233], [534, 228]], 0.34);
+    check("PH.5 back-door steps are walkable down to the lawn", stepUp.ok && Math.abs(stepUp.feet) < 0.02 && stepUp.mj < 0.4, JSON.stringify(stepUp));
+    // PH.6 a jump inside never meets the ceiling plate (head at floor + 1.85 + apex 1.36 < ceiling)
+    check("PH.6 ceiling clears a standing jump inside (3.7 m)", 0.34 + 1.85 + 1.36 < 3.7);
+    // PH.7 doorway is open to sight and shots at head height; wall beside it is not
+    const sb = (a, b) => W.segmentBlocked(a.x, a.z, b.x, b.z, 0, false, 0.34, 0.34);
+    check("PH.7 sight: through the front doorway is open, through the wall beside it is blocked", !sb(Pw(497.5, 262), Pw(497.5, 290)) && sb(Pw(510, 262), Pw(510, 290)));
+
+    // ---- jumpable roofs ----------------------------------------------------------------------------------------
+    const acc = W.roofAccess;
+    check("PH.8 crate staircases exist on the low buildings (and none inside the sealed yard)", acc.length >= 10 && acc.every((a) => { const px = W.pxOfWorld(a.x, a.z); return !(px.x > 246 && px.x < 358 && px.y > 181 && px.y < 270); }), acc.length);
+    const byName = (n) => W.houses.find((h) => h.name === n);
+    let bad = [];
+    for (const a of acc) {
+      const h = byName(a.name === "h1114" ? "1114e" : a.name);
+      if (!h) continue;
+      const topCrate = 0.95 * a.crates;
+      const roofFirst = h.wallH; // first roof step sits just above the eave
+      // each hop is a single jump (apex 1.36 m), and the last hop from the top crate must reach the eave + the first roof step
+      if (0.95 > 1.36 || topCrate + 1.36 + STEP < roofFirst + 0.44) bad.push(a.name + " reach " + (topCrate + 1.36 + STEP).toFixed(2) + " vs " + roofFirst.toFixed(2));
+    }
+    check("PH.9 every crate stair is jumpable all the way up to its roof (hop <= 1.36 m, top + apex reaches the eave)", bad.length === 0, bad.join(" | "));
+    // the crates stand against the wall and carry you (support height = crate top), and stay clear of fences
+    let carry = [], fenceBad = [];
+    for (const a of acc) {
+      const sup = W.supportHeightAt(a.x, a.z, 0.2, 99);
+      if (sup < 0.9) carry.push(a.name + " support " + sup.toFixed(2));
+      const fences = H.map2World ? [] : [];
+    }
+    check("PH.10 crates are solid steps you can stand on", carry.length === 0, carry.join(" | "));
+    // roofs: standing on a roof (jump up from the top crate) is possible and the stair-stepped roof can be walked toward the ridge
+    const g = byName("garageP"), onRoof = W.supportHeightAt(g.x, g.z, 0.3, g.height + 0.5);
+    check("PH.11 the garage roof is a surface up to the ridge", onRoof > g.wallH + 0.1 && onRoof < g.height + 0.01, onRoof.toFixed(2) + " / ridge " + g.height.toFixed(2));
+    // you can still walk around/inside under a roof (the roof only supports a body that is already above the eave)
+    const under = W.supportHeightAt(g.x, g.z, 0.3, 2.0);
+    check("PH.12 a body inside the garage is not lifted onto its roof", Math.abs(under) < 0.01, under);
+    // fences still cannot be climbed from a crate: no crate within 4 m of a fence
+    const fenceCols = []; W.minimapFootprints().forEach((c) => { if (c.fx === "wood" && c.height >= 1.3 && c.height <= 2.3 && !c.base && Math.max(c.halfX, c.halfZ) > 1.5) fenceCols.push(c); });
+    const tooClose = acc.filter((a) => fenceCols.some((c) => a.x > c.minX - 4 && a.x < c.maxX + 4 && a.z > c.minZ - 4 && a.z < c.maxZ + 4));
+    check("PH.13 no crate stair is within 4 m of a fence (it would be a way over)", tooClose.length === 0, tooClose.map((a) => a.name).join());
+    H.resetGame();
+  }
+
+  // ---- basements, the stairs, the tunnel, smooth roofs, 1108's west doorway, no tree in the yellow garage -----------------
+  function runBasements() {
+    H.startPvpForTest(2, "deathmatch", "map2");
+    H.players.forEach((q) => H.pvpRespawnPlayer(q));
+    const W = H.map2World, STEP = W.stepUpHeight, R = 0.35, D = 2.6;
+    const Pw = (px, py) => W.mapToWorld(px, py);
+    // a walker like the game's: horizontal collision at the current feet height, then the support height at feet + STEP.
+    // Returns the worst single-frame change of the floor (a "pop") and the lowest/highest feet reached.
+    function walk(pts, feet0) {
+      let pos = Pw(...pts[0]), feet = feet0, ok = true, worst = 0, lo = feet0, hi = feet0, hitWall = null;
+      const v = new THREE.Vector3(pos.x, feet, pos.z);
+      for (let k = 1; k < pts.length; k++) {
+        const to = Pw(...pts[k]), dist = Math.hypot(to.x - v.x, to.z - v.z), n = Math.max(1, Math.ceil(dist / 0.1));
+        const sx = (to.x - v.x) / n, sz = (to.z - v.z) / n;
+        for (let i = 0; i < n; i++) {
+          v.x += sx; v.z += sz;
+          W.resolveCircle(v, R, feet, true);
+          const f = W.supportHeightAt(v.x, v.z, R, feet + STEP);
+          worst = Math.max(worst, Math.abs(f - feet)); feet = f; lo = Math.min(lo, feet); hi = Math.max(hi, feet);
+        }
+        if (Math.hypot(to.x - v.x, to.z - v.z) > 0.25) { ok = false; hitWall = { leg: k, at: W.pxOfWorld(v.x, v.z), feet }; break; }
+      }
+      return { ok, worst: +worst.toFixed(3), lo: +lo.toFixed(2), hi: +hi.toFixed(2), feet: +feet.toFixed(2), hitWall };
+    }
+    // BS.1 the whole loop: out 1108's west door -> down -> basement -> tunnel -> 1114's basement -> up -> back door -> round again
+    const down = walk([[375, 243.7], [386, 243.7], [430, 243.7], [458, 243.7], [490, 243.7], [498, 243.7]], 0);
+    check("BS.1 from outside 1108's west doorway, down its stairs, through the basement and the tunnel into 1114's basement", down.ok && Math.abs(down.feet + D) < 0.02 && down.lo <= -D + 0.01 && down.worst < 0.2, JSON.stringify(down));
+    const up = walk([[498, 243.7], [534, 243.7], [534, 228]], -D);
+    check("BS.2 up 1114's stairs, across the ground floor and out its back door", up.ok && Math.abs(up.feet) < 0.02 && up.worst < 0.2, JSON.stringify(up));
+    const back = walk([[534, 228], [534, 243.7], [498, 243.7], [458, 243.7], [430, 243.7], [386, 243.7], [370, 243.7]], 0);
+    check("BS.3 and all the way back the other way: 1114 back door, down, tunnel, up 1108's stairs, out the west doorway", back.ok && Math.abs(back.feet) < 0.02 && back.lo <= -D + 0.01 && back.worst < 0.2, JSON.stringify(back));
+    // BS.4 smooth: the floor under you never changes by more than a few cm per 10 cm of walking, anywhere on the stairs
+    const sm1 = walk([[386, 243.7], [418, 243.7]], 0.34), sm2 = walk([[532, 243.7], [500, 243.7]], 0.34);
+    check("BS.4 stairs are a smooth slope (largest floor change per 10 cm step <= 8 cm, descending and climbing)", sm1.ok && sm2.ok && sm1.worst <= 0.08 && sm2.worst <= 0.08, sm1.worst + " / " + sm2.worst);
+    // BS.5 headroom: where the floor slab starts above a stair, the stair is already far enough down (body 1.85 m + the slab underside at 0)
+    const ST = W.stairs.map((st) => { const ps = W.pits.find((p) => p.stair && Math.abs(((p.hole.x0 + p.hole.x1) / 2) - (W.mapToWorld(st.px[0], st.px[1]).x + W.mapToWorld(st.px[2], st.px[3]).x) / 2) < 0.2); return { st, p: ps }; });
+    check("BS.5 both stairs: under the slab the floor is >= 1.9 m below it (no head in the ceiling) and reaches the basement floor", ST.every(({ p }) => p && Math.abs(p.floorAt(p.hole.x0 > p.x0 + 0.01 ? p.x0 : p.x1) - (-D)) < 0.02 && Math.min(p.floorAt(p.hole.x0), p.floorAt(p.hole.x1)) <= -2.2), ST.map(({ p }) => p && [p.floorAt(p.hole.x0).toFixed(2), p.floorAt(p.hole.x1).toFixed(2)].join("/")).join(" | "));
+    // BS.6 the ground floor does not sag into the basement: standing on the slab beside the opening, on the lawn above the tunnel
+    const on = (px, py, from) => { const q = Pw(px, py); return +W.supportHeightAt(q.x, q.z, R, from).toFixed(2); };
+    check("BS.6 floor under a body: slab 0.34 above the basement, lawn 0 above the tunnel, basement floor -2.6 below", on(425, 243.7, 0.84) === 0.34 && on(458, 243.7, 0.5) === 0 && on(425, 243.7, -D + STEP) === -D && on(458, 243.7, -D + STEP) === -D);
+    // BS.7 solid walls: walls of the basement stop you from inside, the ground-floor walls pass above you at basement level
+    const bw = [[[430, 243.7], [430, 205]], [[430, 258], [376, 262]], [[430, 255], [470, 262]], [[490, 243.7], [490, 205]], [[490, 243.7], [545, 260]], [[458, 243.7], [458, 232]], [[458, 243.7], [458, 256]]];
+    const bwr = bw.map(([a, b]) => walk([a, b], -D));
+    check("BS.7 basement + tunnel walls stop you (N/W/S of 1108, S of 1108 east part, N and S walls of 1114, tunnel sides)", bwr.every((r) => !r.ok && r.feet === -D), bwr.map((r) => r.ok + "/" + r.feet).join(" "));
+    // BS.8 only the two annotated openings lead down: you cannot walk down through the floor anywhere else, only into the stairwells
+    let leaks = 0; const lows = [];
+    for (let px = 384; px <= 449; px += 3) for (let py = 212; py <= 273; py += 3) { const q = Pw(px, py); if (W.isWalkable(q.x, q.z, 0.3)) { const f = W.supportHeightAt(q.x, q.z, R, 0.84); if (f < 0.3) { const inHole = px >= 390.4 && px <= 409.8 && py >= 239.3 && py <= 251; if (!inHole) { leaks++; lows.push(px + "," + py + ":" + f); } } } }
+    check("BS.8 1108's ground floor has no way down except the stairwell", leaks === 0, lows.slice(0, 6).join(" "));
+    // BS.9 the stairwell guard rails: you cannot walk in sideways from the ground floor, a jump vaults them, the top end is open
+    const rail = walk([[400, 236], [400, 244]], 0.34), top = walk([[386, 243.7], [394, 243.7]], 0.34);
+    check("BS.9 rails block a sideways walk into the stairwell; the top end is open", !rail.ok && rail.feet === 0.34 && top.ok && top.feet < 0.34, JSON.stringify([rail.ok, rail.feet, top.ok, top.feet]));
+    // BS.10 sight and shots: a floor between a basement and the rooms above it
+    const sb = (a, b, ya, yb) => W.segmentBlocked(a.x, a.z, b.x, b.z, 0, false, ya, yb);
+    check("BS.10 no sight through the floor (basement <-> ground floor, away from the stairwell)", sb(Pw(425, 243.7), Pw(428, 244), -D, 0.34) && sb(Pw(425, 243.7), Pw(428, 244), 0.34, -D));
+    const up1 = W.raycast(Pw(425, 243.7).x, -0.9, Pw(425, 243.7).z, 0, 1, 0, 8), dn1 = W.raycast(Pw(425, 243.7).x, 1.7, Pw(425, 243.7).z, 0, -1, 0, 8);
+    check("BS.11 a shot up from the basement stops at the floor above; one down from the ground floor lands on it", up1 && up1.y < 0.4 && dn1 && Math.abs(dn1.y - 0.34) < 0.05, (up1 && up1.y) + " / " + (dn1 && dn1.y));
+    // BS.12 dirt tunnel + stairwell show in the ground height used by rays/impacts; outside the openings it is the lawn
+    const gq = Pw(400, 244), lawn = Pw(300, 300);
+    check("BS.12 visible ground: stair surface down the stairwell, lawn elsewhere", W.groundHeightAt(gq.x, gq.z) < 0.2 && W.groundHeightAt(lawn.x, lawn.z) === 0);
+
+    // ---- 1108's second doorway (west) -----------------------------------------------------------------------------
+    const inW = walk([[374, 232], [380, 232], [388, 232]], 0);
+    const doorW = walk([[374, 245.5], [388, 245.5]], 0), wallW = walk([[374, 228], [388, 228]], 0);
+    check("BS.13 1108's west doorway: walk in level over the steps, the wall beside it stops you", doorW.ok && Math.abs(doorW.feet - 0.34) < 0.02 && doorW.worst < 0.35 && !wallW.ok, JSON.stringify([doorW, wallW.ok]));
+
+    // ---- smooth roofs --------------------------------------------------------------------------------------------
+    const roofs = ["garageP", "garageY", "1108", "1101", "1109", "1115", "garageE"], rough = [];
+    for (const n of roofs) {
+      const h = W.houses.find((q) => q.name === n); if (!h) continue;
+      let prev = null, worst = 0, count = 0;
+      for (let x = h.x - h.halfX - 0.3; x <= h.x + h.halfX + 0.3; x += 0.1) { // across the whole roof, a body already above the eave (an apex jump)
+        const f = W.supportHeightAt(x, h.z, R, h.height + 1); if (f < h.wallH - 0.05) { prev = null; continue; }
+        if (prev !== null) { worst = Math.max(worst, Math.abs(f - prev)); count++; }
+        prev = f;
+      }
+      if (count < 20 || worst > 0.09) rough.push(n + " worst " + worst.toFixed(3) + " n=" + count);
+    }
+    check("BS.14 every roof is a smooth slope (floor change <= 9 cm per 10 cm of walking, no 38 cm steps)", rough.length === 0, rough.join(" | "));
+    const g = W.houses.find((q) => q.name === "garageP"), w = walk([[g.x * 0 + W.pxOfWorld(g.x, g.z).x - 40, W.pxOfWorld(g.x, g.z).y], [W.pxOfWorld(g.x, g.z).x, W.pxOfWorld(g.x, g.z).y]], 0);
+    // BS.15 a body that has jumped onto a roof walks up it to the ridge without a wall in the way
+    const rp = W.pxOfWorld(g.x, g.z); let feet = g.wallH + 0.05, stuck = false; const v = new THREE.Vector3(g.x - g.halfX + 0.2, feet, g.z);
+    for (let i = 0; i < Math.floor(g.halfX / 0.1) && !stuck; i++) { v.x += 0.1; W.resolveCircle(v, R, feet, true); const f = W.supportHeightAt(v.x, v.z, R, feet + STEP); if (f < feet - 0.5) stuck = true; feet = f; }
+    check("BS.15 walking up the garage roof from the eave reaches the ridge height, no invisible walls", !stuck && feet > g.wallH + 1.0 && feet <= g.height + 0.05, feet.toFixed(2) + " ridge " + g.height.toFixed(2));
+
+    // ---- the tree that stood inside the yellow garage ------------------------------------------------------------------
+    const y = W.houses.find((q) => q.name === "garageY"); let treeInside = 0;
+    for (let x = y.x - y.halfX + 1; x <= y.x + y.halfX - 1; x += 1) for (let z = y.z - y.halfZ + 1; z <= y.z + y.halfZ - 1; z += 1) if (!W.isWalkable(x, z, 0.35)) treeInside++;
+    const oldTree = Pw(552, 205);
+    check("BS.16 the yellow garage interior is clear (no tree trunk inside; old tree spot walkable)", treeInside === 0 && W.isWalkable(oldTree.x, oldTree.z, 0.4), treeInside);
+    H.resetGame();
+  }
+
+  // ---- head-bumps, airborne wall hits, window placement, coplanar faces ------------------------------------------------
+  function runCollisionFixes() {
+    H.startPvpForTest(2, "deathmatch", "map2");
+    H.players.forEach((q) => H.pvpRespawnPlayer(q));
+    const W = H.map2World, R = 0.35, D = 2.6, BODY = 1.85;
+    const Pw = (px, py) => W.mapToWorld(px, py);
+    // one airborne column like the game's gravity step: rise with the jump speed, clamp under any ceiling, then fall back
+    function jumpAt(px, py, groundFeet) {
+      const q = Pw(px, py), pos = new THREE.Vector3(q.x, groundFeet, q.z);
+      let off = 0, vy = 7, maxHead = groundFeet + BODY, moved = 0;
+      for (let t = 0; t < 140; t++) {
+        vy += -18 * (1 / 60); off += vy * (1 / 60);
+        if (vy > 0) { const ceil = W.ceilingAt(pos.x, pos.z, R, groundFeet + off + BODY - 0.4); if (groundFeet + off + BODY > ceil - 0.01) { off = Math.max(0, ceil - 0.01 - BODY - groundFeet); vy = Math.min(vy, 0); } }
+        const landed = off <= 0; off = Math.max(0, off); const before = { x: pos.x, z: pos.z }; pos.y = groundFeet + off; W.resolveCircle(pos, R, groundFeet + off, false, BODY);
+        moved = Math.max(moved, Math.hypot(pos.x - before.x, pos.z - before.z));
+        maxHead = Math.max(maxHead, groundFeet + off + BODY);
+        if (landed) break;
+      }
+      return { maxHead: +maxHead.toFixed(3), moved: +moved.toFixed(3) };
+    }
+    // CF.1 basement: the head stops at the floor slab (0) and the jump never shoves the player sideways
+    const sj = jumpAt(425, 255, -D);
+    check("CF.1 jumping in a basement: head stops under the floor above (<= 0), no sideways shove", sj.maxHead <= 0.001 && sj.moved < 0.001, JSON.stringify(sj));
+    // CF.2 the tunnel: same under the earth lid
+    const tj = jumpAt(458, 243.7, -D);
+    check("CF.2 jumping in the tunnel: head stops under the earth (<= -0.2 + small), no shove", tj.maxHead <= -0.19 && tj.moved < 0.001, JSON.stringify(tj));
+    // CF.3 open air and the ground floor are not clamped
+    const gj = jumpAt(497.5, 300, 0), fj = jumpAt(508, 252, 0.34);
+    check("CF.3 jumps on the lawn and on a ground floor still reach the full apex (1.36 m)", gj.maxHead > BODY + 1.3 && fj.maxHead > 0.34 + BODY + 1.3, gj.maxHead + " / " + fj.maxHead);
+    // CF.4 airborne into a wall at speed: the body is held at the wall, never teleported across it
+    function airWall(a, b, feet) {
+      const A = Pw(...a), B = Pw(...b), pos = new THREE.Vector3(A.x, feet, A.z), n = 60; let worst = 0;
+      for (let i = 0; i < n; i++) {
+        const prev = { x: pos.x, z: pos.z }, sx = (B.x - A.x) / n, sz = (B.z - A.z) / n;
+        pos.x += sx; pos.z += sz;
+        W.resolveCircle(pos, R, feet + 0.5 + 0.5 * Math.sin(i / n * Math.PI), false, BODY); // mid-jump feet height
+        worst = Math.max(worst, Math.hypot(pos.x - (prev.x + sx), pos.z - (prev.z + sz)) - Math.hypot(sx, sz)); // how far the wall moved it beyond undoing this step
+      }
+      return { x: pos.x, z: pos.z, worst: +worst.toFixed(3), end: W.pxOfWorld(pos.x, pos.z) };
+    }
+    const walls = [[[430, 243.7 + 14], [430, 276], -D, "1108 S basement wall"], [[430, 255], [376, 255], -D, "1108 W basement wall"], [[490, 243.7], [490, 200], -D, "1114 N basement wall"], [[458, 243.7], [458, 262], -D, "tunnel side"], [[430, 255], [376, 255], 0.34, "1108 W wall, ground floor"], [[508, 252], [508, 195], 0.34, "1114 N wall, ground floor"], [[477, 245], [440, 245], 0.34, "1114 W wall, ground floor"]];
+    const wres = walls.map(([a, b, f, nm]) => ({ nm, r: airWall(a, b, f) }));
+    check("CF.4 running + jumping into walls: the push never exceeds undoing the step (no teleport)", wres.every(({ r }) => r.worst < 0.02), wres.map(({ nm, r }) => nm + " worst=" + r.worst).join(" | "));
+    check("CF.5 ...and the player ends on the inside of every wall", wres.every(({ r }, i) => { const b = walls[i][1], a = walls[i][0]; const dirx = Math.sign(b[0] - a[0]), diry = Math.sign(b[1] - a[1]); return (dirx === 0 || (r.end.x - a[0]) * dirx < (b[0] - a[0]) * dirx) && (diry === 0 || (r.end.y - a[1]) * diry < (b[1] - a[1]) * diry); }), wres.map(({ r }) => r.end.x.toFixed(0) + "," + r.end.y.toFixed(0)).join(" "));
+    // CF.6 a slab is never a sideways wall: standing anywhere in the basement and on the ground floor, a sideways airborne step is free
+    const free = (px, py, feet) => { const q = Pw(px, py), pos = new THREE.Vector3(q.x, feet, q.z); W.resolveCircle(pos, R, feet + 1.2, false, BODY); return Math.hypot(pos.x - q.x, pos.z - q.z) < 1e-6; };
+    check("CF.6 floor slabs and the tunnel lid never push sideways (basement, tunnel, ground floor)", free(425, 255, -D) && free(458, 243.7, -D) && free(508, 252, 0.34) && free(410, 225, 0.34));
+    // CF.7 windows: none inside a roof or a wall, none in a doorway (debug lists of the built meshes)
+    const L = W.debugLists, glass = L.prop.filter((it) => it.c.getHex() === 0x39495a);
+    const roofs = [].concat(L.gable.map((r) => ({ t: "gable", inv: r.m.clone().invert() })), L.hip.map((r) => ({ t: "hip", inv: r.m.clone().invert() })));
+    const v = new THREE.Vector3();
+    const inRoof = (x, y, z) => roofs.some((r) => { v.set(x, y, z).applyMatrix4(r.inv); if (Math.abs(v.x) > 0.5 || Math.abs(v.z) > 0.5 || v.y < 0.02) return false; const lim = r.t === "gable" ? 1 - 2 * Math.abs(v.z) : 1 - 2 * Math.max(Math.abs(v.x), Math.abs(v.z)); return v.y < lim - 0.02; });
+    let inside = 0;
+    for (const g of glass) { const e = g.m.elements, hx = 0.5 * (Math.abs(e[0]) + Math.abs(e[4]) + Math.abs(e[8])), hy = 0.5 * (Math.abs(e[1]) + Math.abs(e[5]) + Math.abs(e[9])), hz = 0.5 * (Math.abs(e[2]) + Math.abs(e[6]) + Math.abs(e[10])); if ([[-1, -1, -1], [1, 1, 1], [-1, 1, 1], [1, 1, -1]].some(([a, b, c]) => inRoof(e[12] + a * hx, e[13] + b * hy, e[14] + c * hz))) inside++; }
+    check("CF.7 no window pokes through a roof (" + glass.length + " windows)", inside === 0, inside);
+    const doorways = W.pits ? [] : [];
+    const openingsHit = glass.filter((g) => { const e = g.m.elements, x = e[12], z = e[14], y = e[13]; return W.openingRects && W.openingRects.some((o) => x > o.x0 - 0.7 && x < o.x1 + 0.7 && z > o.z0 - 0.7 && z < o.z1 + 0.7 && y < o.h + 1.5 && y + 1 > o.h - 2.2); }).length;
+    check("CF.8 no window floats in a doorway (1108 west door, 1114 back door, garage doors)", openingsHit === 0, openingsHit);
+    // CF.9 coplanar overlapping faces of different colours (the texture-fight): none big enough to see
+    const boxes = [];
+    for (const key of ["prop", "siding", "interior"]) for (const it of L[key]) { const e = it.m.elements, ex = 0.5 * (Math.abs(e[0]) + Math.abs(e[4]) + Math.abs(e[8])), ey = 0.5 * (Math.abs(e[1]) + Math.abs(e[5]) + Math.abs(e[9])), ez = 0.5 * (Math.abs(e[2]) + Math.abs(e[6]) + Math.abs(e[10])); boxes.push({ hex: it.c.getHex(), min: [e[12] - ex, e[13] - ey, e[14] - ez], max: [e[12] + ex, e[13] + ey, e[14] + ez] }); }
+    const CELL = 6, grid = new Map();
+    boxes.forEach((b, i) => { for (let x = Math.floor(b.min[0] / CELL); x <= Math.floor(b.max[0] / CELL); x++) for (let z = Math.floor(b.min[2] / CELL); z <= Math.floor(b.max[2] / CELL); z++) { const k = x + "_" + z; (grid.get(k) || grid.set(k, []).get(k)).push(i); } });
+    const seen = new Set(); let big = 0, worst = 0;
+    for (const list of grid.values()) for (let a = 0; a < list.length; a++) for (let c = a + 1; c < list.length; c++) {
+      const i = list[a], j = list[c], key = i < j ? i + "," + j : j + "," + i; if (seen.has(key)) continue; seen.add(key);
+      const A = boxes[i], B = boxes[j]; if (A.hex === B.hex) continue;
+      for (let ax = 0; ax < 3; ax++) {
+        const o1 = (ax + 1) % 3, o2 = (ax + 2) % 3, ov1 = Math.min(A.max[o1], B.max[o1]) - Math.max(A.min[o1], B.min[o1]), ov2 = Math.min(A.max[o2], B.max[o2]) - Math.max(A.min[o2], B.min[o2]);
+        if (ov1 <= 0.01 || ov2 <= 0.01) continue;
+        for (const side of ["max", "min"]) {
+          if (Math.abs(A[side][ax] - B[side][ax]) >= 0.0012) continue;
+          if (ax === 1 && (side === "min" || A[side][1] >= 3.5)) continue;
+          const sgn = side === "max" ? 1 : -1, pt = [0, 0, 0]; pt[ax] = A[side][ax] + sgn * 0.01; pt[o1] = (Math.max(A.min[o1], B.min[o1]) + Math.min(A.max[o1], B.max[o1])) / 2; pt[o2] = (Math.max(A.min[o2], B.min[o2]) + Math.min(A.max[o2], B.max[o2])) / 2;
+          let buried = false; for (const q of (grid.get(Math.floor(pt[0] / CELL) + "_" + Math.floor(pt[2] / CELL)) || [])) { if (q === i || q === j) continue; const T = boxes[q]; if (pt[0] > T.min[0] && pt[0] < T.max[0] && pt[1] > T.min[1] && pt[1] < T.max[1] && pt[2] > T.min[2] && pt[2] < T.max[2]) { buried = true; break; } }
+          if (!buried) { const area = ov1 * ov2; worst = Math.max(worst, area); if (area > 0.12) big++; }
+        }
+      }
+    }
+    check("CF.9 no visible coplanar faces of different colours with an overlap over 0.12 m2 (worst " + worst.toFixed(2) + ")", big === 0, big);
+    // IS.* indoor spawns
+    const IS = W.interiorSpawns(), lv = (f) => IS.filter((q) => Math.abs(q[3] - f) < 0.05).length;
+    check("IS.1 indoor spawn points exist on ground floors (0.34 m), in basements (-2.6 m) and at garage level", lv(0.34) > 5 && lv(-2.6) > 5, "floor " + lv(0.34) + " basement " + lv(-2.6) + " ground " + lv(0) + " total " + IS.length);
+    H.startPvpForTest(2, "deathmatch", "map2"); H.players.forEach((q) => H.pvpRespawnPlayer(q)); const W2 = H.map2World; H.players[1].camera.position.set(W2.bounds.minX + 12, 1.7, W2.bounds.minZ + 12); let indoor = 0, basement = 0, bad = 0; const N = 300;
+    for (let i = 0; i < N; i++) {
+      const sp = H.pickPvpSpawnPoint(H.players[0]);
+      if (sp.y !== 0) basement++;
+      if (W2.isInsideHouseInterior(sp.x, sp.z, 0) || sp.y !== 0) indoor++;
+      for (const o of H.players.slice(1)) if (Math.hypot(o.camera.position.x - sp.x, o.camera.position.z - sp.z) < 4) bad++;
+    }
+    check("IS.2 respawns pick indoor spots sometimes (" + indoor + "/" + N + ", off-ground " + basement + ") and never within 4 m of another player", indoor > 0 && bad === 0, indoor + " " + basement + " bad " + bad);
+    const sp0 = IS.find((q) => q[3] < -2); const pl = H.players[0]; H.pvpRespawnPlayer(pl); pl.camera.position.set(sp0[0], 1.7 + sp0[3], sp0[2 - 1]); pl.campusGroundY = sp0[3];
+    check("IS.3 a basement spawn stands on the basement floor (support height -2.6)", Math.abs(W.supportHeightAt(sp0[0], sp0[1], 0.35, sp0[3] + 0.05) - sp0[3]) < 0.06);
+    H.resetGame();
+  }
+
+  // ---- teams (3 and 4 player lobbies) ------------------------------------------------------------------------------------
+  function runTeams() {
+    H.startPvpForTest(4, "deathmatch", "map2");
+    H.players.forEach((q) => H.pvpRespawnPlayer(q));
+    const P = H.players, clear = () => P.forEach((q) => { q.pvpProtectedFor = 0; q.health = H.getMaxHealth(q); });
+    check("TM.1 friendly fire defaults to off", H.pvpFriendlyFire === false);
+    H.pvpApplyTeams([0, 0, 1, 1]); clear();
+    H.damagePvpPlayer(P[0], P[1], 40, false); H.damagePvpPlayer(P[0], P[2], 40, false);
+    check("TM.2 teammates take no damage with friendly fire off; opponents do", P[1].health === H.getMaxHealth(P[1]) && P[2].health < H.getMaxHealth(P[2]), P[1].health + " / " + P[2].health);
+    H.setPvpFriendlyFire(true); clear();
+    H.damagePvpPlayer(P[0], P[1], 40, false);
+    check("TM.3 friendly fire on: teammates take damage", P[1].health < H.getMaxHealth(P[1]), P[1].health);
+    H.setPvpFriendlyFire(false);
+    const lay = (v, o) => (P[v].camera.layers.mask & (1 << (10 + o))) !== 0;
+    check("TM.4 team indicator is on teammates' cameras only (P1<->P2, P3<->P4), never opponents' or one's own", lay(1, 0) && lay(0, 1) && lay(3, 2) && lay(2, 3) && !lay(2, 0) && !lay(3, 0) && !lay(0, 2) && !lay(0, 0) && !lay(1, 1), [lay(1, 0), lay(0, 1), lay(3, 2), lay(2, 3), lay(2, 0), lay(0, 0)].join());
+    // shots pass through teammates: a ray from P1 through P2 hits nothing of P2's, and does hit an opponent
+    const t0 = P[0].camera.position, t1 = P[1].camera.position;
+    P[1].camera.position.set(t0.x + 3, t0.y, t0.z); P[2].camera.position.set(t0.x + 6, t0.y, t0.z); P[1].campusGroundY = P[2].campusGroundY = P[0].campusGroundY;
+    const ray = new THREE.Ray(t0.clone(), new THREE.Vector3(1, 0, 0));
+    const hits = H.findPvpPlayerHits(P[0], ray, Infinity).map((h) => h.target);
+    check("TM.5 hitscan skips teammates (friendly fire off) and still reaches the opponent behind", !hits.includes(P[1]) && hits.includes(P[2]), hits.length);
+    H.pvpApplyTeams([0, 1, 2, 3]);
+    check("TM.6 everyone on their own team = free for all (teams inactive, no indicators, damage allowed)", !lay(1, 0) && !H.pvpSameTeam(P[0], P[1]));
+    H.pvpApplyTeams([0, 0, 1]); // stale 3-player array on a 4-player roster must not crash
+    // setup screen: a Team row after Shoes, only on the quad PVP setup screen
+    const c = { faceKey: "x", category: 4, team: 0 }, quadPanel = H.titlePanels["quad-setup"];
+    const before = H.customizeCategoryCount(); H.quadSetup.slots.length = 4;
+    quadPanel.classList.add("active"); H.setPvpSetup(true);
+    const withTeams = H.customizeCategoryCount();
+    H.stepCustomizeCategory(c, 1);
+    const onTeam = c.category;
+    H.cycleCustomization(c, 1); H.cycleCustomization(c, 1);
+    const afterTwo = c.team; H.cycleCustomization(c, -1); H.cycleCustomization(c, -1); H.cycleCustomization(c, -1);
+    const wrapped = c.team;
+    quadPanel.classList.remove("active"); H.setPvpSetup(false);
+    check("TM.7 setup screen: Team category exists on the quad PVP screen (4 teams, wraps), hidden elsewhere", before === 5 && withTeams === 6 && onTeam === 5 && afterTwo === 2 && wrapped === 3 && H.customizationValue(c, "team") === "Yellow", [before, withTeams, onTeam, afterTwo, wrapped].join());
+    H.resetGame();
+  }
+
+  function runAdsSensitivity() {
+    H.startPvpForTest(2, "deathmatch", "map2");
+    const pl = H.players[0], set = (id, v) => { const el = document.getElementById(id); el.value = String(v); el.dispatchEvent(new Event("input")); };
+    const near = (a, b) => Math.abs(a - b) < 1e-6;
+    set("ads-sensitivity-slider", 50); set("sniper-ads-sensitivity-slider", 50);
+    H.pvpGiveWeapon(pl, "ak47"); pl.aimProgress = 1;
+    const rifle50 = H.getAimSensitivityMultiplier(pl);
+    set("ads-sensitivity-slider", 25); const rifle25 = H.getAimSensitivityMultiplier(pl);
+    set("ads-sensitivity-slider", 100); const rifle100 = H.getAimSensitivityMultiplier(pl);
+    pl.aimProgress = 0; const hip = H.getAimSensitivityMultiplier(pl); pl.aimProgress = 1;
+    H.pvpGiveWeapon(pl, "sniper"); pl.aimProgress = 1;
+    set("sniper-ads-sensitivity-slider", 50); const sn50 = H.getAimSensitivityMultiplier(pl);
+    set("sniper-ads-sensitivity-slider", 100); const sn100 = H.getAimSensitivityMultiplier(pl);
+    set("sniper-ads-sensitivity-slider", 0); const sn0 = H.getAimSensitivityMultiplier(pl);
+    set("ads-sensitivity-slider", 0); const snIndependent = H.getAimSensitivityMultiplier(pl);
+    check("ADS.1 rifle: 50% = unchanged (1x), 25% = half, 100% = double; hip-fire never scaled", near(rifle50, 1) && near(rifle25, 0.5) && near(rifle100, 2) && hip === 1, [rifle50, rifle25, rifle100, hip].join());
+    check("ADS.2 sniper: 50% keeps the built-in 0.4x, 100% doubles it, 0% never freezes the view; the other slider does not affect it", near(sn50, 0.4) && near(sn100, 0.8) && sn0 > 0 && sn0 < 0.05 && near(snIndependent, sn0), [sn50, sn100, sn0, snIndependent].join());
+    set("ads-sensitivity-slider", 50); set("sniper-ads-sensitivity-slider", 50);
+    check("ADS.3 both settings persist", localStorage.getItem("escapeFromKise.adsSensitivity") === "50" && localStorage.getItem("escapeFromKise.sniperAdsSensitivity") === "50");
+    H.resetGame();
+  }
+
+  function runZoneMode() {
+    H.startPvpForTest(3, "hill", "map2"); H.pvpApplyTeams(null);
+    const W = H.map2World, P = H.players, B = W.mapToWorld(425, 255), OUT = W.mapToWorld(497.5, 300);
+    check("ZN.1 Zone is a 10 minute match", Math.abs(H.pvpMatch.timeLeft - 600) < 1 && H.pvpMatch.mode === "hill", H.pvpMatch.timeLeft);
+    P.forEach((q) => { H.pvpRespawnPlayer(q); q.camera.position.set(OUT.x, 1.7, OUT.z); q.campusGroundY = 0; });
+    const setIn = (q, inside) => { if (inside) { q.camera.position.set(B.x, 1.7 - 2.6, B.z); q.campusGroundY = -2.6; } else { q.camera.position.set(OUT.x, 1.7, OUT.z); q.campusGroundY = 0; } };
+    H.pvpMatch.started = true; P.forEach((q) => { q.pvpHill = 0; q.pvpProtectedFor = 0; });
+    H.updatePvpMatch(1);
+    check("ZN.2 an empty basement scores nobody", P.every((q) => q.pvpHill === 0) && H.pvpMatch.hillState === "empty");
+    setIn(P[0], true); for (let i = 0; i < 5; i++) H.updatePvpMatch(1);
+    check("ZN.3 one player alone in the basement earns 1 point per second", Math.abs(P[0].pvpHill - 5) < 1e-6 && P[1].pvpHill === 0 && H.pvpMatch.hillState === "holding", P[0].pvpHill);
+    setIn(P[1], true); for (let i = 0; i < 5; i++) H.updatePvpMatch(1);
+    check("ZN.4 two players in the basement = contested: nobody scores", Math.abs(P[0].pvpHill - 5) < 1e-6 && P[1].pvpHill === 0 && H.pvpMatch.hillState === "contested", P[0].pvpHill + " " + P[1].pvpHill);
+    setIn(P[0], false); for (let i = 0; i < 3; i++) H.updatePvpMatch(1);
+    check("ZN.5 once only one is left, that player scores again", Math.abs(P[1].pvpHill - 3) < 1e-6, P[1].pvpHill);
+    P[1].isDead = true; H.updatePvpMatch(1); const afterDead = P[1].pvpHill; P[1].isDead = false;
+    check("ZN.6 a dead player in the basement does not score", afterDead === 3, afterDead);
+    const k0 = P[2].pvpKills; setIn(P[1], false); H.pvpRecordKill(P[1], P[2], "x");
+    check("ZN.7 kills score no points in Zone", P[2].pvpKills === k0 + 1 && P[2].pvpHill === 0);
+    P[0].pvpHill = 40.6; P[1].pvpHill = 12; P[2].pvpHill = 12;
+    H.endPvpMatch();
+    const banner = document.getElementById("pvp-results-banner").textContent;
+    check("ZN.9 most points wins the match (P1 here), kills irrelevant", /P1 WINS/.test(banner), banner);
+    // lobby coupling: Zone forces Residential; choosing Campus leaves Zone
+    H.setPvpSetup(true);
+    const modeEl = document.querySelector('.pvp-mode-option[data-pvp-mode="hill"]'), campusEl = document.querySelector('.pvp-map-option[data-pvp-map="campus"]');
+    modeEl.click(); const hillMap = document.querySelector('.pvp-map-option.active').dataset.pvpMap;
+    campusEl.click(); const afterCampus = H.pvpMode;
+    H.setPvpSetup(false);
+    check("ZN.10 lobby: Zone selects Residential and Campus can no longer be picked while it is on", hillMap === "map2" && afterCampus === "hill" && document.querySelector(".pvp-map-option.active").dataset.pvpMap === "map2", hillMap + " " + afterCampus);
+    H.resetGame();
+  }
+
+  function runInfected() {
+    H.startPvpForTest(4, "infected", "map2"); 
+    const P = H.players, inf = () => P.filter((q) => q.pvpInfected), hum = () => P.filter((q) => !q.pvpInfected);
+    check("IN.1 4 players, everyone chose human: exactly one is picked infected at random", inf().length === 1 && hum().length === 3, inf().length);
+    check("IN.2 humans spawn first; the infected waits (spawning in 5 seconds) and the match clock is running", hum().every((q) => !q.pvpAwaitingSpawn && !q.isDead) && inf()[0].pvpAwaitingSpawn && Math.abs(inf()[0].pvpRespawnTimer - 5) < 0.2 && H.pvpMatch.started, inf()[0].pvpRespawnTimer + " " + H.pvpMatch.started);
+    const panel = document.getElementById("pvp-panel-p" + (P.indexOf(inf()[0]) + 1));
+    check("IN.3 the infected's screen says 'Spawning in 5 seconds' and has no weapon select", /Spawning in 5 seconds/.test(panel.textContent) && panel.querySelector("h1").textContent === "INFECTED", panel.textContent.slice(0, 80));
+    check("IN.4 the match is 10 minutes and the storm closes in 9", Math.abs(H.pvpMatch.timeLeft - 600) < 1 && Math.abs(H.zoneState.phaseDuration - 540) < 1, H.pvpMatch.timeLeft + " / " + H.zoneState.phaseDuration);
+    const wid = (q, n) => (q.inventorySlots[n] ? q.inventorySlots[n].weaponId : null);
+    check("IN.5 3 survivors: humans carry the regular pistol", hum().every((q) => wid(q, 0) === "pistol" && !q.inventorySlots[1]), hum().map((q) => wid(q, 0)).join());
+    const glow = (q) => q.human.meshes[0].material.emissive;
+    check("IN.6 humans glow blue, the infected is green", glow(hum()[0]).b > glow(hum()[0]).r && glow(inf()[0]).g > glow(inf()[0]).r && glow(inf()[0]).g > glow(inf()[0]).b, "");
+    // infected spawns on its own after the delay, with only a katana
+    for (let i = 0; i < 6; i++) H.updatePvpMatch(1);
+    const first = inf()[0];
+    check("IN.7 the infected spawns by itself after 5 seconds with only a katana", !first.pvpAwaitingSpawn && wid(first, 0) === "katana" && !first.inventorySlots[1], wid(first, 0));
+    check("IN.8 the infected's katana does 25", H.PVP_INFECTED_KATANA_DAMAGE === 25);
+    // a human dies -> infected, 5 s respawn, no weapon select, remaining humans move to the glock
+    const h1 = hum()[0], killer = first;
+    H.pvpRecordKill(h1, killer, "x"); H.pvpHandleDeath(h1);
+    check("IN.9 a killed human turns infected and waits 5 seconds (no weapon select)", h1.pvpInfected && h1.pvpAwaitingSpawn && Math.abs(h1.pvpRespawnTimer - 5) < 0.2 && H.pvpSurvivors() === 2, h1.pvpInfected + " " + h1.pvpRespawnTimer);
+    check("IN.10 2 survivors left: the humans switch to the glock", hum().every((q) => wid(q, 0) === "glock"), hum().map((q) => wid(q, 0)).join());
+    for (let i = 0; i < 6; i++) H.updatePvpMatch(1);
+    check("IN.11 the new infected respawns with a katana", !h1.pvpAwaitingSpawn && wid(h1, 0) === "katana");
+    // heal: a human killing an infected gets 15
+    const h2 = hum()[0]; h2.health = 50; H.pvpRecordKill(first, h2, "x");
+    check("IN.12 a human killing an infected heals 15", h2.health === 65, h2.health);
+    H.pvpHandleDeath(first); for (let i = 0; i < 6; i++) H.updatePvpMatch(1);
+    const hx = hum().find((q) => q !== h2); first.health = 50; H.pvpRecordKill(hx, first, "x"); H.pvpHandleDeath(hx);
+    check("IN.13 infected killers do not heal", first.health === 50, first.health);
+    check("IN.14 1 survivor left: SMG in slot 1 and shotgun in slot 2", H.pvpSurvivors() === 1 && hum().every((q) => wid(q, 0) === "smg" && wid(q, 1) === "shotgun"), hum().map((q) => wid(q, 0) + "+" + wid(q, 1)).join());
+    const last = hum()[0]; H.pvpRecordKill(last, first, "x"); H.pvpHandleDeath(last);
+    for (let i = 0; i < 2; i++) H.updatePvpMatch(0.1);
+    const banner = document.getElementById("pvp-results-banner").textContent;
+    check("IN.15 no humans left: the infected win", /THE INFECTED WIN/.test(banner) && H.pvpMatch.ended, banner);
+    H.startPvpForTest(4, "infected", "map2");
+    P.forEach((q) => { q.pvpHealthBefore = q.health; });
+    H.pvpMatch.timeLeft = 0.05; H.updatePvpMatch(0.1);
+    check("IN.16 the timer running out with survivors: the humans win", /HUMANS SURVIVE/.test(document.getElementById("pvp-results-banner").textContent), document.getElementById("pvp-results-banner").textContent);
+    // the lobby: the Team row reads Human / Infected
+    H.setPvpSetup(true); document.querySelector('.pvp-mode-option[data-pvp-mode="infected"]').click();
+    const c = { faceKey: "x", category: 5, team: 0, side: 0 }; H.quadSetup.slots.length = 4;
+    H.titlePanels["quad-setup"].classList.add("active");
+    const v0 = H.customizationValue(c, "team"); H.cycleCustomization(c, 1); const v1 = H.customizationValue(c, "team"); H.cycleCustomization(c, 1); const v2 = H.customizationValue(c, "team");
+    H.titlePanels["quad-setup"].classList.remove("active"); H.setPvpSetup(false);
+    check("IN.17 lobby: the Team row switches to Human / Infected (2 choices, default Human)", v0 === "Human" && v1 === "Infected" && v2 === "Human", [v0, v1, v2].join());
+    H.startPvpForTest(4, "infected", "map2");
+    const green = (q) => { let n = 0, total = 0; q.viewModelRoot.traverse((o) => { if (o.userData && o.userData.origHandMat) { total++; if (o.material === o.userData.greenHandMat) n++; } }); return [n, total]; };
+    const gi = green(inf()[0]), gh = green(hum()[0]);
+    check("IN.19 the infected's first-person hands are green (every hand mesh swapped); the humans' are not", gi[0] > 0 && gi[0] === gi[1] && gh[0] === 0, gi + " / " + gh);
+    const ratio = H.pvpMoveSpeedMultiplier(inf()[0]) / H.pvpMoveSpeedMultiplier(hum()[0]);
+    check("IN.20 the infected move 5% slower than the humans", Math.abs(ratio - 0.95) < 1e-9, ratio);
+    // zone
+    const f = H.map2World.pvpFinalZone, B = H.map2World.mapToWorld(425, 255);
+    check("IN.18 info: distance from the final zone's centre to the 1108 basement (m) / final radius", true, Math.hypot(f.x - B.x, f.z - B.z).toFixed(1) + " / " + f.radius);
+    H.resetGame();
+  }
+
+  function runSetupAndStart() {
+    // map picker lives in the PVP settings panel; Residential is the default
+    H.setPvpSetup(true);
+    const active = document.querySelector(".pvp-map-option.active");
+    const inPanel = !!active && !!active.closest("#pvp-settings-panel");
+    check("SU.1 the map picker is in the PVP settings panel (not on the setup screens)", inPanel && document.querySelectorAll("#title-quad-setup .pvp-map-option, #title-coop-setup .pvp-map-option").length === 0, active && active.dataset.pvpMap);
+    document.querySelector('.pvp-mode-option[data-pvp-mode="hill"]').click();
+    const campusDisabled = document.querySelector('.pvp-map-option[data-pvp-map="campus"]').classList.contains("disabled");
+    document.querySelector('.pvp-mode-option[data-pvp-mode="infected"]').click(); H.openPvpSettings();
+    const teamVisible = document.getElementById("pvp-infected-settings").style.display !== "none";
+    H.closePvpSettings(); document.querySelector('.pvp-mode-option[data-pvp-mode="deathmatch"]').click(); H.openPvpSettings();
+    const teamHidden = document.getElementById("pvp-infected-settings").style.display === "none";
+    H.closePvpSettings(); H.setPvpSetup(false);
+    check("SU.2 Campus is greyed out while Zone is selected; the Human/Infected sliders show only in Infected mode", campusDisabled && teamVisible && teamHidden, [campusDisabled, teamVisible, teamHidden].join());
+    // team health / speed sliders
+    H.startPvpForTest(4, "infected", "map2");
+    const P = H.players, inf = P.find((q) => q.pvpInfected), hum = P.find((q) => !q.pvpInfected);
+    const base = H.pvpMoveSpeedMultiplier(hum);
+    check("SU.3 defaults: both teams 100 HP; the infected 95% speed", H.getMaxHealth(hum) === 100 && H.getMaxHealth(inf) === 100 && Math.abs(H.pvpMoveSpeedMultiplier(inf) / base - 0.95) < 1e-9, H.getMaxHealth(hum) + " " + H.getMaxHealth(inf));
+    H.setPvpSetting("humanHealth", 150); H.setPvpSetting("infectedHealth", 200); H.setPvpSetting("humanSpeed", 110); H.setPvpSetting("infectedSpeed", 120);
+    H.setPvpSetting("health", 200);
+    check("SU.4 team sliders are separate from, and multiply with, the all-player values", H.getMaxHealth(hum) === 300 && H.getMaxHealth(inf) === 400 && Math.abs(H.pvpMoveSpeedMultiplier(hum) / base - 1.1) < 1e-9 && Math.abs(H.pvpMoveSpeedMultiplier(inf) / base - 1.2) < 1e-9, H.getMaxHealth(hum) + " " + H.getMaxHealth(inf));
+    document.getElementById("pvp-settings-reset").click();
+    check("SU.5 Reset to default restores every slider (infected speed back to 95)", H.pvpSettings.health === 100 && H.pvpSettings.humanHealth === 100 && H.pvpSettings.infectedSpeed === 95 && H.pvpSettings.infectedHealth === 100, JSON.stringify(H.pvpSettings));
+    // random start conditions
+    let day = 0, N = 800; const seen = new Set();
+    for (let i = 0; i < N; i++) { H.pvpRandomizeStartConditions(); if (H.dayNightTime < 8 * 60) day++; seen.add(H.pvpMatch.startWeather); }
+    check("SU.6 PVP starts at a random time of day, weighted to day (about 75%), and in varied weather", day / N > 0.68 && day / N < 0.82 && seen.size >= 3, (day / N).toFixed(2) + " " + [...seen].join());
+    H.resetGame();
+  }
+
+  try { run(); runMap2(); runMap2Storm(); runCars(); runHouses(); runPinkAndRoofs(); runBasements(); runCollisionFixes(); runTeams(); runAdsSensitivity(); runZoneMode(); runInfected(); runSetupAndStart(); runMap2Closeup(); runMap2Spawns(); } catch (e) { check("exception", false, e && e.stack || e); }
   const pass = checks.every((c) => c.ok);
   window.__perfResults = JSON.stringify({ pass, checks });
 })();

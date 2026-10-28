@@ -365,21 +365,27 @@
      themeable through a single standard pseudo-element. */
   #mouse-sensitivity-slider,
   #controller-sensitivity-slider,
-  #aim-assist-slider {
+  #aim-assist-slider,
+  #ads-sensitivity-slider,
+  #sniper-ads-sensitivity-slider {
     -webkit-appearance: none;
     appearance: none;
     background: transparent;
   }
   #mouse-sensitivity-slider::-webkit-slider-runnable-track,
   #controller-sensitivity-slider::-webkit-slider-runnable-track,
-  #aim-assist-slider::-webkit-slider-runnable-track {
+  #aim-assist-slider::-webkit-slider-runnable-track,
+  #ads-sensitivity-slider::-webkit-slider-runnable-track,
+  #sniper-ads-sensitivity-slider::-webkit-slider-runnable-track {
     height: 4px;
     background: rgba(255, 255, 255, 0.3);
     border-radius: 2px;
   }
   #mouse-sensitivity-slider::-webkit-slider-thumb,
   #controller-sensitivity-slider::-webkit-slider-thumb,
-  #aim-assist-slider::-webkit-slider-thumb {
+  #aim-assist-slider::-webkit-slider-thumb,
+  #ads-sensitivity-slider::-webkit-slider-thumb,
+  #sniper-ads-sensitivity-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     width: 18px;
     height: 18px;
@@ -391,14 +397,18 @@
   }
   #mouse-sensitivity-slider::-moz-range-track,
   #controller-sensitivity-slider::-moz-range-track,
-  #aim-assist-slider::-moz-range-track {
+  #aim-assist-slider::-moz-range-track,
+  #ads-sensitivity-slider::-moz-range-track,
+  #sniper-ads-sensitivity-slider::-moz-range-track {
     height: 4px;
     background: rgba(255, 255, 255, 0.3);
     border-radius: 2px;
   }
   #mouse-sensitivity-slider::-moz-range-thumb,
   #controller-sensitivity-slider::-moz-range-thumb,
-  #aim-assist-slider::-moz-range-thumb {
+  #aim-assist-slider::-moz-range-thumb,
+  #ads-sensitivity-slider::-moz-range-thumb,
+  #sniper-ads-sensitivity-slider::-moz-range-thumb {
     width: 18px;
     height: 18px;
     border-radius: 50%;
@@ -410,7 +420,9 @@
      renderControllerControlsList's row 0) -- same gold accent as every
      other "selected" highlight in the UI, just as an outline here since a
      range input has no chip-like background of its own to recolor. */
-  #controller-sensitivity-slider.controller-selected {
+  #controller-sensitivity-slider.controller-selected,
+  #ads-sensitivity-slider.controller-selected,
+  #sniper-ads-sensitivity-slider.controller-selected {
     outline: 2px solid #ffdc64;
     outline-offset: 6px;
     border-radius: 4px;
@@ -1115,6 +1127,13 @@
      decides -- being declared after them is what makes these win. */
   body.coop-spectator-fullscreen #coop-divider {
     display: none;
+  }
+  /* Sniper scope: the 2-player scope overlay is sized to its half (body.coop-mode
+     .scope-overlay.scope-p*), so the survivor's must grow to the whole window too. */
+  body.coop-spectator-fullscreen-p1 .scope-overlay.scope-p1,
+  body.coop-spectator-fullscreen-p2 .scope-overlay.scope-p2 {
+    top: 0;
+    height: 100%;
   }
   body.coop-spectator-fullscreen-p1 .coop-p2.coop-crosshair,
   body.coop-spectator-fullscreen-p1 .coop-p2.coop-hit-marker,
@@ -1855,8 +1874,10 @@
   /* PVP deathmatch (see PVP_PLAN.md) */
   body.pvp-mode #wave-hud, body.pvp-mode #score-hud, body.pvp-mode #boss-health-hud { display: none; }
   .player-count-divider { margin-top: 10px; font: bold 14px Arial, Helvetica, sans-serif; color: rgba(255,255,255,0.7); text-align: center; letter-spacing: 2px; text-transform: uppercase; }
-  #pvp-timer { position: fixed; top: 50vh; left: 50%; transform: translate(-50%, -50%); z-index: 12; display: none; padding: 4px 12px; font: bold 22px Arial, Helvetica, sans-serif; color: #fff; background: rgba(0,0,0,0.55); border-radius: 6px; pointer-events: none; }
+  #pvp-timer { position: fixed; top: 50vh; left: 50%; transform: translate(-50%, -50%); z-index: 16; display: none; padding: 4px 12px; font: bold 22px Arial, Helvetica, sans-serif; color: #fff; background: rgba(0,0,0,0.55); border-radius: 6px; pointer-events: none; }
   body.pvp-mode #pvp-timer { display: block; }
+  #pvp-zone-status { position: fixed; top: calc(50vh + 28px); left: 50%; transform: translateX(-50%); z-index: 16; display: none; padding: 3px 12px; font: bold 15px Arial, Helvetica, sans-serif; letter-spacing: 1px; color: #fff; background: rgba(0,0,0,0.55); border-radius: 6px; pointer-events: none; white-space: nowrap; }
+  body.pvp-mode.pvp-hill #pvp-zone-status, body.pvp-mode.pvp-infected #pvp-zone-status { display: block; }
   .pvp-board { background: rgba(0,0,0,0.5); color: #fff; font: 13px Arial, Helvetica, sans-serif; border-radius: 6px; padding: 4px 8px; pointer-events: none; user-select: none; }
   .pvp-board-title { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; opacity: 0.7; text-align: center; margin-bottom: 2px; }
   .pvp-board-row { display: flex; align-items: center; gap: 6px; padding: 1px 4px 1px 3px; border-left: 3px solid transparent; border-radius: 3px; }
@@ -1864,7 +1885,7 @@
   .pvp-board-face { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; background: #222; flex: none; }
   .pvp-board-kills { font-weight: bold; min-width: 1.5em; transition: color 0.4s; }
   .pvp-board-kills.tick { color: #ffd24d; transition: none; }
-  #pvp-kills { position: fixed; top: 6px; left: 50%; transform: translateX(-50%); z-index: 12; display: none; min-width: 84px; }
+  #pvp-kills { position: fixed; top: 6px; left: 50%; transform: translateX(-50%); z-index: 16; display: none; min-width: 84px; }
   #pvp-kills.visible { display: block; }
   #pvp-results-board { font-size: 22px; padding: 10px 22px; min-width: 260px; }
   #pvp-results-board .pvp-board-title { font-size: 14px; margin-bottom: 6px; }
@@ -1881,18 +1902,44 @@
   .pvp-protect.show { display: block; }
   .pvp-panel { position: fixed; z-index: 15; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: rgba(20,0,0,0.6); color: #fff; font-family: Arial, Helvetica, sans-serif; pointer-events: auto; overflow: hidden; }
   .pvp-panel.visible { display: flex; }
-  .pvp-panel h1 { margin: 0; font-size: clamp(18px, 4vh, 40px); }
-  .pvp-panel-sub { font-size: clamp(12px, 2vh, 18px); min-height: 1.2em; opacity: 0.85; }
-  .pvp-weapon-list { list-style: none; margin: 0; padding: 0 4px 0 0; display: flex; flex-direction: column; gap: 3px; width: min(240px, 80%); flex: 0 1 auto; min-height: 0; max-height: 46%; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.4) transparent; }
+  .pvp-panel h1 { margin: 0; font-size: clamp(11px, 8cqh, 40px); }
+  .pvp-panel-sub { font-size: clamp(7px, 4cqh, 18px); min-height: 1.2em; opacity: 0.85; }
+  /* Weapon select / respawn panel: header, loadout card grid, details of the highlighted weapon, one big action button. */
+  .pvp-panel { gap: clamp(4px, calc(var(--ph, 540px) * 0.02), 10px); padding: clamp(4px, calc(var(--ph, 540px) * 0.03), 16px) clamp(8px, 2vw, 24px); background: radial-gradient(ellipse at 50% 30%, rgba(34,38,52,0.88), rgba(8,9,14,0.94)); box-sizing: border-box; }
+  /* the leaderboard (top centre) and the match timer (screen centre) sit above the panels: keep the panel contents clear of them */
+  .pvp-panel h1 { letter-spacing: 0.22em; font-weight: 800; text-transform: uppercase; text-shadow: 0 2px 10px rgba(0,0,0,0.8); }
+  .pvp-panel .pvp-panel-sub:empty { display: none; }
+  .pvp-weapon-list { list-style: none; margin: 0; padding: 2px 4px 2px 2px; display: grid; grid-template-columns: repeat(auto-fill, minmax(clamp(52px, 28cqh, 128px), 1fr)); gap: clamp(6px, 1.8cqh, 8px); width: min(560px, 100%); flex: 1 1 auto; min-height: 0; overflow-y: auto; align-content: start; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.35) transparent; }
   .pvp-weapon-list.hidden { display: none; }
-  .pvp-weapon-list li { flex: none; padding: 4px 12px; border: 2px solid rgba(255,255,255,0.3); border-radius: 4px; background: rgba(255,255,255,0.07); text-align: left; font-size: clamp(11px, 1.8vh, 16px); cursor: pointer; }
-  .pvp-weapon-list li:hover { background: rgba(255,255,255,0.14); }
-  .pvp-weapon-list li.selected { border-color: #ffd24d; background: rgba(255,210,77,0.25); font-weight: bold; }
-  .pvp-countdown { font: bold clamp(20px, 5vh, 44px) Arial, Helvetica, sans-serif; min-height: 1.2em; }
-  .pvp-panel .pvp-respawn { display: none; }
+  .pvp-weapon-list li { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: clamp(6px, 2cqh, 10px) 4px; border: 2px solid rgba(255,255,255,0.14); border-radius: 8px; background: linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.03)); text-align: center; cursor: pointer; user-select: none; transition: transform 0.12s, border-color 0.12s, background 0.12s, box-shadow 0.12s; }
+  .pvp-weapon-list li img { width: 100%; max-width: 92px; height: clamp(12px, 10cqh, 42px); object-fit: contain; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6)); pointer-events: none; }
+  .pvp-weapon-list li .pvp-wname { font-weight: 700; font-size: clamp(6px, 3.4cqh, 14px); line-height: 1.1; }
+  .pvp-weapon-list li .pvp-wtag { font-size: clamp(6px, 2.6cqh, 10px); letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.55; }
+  .pvp-weapon-list li:hover { background: linear-gradient(180deg, rgba(255,255,255,0.17), rgba(255,255,255,0.06)); border-color: rgba(255,255,255,0.4); transform: translateY(-1px); }
+  .pvp-weapon-list li.selected { border-color: #ffd24d; background: linear-gradient(180deg, rgba(255,210,77,0.34), rgba(255,210,77,0.1)); box-shadow: 0 0 14px rgba(255,210,77,0.45), inset 0 0 0 1px rgba(255,210,77,0.35); transform: translateY(-1px); }
+  .pvp-weapon-list li.selected .pvp-wtag { opacity: 0.95; color: #ffd24d; }
+  .pvp-weapon-list li.selected::after { content: "\2713"; position: absolute; top: 3px; right: 6px; font-size: clamp(6px, 3.2cqh, 14px); font-weight: 900; color: #ffd24d; }
+  .pvp-detail { width: min(560px, 100%); display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: clamp(6px, 2cqh, 9px) clamp(8px, 1.4vw, 14px); border-radius: 8px; background: rgba(255,255,255,0.07); border-left: 3px solid #ffd24d; box-sizing: border-box; flex: none; }
+  .pvp-detail:empty { display: none; }
+  .pvp-detail .pvp-dname { font-weight: 800; font-size: clamp(7px, 4.2cqh, 18px); }
+  .pvp-detail .pvp-dtag { font-size: clamp(6px, 2.8cqh, 11px); letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.6; }
+  .pvp-detail .pvp-dstats { display: grid; grid-template-columns: auto 64px; gap: 1px 8px; align-items: center; font-size: clamp(6px, 2.6cqh, 10px); letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.9; }
+  .pvp-detail .pvp-bar { height: 5px; border-radius: 3px; background: rgba(255,255,255,0.16); overflow: hidden; }
+  .pvp-detail .pvp-bar i { display: block; height: 100%; background: #ffd24d; }
+  .pvp-countdown { font: bold clamp(12px, 10cqh, 44px) Arial, Helvetica, sans-serif; min-height: 1.2em; }
+  .pvp-panel .pvp-respawn { display: none; margin: 0; min-width: min(280px, 90%); padding: clamp(6px, 2.8cqh, 12px) 28px; font-size: clamp(8px, 4.8cqh, 20px); font-weight: 800; letter-spacing: 0.2em; text-transform: uppercase; color: #1a1400; background: linear-gradient(180deg, #ffe07a, #ffc42e); border: 0; border-radius: 8px; box-shadow: 0 4px 16px rgba(255,196,46,0.35); flex: none; }
+  .pvp-panel .pvp-respawn:hover { filter: brightness(1.08); }
   .pvp-panel.ready .pvp-respawn { display: block; }
   .pvp-panel.ready .pvp-countdown { display: none; }
-  .pvp-hint { font-size: 12px; opacity: 0.75; }
+  .pvp-hint { font-size: clamp(6px, 3cqh, 12px); opacity: 0.8; flex: none; }
+  .pvp-hint kbd { display: inline-block; padding: 0 6px; margin: 0 1px; border: 1px solid rgba(255,255,255,0.4); border-bottom-width: 2px; border-radius: 4px; background: rgba(255,255,255,0.1); font: inherit; font-weight: 700; }
+  .pvp-panel { container-type: size; }
+  /* the leaderboard (top centre) and the match timer (screen centre) float above the panels: clear them by their real size */
+  .pvp-panel.top-row.wide { padding-top: calc(var(--pvp-board-h, 0px) + 8px); }
+  .pvp-panel.top-row { padding-bottom: max(calc(var(--ph, 540px) * 0.03), 26px); }
+  .pvp-panel.bottom-row.wide { padding-top: max(calc(var(--ph, 540px) * 0.03), 26px); }
+  .pvp-panel.top-row:not(.wide).left-col { padding-right: calc(var(--pvp-board-w, 0px) / 2 + 10px); }
+  .pvp-panel.top-row:not(.wide).right-col { padding-left: calc(var(--pvp-board-w, 0px) / 2 + 10px); }
   #pvp-killfeed { position: fixed; top: 10px; right: 10px; z-index: 12; display: none; flex-direction: column; align-items: flex-end; gap: 3px; pointer-events: none; font: 12px Arial, Helvetica, sans-serif; }
   body.pvp-mode #pvp-killfeed { display: flex; }
   .pvp-feed-line { display: flex; align-items: center; gap: 5px; padding: 2px 7px 2px 5px; background: rgba(0,0,0,0.42); color: #fff; border-radius: 4px; opacity: 1; transition: opacity 0.6s; white-space: nowrap; }
@@ -1905,6 +1952,13 @@
   body.pvp-mode .coop-ammo-reserve.pvp-inf, body.pvp-mode #ammo-reserve.pvp-inf { font-size: 1.55em; line-height: 0.8; vertical-align: -0.1em; opacity: 0.85; }
   #pvp-results { position: fixed; inset: 0; z-index: 30; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: rgba(0,0,0,0.8); color: #fff; font-family: Arial, Helvetica, sans-serif; }
   #pvp-results.visible { display: flex; }
+  #pvp-results-banner { margin: 0; font-size: 84px; letter-spacing: 6px; text-align: center; text-shadow: 0 0 24px currentColor, 0 4px 12px rgba(0,0,0,0.9); animation: pvp-win-pop 0.6s ease-out; }
+  #pvp-results-banner .pvp-win-trophy { display: block; font-size: 64px; letter-spacing: 0; margin-bottom: 4px; }
+  @keyframes pvp-win-pop { 0% { transform: scale(0.4); opacity: 0; } 70% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
+  #pvp-results-board .pvp-board-row.winner { background: rgba(255,210,77,0.4); border-left-width: 6px; box-shadow: 0 0 18px rgba(255,210,77,0.7); font-weight: bold; }
+  #pvp-results-board.has-winner .pvp-board-row:not(.winner) { opacity: 0.55; }
+  .pvp-winner-tag { background: #ffd24d; color: #000; font-size: 13px; font-weight: bold; letter-spacing: 2px; padding: 2px 8px; border-radius: 4px; }
+  #pvp-results-continue:disabled { opacity: 0.4; cursor: not-allowed; }
   /* Shared by the death screen's restart button and the pause/controls
      overlay panels' buttons. */
   .menu-button {
@@ -2576,6 +2630,9 @@
     border-radius: 5px;
     cursor: pointer;
   }
+  .customize-row[data-category="team"] { display: none; }
+  #title-quad-setup.pvp-setup .customize-row[data-category="team"] { display: grid; }
+  .pvp-team-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px rgba(0,0,0,0.6); }
   .customize-row.selected {
     color: #fff;
     background: rgba(255, 220, 100, 0.18);
@@ -2768,6 +2825,28 @@
   .pvp-settings-row input[type="range"] { width: 100%; }
   .pvp-settings-row span { text-align: right; font-weight: bold; }
   .pvp-settings-buttons { display: flex; justify-content: center; gap: 14px; margin-top: 4px; }
+  .pvp-settings-box { max-height: 94vh; overflow-y: auto; min-width: min(580px, 92vw); gap: 12px; padding: 20px 28px; }
+  .pvp-settings-section { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; background: rgba(255,255,255,0.04); }
+  .pvp-settings-heading { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; font-weight: bold; letter-spacing: 1.5px; text-transform: uppercase; opacity: 0.85; }
+  #pvp-map-options { display: flex; gap: 10px; }
+  #pvp-settings-panel .pvp-map-option { flex: 1; min-width: 0; padding: 8px 14px; }
+  .pvp-map-option.disabled { opacity: 0.35; pointer-events: none; }
+  .pvp-team-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .pvp-team-col { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 8px; border: 1px solid; }
+  .pvp-team-col.human { border-color: #4da6ff; } .pvp-team-col.human .pvp-team-title { color: #4da6ff; }
+  .pvp-team-col.infected { border-color: #5cf28a; } .pvp-team-col.infected .pvp-team-title { color: #5cf28a; }
+  .pvp-team-title { font-weight: bold; letter-spacing: 1px; text-align: left; }
+  .pvp-team-col .pvp-settings-row { grid-template-columns: 50px 1fr 44px; gap: 8px; font-size: 13px; padding: 2px 0; }
+  /* the PVP setup screens must always fit the window: tighter model/mode sizes, and the content scrolls as a last resort */
+  #title-quad-setup .title-panel-content, #title-coop-setup .title-panel-content { max-height: 100vh; overflow-y: auto; overflow-x: hidden; padding: 4px 8px; box-sizing: border-box; }
+  #title-quad-setup.pvp-setup .quad-setup-model { height: 23vh; }
+  #title-quad-setup.pvp-setup .quad-setup-box .coop-setup-scheme-icon { height: 7vh; }
+  #title-quad-setup.pvp-setup .quad-setup-side { padding: 4px 10px 6px; }
+  #title-quad-setup.pvp-setup #quad-setup-status { min-height: 18px; font-size: 16px; }
+  #title-quad-setup .title-panel-content, #title-coop-setup .title-panel-content { scrollbar-width: thin; }
+  .pvp-setup #coop-pvp-mode-options, .pvp-setup #quad-pvp-mode-options { margin-bottom: 10px; }
+  .pvp-setup .pvp-mode-option { min-width: 0; padding: 8px 14px; }
+  .pvp-setup .pvp-mode-option .pvp-mode-desc { font-size: 11px; }
 </style>
 </head>
 <body>
@@ -2913,11 +2992,8 @@
       <div id="coop-pvp-mode-options">
         <div class="pvp-mode-option" data-pvp-mode="deathmatch"><div class="difficulty-name">Deathmatch</div><div class="pvp-mode-desc">Most kills wins</div></div>
         <div class="pvp-mode-option" data-pvp-mode="gungame"><div class="difficulty-name">Gun Game</div><div class="pvp-mode-desc">Kill your way up the weapon ladder</div></div>
-      </div>
-      <div id="coop-setup-map-label">Map <span class="pvp-settings-hint">L1 / R1</span></div>
-      <div id="coop-pvp-map-options">
-        <div class="pvp-map-option" data-pvp-map="campus"><div class="difficulty-name">Campus</div><div class="pvp-mode-desc">MSUM campus</div></div>
-        <div class="pvp-map-option" data-pvp-map="map2"><div class="difficulty-name">Residential</div><div class="pvp-mode-desc">4th Ave S</div></div>
+<div class="pvp-mode-option" data-pvp-mode="hill"><div class="difficulty-name">Zone</div><div class="pvp-mode-desc">Hold a basement to score points</div></div>
+<div class="pvp-mode-option" data-pvp-mode="infected"><div class="difficulty-name">Infected</div><div class="pvp-mode-desc">Survive the infected, or hunt the humans</div></div>
       </div>
       <button type="button" id="coop-pvp-settings-button" class="menu-button pvp-settings-open">Settings <span class="pvp-settings-hint">&#9633;</span></button>
       <div id="coop-setup-difficulty-label">Difficulty</div>
@@ -3016,11 +3092,8 @@
       <div id="quad-pvp-mode-options">
         <div class="pvp-mode-option" data-pvp-mode="deathmatch"><div class="difficulty-name">Deathmatch</div><div class="pvp-mode-desc">Most kills wins</div></div>
         <div class="pvp-mode-option" data-pvp-mode="gungame"><div class="difficulty-name">Gun Game</div><div class="pvp-mode-desc">Kill your way up the weapon ladder</div></div>
-      </div>
-      <div id="quad-setup-map-label">Map <span class="pvp-settings-hint">L1 / R1</span></div>
-      <div id="quad-pvp-map-options">
-        <div class="pvp-map-option" data-pvp-map="campus"><div class="difficulty-name">Campus</div><div class="pvp-mode-desc">MSUM campus</div></div>
-        <div class="pvp-map-option" data-pvp-map="map2"><div class="difficulty-name">Residential</div><div class="pvp-mode-desc">4th Ave S</div></div>
+<div class="pvp-mode-option" data-pvp-mode="hill"><div class="difficulty-name">Zone</div><div class="pvp-mode-desc">Hold a basement to score points</div></div>
+<div class="pvp-mode-option" data-pvp-mode="infected"><div class="difficulty-name">Infected</div><div class="pvp-mode-desc">Survive the infected, or hunt the humans</div></div>
       </div>
       <button type="button" id="quad-pvp-settings-button" class="menu-button pvp-settings-open">Settings <span class="pvp-settings-hint">&#9633;</span></button>
       <div id="quad-setup-difficulty-label">Difficulty</div>
@@ -3076,6 +3149,16 @@
         <label for="controller-sensitivity-slider">Sensitivity</label>
         <input type="range" id="controller-sensitivity-slider" min="0" max="100" value="50" />
         <span id="controller-sensitivity-value">50%</span>
+      </div>
+      <div id="ads-sensitivity-row" class="sensitivity-row">
+        <label for="ads-sensitivity-slider">Aim down sights sensitivity</label>
+        <input type="range" id="ads-sensitivity-slider" min="0" max="100" value="35" />
+        <span id="ads-sensitivity-value">35%</span>
+      </div>
+      <div id="sniper-ads-sensitivity-row" class="sensitivity-row">
+        <label for="sniper-ads-sensitivity-slider">Sniper scope sensitivity</label>
+        <input type="range" id="sniper-ads-sensitivity-slider" min="0" max="100" value="35" />
+        <span id="sniper-ads-sensitivity-value">35%</span>
       </div>
       <ul id="controls-list"></ul>
       <ul id="controller-controls-list" class="hidden"></ul>
@@ -3166,15 +3249,45 @@
 <div id="pvp-settings-panel">
   <div class="pvp-settings-box">
     <h2>PVP Settings</h2>
-    <div class="pvp-settings-row">
-      <label for="pvp-health-slider">Player health</label>
-      <input type="range" id="pvp-health-slider" min="25" max="300" step="25" value="100" />
-      <span id="pvp-health-value">100</span>
+    <div class="pvp-settings-section">
+      <div class="pvp-settings-heading"><span>Map</span><span class="pvp-settings-hint">L1 / R1</span></div>
+      <div id="pvp-map-options">
+        <div class="pvp-map-option" data-pvp-map="campus"><div class="difficulty-name">Campus</div><div class="pvp-mode-desc">MSUM campus</div></div>
+        <div class="pvp-map-option" data-pvp-map="map2"><div class="difficulty-name">Residential</div><div class="pvp-mode-desc">4th Ave S</div></div>
+      </div>
     </div>
-    <div class="pvp-settings-row">
-      <label for="pvp-speed-slider">Player speed</label>
-      <input type="range" id="pvp-speed-slider" min="50" max="200" step="5" value="100" />
-      <span id="pvp-speed-value">100%</span>
+    <div class="pvp-settings-section">
+      <div class="pvp-settings-heading"><span>All players</span></div>
+      <div class="pvp-settings-row">
+        <label for="pvp-health-slider">Player health</label>
+        <input type="range" id="pvp-health-slider" min="25" max="300" step="25" value="100" />
+        <span id="pvp-health-value">100</span>
+      </div>
+      <div class="pvp-settings-row">
+        <label for="pvp-speed-slider">Player speed</label>
+        <input type="range" id="pvp-speed-slider" min="50" max="200" step="5" value="100" />
+        <span id="pvp-speed-value">100%</span>
+      </div>
+      <div class="pvp-settings-row">
+        <label for="pvp-ff-toggle">Friendly fire</label>
+        <button type="button" id="pvp-ff-toggle" class="menu-button" aria-pressed="false">Off</button>
+        <span>teams</span>
+      </div>
+    </div>
+    <div class="pvp-settings-section" id="pvp-infected-settings">
+      <div class="pvp-settings-heading"><span>Infected mode</span><span class="pvp-settings-hint">per team, on top of the values above</span></div>
+      <div class="pvp-team-cols">
+        <div class="pvp-team-col human">
+          <div class="pvp-team-title">Human</div>
+          <div class="pvp-settings-row"><label for="pvp-human-health-slider">Health</label><input type="range" id="pvp-human-health-slider" min="25" max="300" step="5" value="100" /><span id="pvp-human-health-value">100%</span></div>
+          <div class="pvp-settings-row"><label for="pvp-human-speed-slider">Speed</label><input type="range" id="pvp-human-speed-slider" min="50" max="200" step="5" value="100" /><span id="pvp-human-speed-value">100%</span></div>
+        </div>
+        <div class="pvp-team-col infected">
+          <div class="pvp-team-title">Infected</div>
+          <div class="pvp-settings-row"><label for="pvp-infected-health-slider">Health</label><input type="range" id="pvp-infected-health-slider" min="25" max="300" step="5" value="100" /><span id="pvp-infected-health-value">100%</span></div>
+          <div class="pvp-settings-row"><label for="pvp-infected-speed-slider">Speed</label><input type="range" id="pvp-infected-speed-slider" min="50" max="200" step="5" value="95" /><span id="pvp-infected-speed-value">95%</span></div>
+        </div>
+      </div>
     </div>
     <div class="pvp-settings-buttons">
       <button type="button" id="pvp-settings-reset" class="menu-button">Reset to default</button>
@@ -3429,6 +3542,7 @@
   let isPvpMatchActive = false;
   let pvpSetupSelected = false;           // set by the player-count screen's PVP options, read by startCoopMatch/startQuadMatch
   const PVP_MATCH_SECONDS = 15 * 60;
+  const PVP_HILL_SECONDS = 10 * 60; // Zone mode
   const PVP_HEAL_ON_KILL = 50;            // HP restored to the killer on every kill (clamped to max health)
   const PVP_FALL_DAMAGE_MULTIPLIER = 0.5; // fall damage in PVP only
   // Gun Game ladder (13 levels): the killer advances one level per kill. A kill on the last level wins.
@@ -3440,8 +3554,21 @@
   const PVP_SPAWN_PROTECTION_SECONDS = 2;
   const PVP_MOVE_SPEED_MULTIPLIER = 1.15;
   // Setup-screen "Settings" (read live by getMaxHealth / pvpMoveSpeedMultiplier; they persist for the matches launched from the setup screen).
-  const PVP_SETTINGS_DEFAULT = { health: 100, speed: 100 }; // max/starting HP; % of the PVP speed above
+  const PVP_SETTINGS_DEFAULT = { health: 100, speed: 100, humanHealth: 100, humanSpeed: 100, infectedHealth: 100, infectedSpeed: 95 }; // the four team values are % multipliers used only in Infected mode (the infected are 5% slower by default)
   const pvpSettings = { ...PVP_SETTINGS_DEFAULT };
+  // TEAMS (3- and 4-player PVP lobbies): each player picks Red/Blue/Green(/Yellow) on the setup screen. Teams only count when at
+  // least two players share one. Friendly fire is off by default: teammates' shots, swings and blasts do nothing to each other.
+  let pvpFriendlyFire = false, pvpTeamsActive = false;
+  const PVP_TEAM_NAMES = ["Red", "Blue", "Green", "Yellow"];
+  // INFECTED mode reuses the team machinery: team 0 = human, team 1 = infected (blue / green).
+  const PVP_INFECTED_SECONDS = 10 * 60;
+  const PVP_INFECTED_KATANA_DAMAGE = 25;
+  const PVP_INFECTED_KILL_HEAL = 15;
+  const PVP_INFECTED_NAMES = ["Human", "Infected"], PVP_INFECTED_COLORS = ["#4da6ff", "#5cf28a"];
+  const pvpTeamsOn = () => isPvpMatchActive && pvpTeamsActive && (players.length >= 3 || pvpMatch.mode === "infected");
+  const pvpTeamName = (t) => (pvpMode === "infected" ? PVP_INFECTED_NAMES[t] : PVP_TEAM_NAMES[t]);
+  const pvpTeamColor = (t) => (pvpMode === "infected" ? PVP_INFECTED_COLORS[t] : ZONE_PLAYER_COLORS[t % 4]);
+  const pvpSameTeam = (a, b) => pvpTeamsOn() && a.pvpTeam != null && a.pvpTeam === b.pvpTeam;
   const PVP_STAMINA_MULTIPLIER = 2;       // max stamina
   const PVP_STAMINA_REGEN_MULTIPLIER = 2; // same refill time as PVE ("regen proportionally")
   const PVP_INFINITE_RESERVE = 9999;      // shown as the infinity symbol
@@ -3469,10 +3596,13 @@
     shotgun: { pellet: 11.5, head: 1 },
   };
   const PVP_RESULTS_AUTO_RETURN_SECONDS = 20;
+  const PVP_RESULTS_CONTINUE_LOCK_SECONDS = 2; // Continue can't be pressed this long after the results appear
   const PVP_ZONE_TIMING = { INITIAL_ZONE_DELAY: 60, ZONE_STAY_DURATION: 45, ZONE_WARNING_DURATION: 20, ZONE_TRANSITION_DURATION: 30 };
-  const PVP_SPAWN = { CANDIDATES: 90, MIN_DISTANCE: 25, ZONE_EDGE_MARGIN: 8, CLEARANCE: 0.8, DISTANCE_CAP: 150, VISIBLE_PENALTY: 60 };
+  const PVP_SPAWN = { CANDIDATES: 90, MIN_DISTANCE: 25, ZONE_EDGE_MARGIN: 8, CLEARANCE: 0.8, DISTANCE_CAP: 150, VISIBLE_PENALTY: 60, INDOOR_CANDIDATES: 10 };
   const pvpMatch = { timeLeft: 0, started: false, ended: false, resultsTimer: 0, mode: "deathmatch", clock: 0 };
-  function pvpMoveSpeedMultiplier() { return isPvpMatchActive ? PVP_MOVE_SPEED_MULTIPLIER * pvpSettings.speed / 100 : 1; }
+  // Infected mode: the Human / Infected team sliders (% multipliers, on top of the all-player values)
+  function pvpTeamFactor(player, what) { return player && isPvpMatchActive && pvpMatch.mode === "infected" ? pvpSettings[(player.pvpInfected ? "infected" : "human") + what] / 100 : 1; }
+  function pvpMoveSpeedMultiplier(player) { return isPvpMatchActive ? PVP_MOVE_SPEED_MULTIPLIER * pvpSettings.speed / 100 * pvpTeamFactor(player, "Speed") : 1; }
   // PVP DOM state (built lazily by buildPvpUi; declared here so resetGame can reach it at any time).
   const pvpUi = { built: false, timerEl: null, killsEl: null, feedEl: null, feed: [], rows: [], panels: [], badges: [], toasts: [], protects: [], lastTimerText: "" };
   const pvpResultsEl = document.getElementById("pvp-results");
@@ -3495,6 +3625,7 @@
   const SLIDE_DECAY_DURATION = 1.2;        // seconds to decay from peak speed down to walk speed
   const SLIDE_MOUSE_SENSITIVITY_MULTIPLIER = 0.60; // mouse look is dampened by this while sliding
 
+  let adsSensitivityScale = 1, sniperAdsSensitivityScale = 1; // see ADS_SENSITIVITY_STORAGE_KEY
   const MOUSE_SENSITIVITY_BASE = 0.0022; // radians per pixel of mouse movement, at the Controls screen's mouse-sensitivity slider's default 50% (1x scale -- see mouseSensitivityScale)
   const EYE_HEIGHT = 1.7;          // camera height above ground
   const PLATFORM_SIZE = 130;       // ground plane is PLATFORM_SIZE x PLATFORM_SIZE (comfortable buffer around the floor plan -- see FLOOR_PLAN_SCALE below)
@@ -4069,6 +4200,7 @@
   // Bare-hand (fists, i.e. no weapon in the active slot) melee hits
   // harder and reaches further than swinging a gun -- explicit request.
   const FIST_MELEE_DAMAGE = 55;
+  const PVP_FIST_MELEE_DAMAGE = 25;  // bare-hand punches in PVP
   const FIST_MELEE_RANGE = 2.8;
   const MELEE_COOLDOWN = 0.6;          // seconds between melee swings
   const MELEE_SWING_DURATION = 0.45;   // seconds the swing/punch animation takes to play out
@@ -8359,9 +8491,12 @@
   // with the aim itself so it doesn't jump. 1 for everything else.
   function getAimSensitivityMultiplier(player) {
     const def = getActiveWeaponDef(player);
-    const multiplier = def && def.gun.adsSensitivityMultiplier;
-    if (!multiplier || player.aimProgress <= 0) return 1;
-    return 1 + (multiplier - 1) * player.aimProgress;
+    if (!def || !def.gun || player.aimProgress <= 0) return 1;
+    // Two player settings (Controls screen, 50% = the game's own tuning): one for aiming any gun down its sights, one for the
+    // sniper's scope, which sits on top of the sniper's own built-in slow-down.
+    const sniperBase = def.gun.adsSensitivityMultiplier;
+    const factor = sniperBase ? sniperBase * sniperAdsSensitivityScale : adsSensitivityScale;
+    return 1 + (factor - 1) * player.aimProgress;
   }
 
   // The sniper's round (explicit request: collateral): walks the ray's
@@ -12002,7 +12137,7 @@
   // and the old small "classic" floor plan is no longer offered anywhere --
   // its code is left in place but nothing in the menus reaches it).
   let selectedMapId = "campus";  // "campus" | "map2" (map2, the Residential map, is PVP only)
-  let pvpMapId = "campus";       // the PVP setup screen's Map choice; copied into selectedMapId when a PVP match starts
+  let pvpMapId = "map2";       // the PVP setup screen's Map choice; copied into selectedMapId when a PVP match starts
   let isCampusMap = false;   // the run in progress is on the campus specifically (PVE-only systems key off this)
   let isWorldMap = false;    // ...on any built world (campus or map2); false = the tiny arena
   let currentWorld = null;   // campusWorld | map2World | null -- what every generic world query goes through
@@ -13505,7 +13640,8 @@
   // Residential (map2) PVP storm: starts as one circle enclosing the whole map, then converges continuously
   // onto the map's final circle (currentWorld.pvpFinalZone) over ZONE_MAP2_CONVERGE_SECONDS of match time and
   // holds there. No wait/warning/transition phases and no random zones; campus keeps the cycle below.
-  const ZONE_MAP2_CONVERGE_SECONDS = 5 * 60;
+  const ZONE_MAP2_CONVERGE_SECONDS = 10 * 60;
+  const ZONE_MAP2_TEN_MINUTE_MODE_SECONDS = 9 * 60;
   function zoneIsMap2Pvp() {
     return isPvpMatchActive && isWorldMap && !!currentWorld && !!currentWorld.pvpFinalZone;
   }
@@ -13537,7 +13673,7 @@
       let r = 0;
       for (const q of currentWorld.playablePolygon) r = Math.max(r, Math.hypot(q.x - mx, q.z - mz));
       zoneState.phase = "converge";
-      zoneState.phaseDuration = ZONE_MAP2_CONVERGE_SECONDS;
+      zoneState.phaseDuration = pvpMatch.mode === "hill" || pvpMatch.mode === "infected" ? ZONE_MAP2_TEN_MINUTE_MODE_SECONDS : ZONE_MAP2_CONVERGE_SECONDS; // the 10 minute modes close in 9
       zoneState.center = { x: mx, z: mz };
       zoneState.radius = r + 2;
       zoneState.from = { x: mx, z: mz, radius: r + 2 };
@@ -17109,7 +17245,7 @@
   }
 
   function getMaxHealth(player) {
-    let max = isPvpMatchActive ? pvpSettings.health : MAX_HEALTH;
+    let max = isPvpMatchActive ? Math.round(pvpSettings.health * pvpTeamFactor(player, "Health")) : MAX_HEALTH;
     for (const id of player.unlockedSkillIds) {
       const effect = SKILL_TREE_NODES_BY_ID[id].effect;
       if (effect && effect.maxHealthBonus) max += effect.maxHealthBonus;
@@ -17998,6 +18134,7 @@
     if (player.grabbedBy) return;
     if (isPvpMatchActive) {
       if (attacker === player) return; // never self
+      if (attacker && !pvpFriendlyFire && pvpSameTeam(attacker, player)) return; // teammates (friendly fire off)
       if (player.pvpAwaitingSpawn || player.pvpProtectedFor > 0) return; // spawn protection (zone included)
     }
     if (source !== null) triggerDamageFx(player, amount, source);
@@ -18812,6 +18949,7 @@
     setActiveViewModel(player); // resets ADS/reload-tilt/recoil/melee, snaps the pose, and syncs the ammo HUD
 
     player.hitMarkerTimer = 0;
+    document.querySelectorAll("#hit-marker, .coop-hit-marker").forEach((el) => el.classList.remove("visible", "headshot")); // a marker left up when the last match froze would otherwise stay stuck on
 
     player.isSliding = false;
     player.slideElapsed = 0;
@@ -18943,7 +19081,7 @@
     resetViewLayout();
     resetZone();
     document.body.classList.remove("coop-spectator-fullscreen", "coop-spectator-fullscreen-p1", "coop-spectator-fullscreen-p2");
-    document.body.classList.remove("pvp-mode", "quad-mode", "trio-mode", "spectating-p1", "spectating-p2", "spectating-p3", "spectating-p4");
+    document.body.classList.remove("pvp-infected", "pvp-hill", "pvp-mode", "quad-mode", "trio-mode", "spectating-p1", "spectating-p2", "spectating-p3", "spectating-p4");
     coopSpectatorScreenEls.forEach((el) => el.classList.remove("visible"));
     document.querySelectorAll(".downed-hud").forEach((el) => el.classList.remove("visible"));
     // A 3/4-player match ending: Players 3/4 leave the roster (back to
@@ -19702,13 +19840,17 @@
   // replaced by a Mode picker (Deathmatch / Gun Game): clickable, and the
   // left stick steps it through stepDifficulty (which defers to stepPvpMode).
   const pvpModeOptionEls = document.querySelectorAll(".pvp-mode-option");
-  const PVP_MODE_ORDER = ["deathmatch", "gungame"];
+  const PVP_MODE_ORDER = ["deathmatch", "gungame", "hill", "infected"];
   function updatePvpModeButtons() {
+    if (pvpMode === "hill") pvpMapId = "map2"; // Zone is played in the basements: Residential only
     pvpModeOptionEls.forEach((el) => el.classList.toggle("active", el.dataset.pvpMode === pvpMode));
+    updatePvpMapButtons();
   }
   const pvpMapOptionEls = document.querySelectorAll(".pvp-map-option");
   const PVP_MAP_ORDER = ["campus", "map2"];
   function updatePvpMapButtons() {
+    pvpMapOptionEls.forEach((el) => el.classList.toggle("disabled", pvpMode === "hill" && el.dataset.pvpMap !== "map2")); // Zone is played in the basements: Residential only
+    pvpModeOptionEls.forEach((el) => el.classList.toggle("active", el.dataset.pvpMode === pvpMode));
     pvpMapOptionEls.forEach((el) => el.classList.toggle("active", el.dataset.pvpMap === pvpMapId));
   }
   function stepPvpMap(direction) {
@@ -19719,6 +19861,7 @@
     playClip("menu_click_01");
   }
   pvpMapOptionEls.forEach((el) => el.addEventListener("click", function () {
+    if (el.classList.contains("disabled")) return;
     pvpMapId = el.dataset.pvpMap;
     updatePvpMapButtons();
   }));
@@ -19745,16 +19888,29 @@
   // PVP Settings panel (Player health / Player speed). The sliders are plain range inputs, so the
   // generic controller menu nav (MENU_NAV_SCREENS "pvp-settings") drives them with the stick and
   // the keyboard arrows work natively; Square on a PVP setup screen opens it, X / Esc / Done close it.
-  const PVP_SETTING_LIMITS = { health: { min: 25, max: 300, step: 25 }, speed: { min: 50, max: 200, step: 5 } };
+  const PVP_SETTING_LIMITS = { health: { min: 25, max: 300, step: 25 }, speed: { min: 50, max: 200, step: 5 }, humanHealth: { min: 25, max: 300, step: 5 }, humanSpeed: { min: 50, max: 200, step: 5 }, infectedHealth: { min: 25, max: 300, step: 5 }, infectedSpeed: { min: 50, max: 200, step: 5 } };
   const pvpSettingsPanelEl = document.getElementById("pvp-settings-panel");
-  const pvpSettingSliderEls = { health: document.getElementById("pvp-health-slider"), speed: document.getElementById("pvp-speed-slider") };
-  const pvpSettingValueEls = { health: document.getElementById("pvp-health-value"), speed: document.getElementById("pvp-speed-value") };
+  const PVP_SETTING_IDS = { health: "pvp-health", speed: "pvp-speed", humanHealth: "pvp-human-health", humanSpeed: "pvp-human-speed", infectedHealth: "pvp-infected-health", infectedSpeed: "pvp-infected-speed" };
+  const pvpSettingSliderEls = {}, pvpSettingValueEls = {};
+  for (const [key, id] of Object.entries(PVP_SETTING_IDS)) { pvpSettingSliderEls[key] = document.getElementById(id + "-slider"); pvpSettingValueEls[key] = document.getElementById(id + "-value"); }
+  const pvpInfectedSettingsEl = document.getElementById("pvp-infected-settings");
   const isPvpSettingsOpen = () => pvpSettingsPanelEl.classList.contains("visible");
+  const pvpFfButtonEl = document.getElementById("pvp-ff-toggle");
+  function setPvpFriendlyFire(on) {
+    pvpFriendlyFire = !!on;
+    pvpFfButtonEl.textContent = pvpFriendlyFire ? "On" : "Off";
+    pvpFfButtonEl.setAttribute("aria-pressed", String(pvpFriendlyFire));
+    pvpFfButtonEl.style.borderColor = pvpFriendlyFire ? "#ff6b6b" : "";
+  }
+  pvpFfButtonEl.addEventListener("click", () => { setPvpFriendlyFire(!pvpFriendlyFire); playClip("menu_click_01", { volume: 0.5 }); });
   function syncPvpSettingsUI() {
+    setPvpFriendlyFire(pvpFriendlyFire);
     for (const key of Object.keys(pvpSettings)) {
       pvpSettingSliderEls[key].value = String(pvpSettings[key]);
-      pvpSettingValueEls[key].textContent = pvpSettings[key] + (key === "speed" ? "%" : "");
+      pvpSettingValueEls[key].textContent = pvpSettings[key] + (key === "health" ? "" : "%");
     }
+    pvpInfectedSettingsEl.style.display = pvpMode === "infected" ? "" : "none"; // team sliders only matter in Infected
+    updatePvpMapButtons();
   }
   function setPvpSetting(key, value) {
     const lim = PVP_SETTING_LIMITS[key];
@@ -19769,6 +19925,7 @@
   document.getElementById("pvp-settings-done").addEventListener("click", closePvpSettings);
   document.getElementById("pvp-settings-reset").addEventListener("click", () => {
     for (const key of Object.keys(PVP_SETTINGS_DEFAULT)) setPvpSetting(key, PVP_SETTINGS_DEFAULT[key]);
+    setPvpFriendlyFire(false);
   });
   document.getElementById("coop-pvp-settings-button").addEventListener("click", openPvpSettings);
   document.getElementById("quad-pvp-settings-button").addEventListener("click", openPvpSettings);
@@ -19779,9 +19936,10 @@
     event.stopImmediatePropagation();
   }, true);
   let pvpSettingsSquareWasPressed = false;
+  let pvpSettingsSquareArmed = false, pvpSettingsLastPoll = 0;
   const pvpMapPadPrev = new Map(); // L1 / R1 (buttons 4 / 5) step the map on the PVP setup screens
   function pollPvpMapButtons() {
-    if (isPvpSettingsOpen()) return;
+    if (!isPvpSettingsOpen()) return; // the map lives in the PVP settings panel now
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     pads.forEach((pad, i) => {
       if (!pad) return;
@@ -19793,7 +19951,7 @@
     });
   }
   document.addEventListener("keydown", function (event) { // keyboard: [ / ] step the map on the PVP setup screens
-    if (!pvpSetupSelected || isPvpSettingsOpen()) return;
+    if (!pvpSetupSelected || !isPvpSettingsOpen()) return;
     if (!(titlePanels["coop-setup"].classList.contains("active") || titlePanels["quad-setup"].classList.contains("active"))) return;
     if (event.code === "BracketLeft") stepPvpMap(-1);
     else if (event.code === "BracketRight") stepPvpMap(1);
@@ -19801,7 +19959,13 @@
   function pollPvpSettingsOpenButton() { // called each frame from the PVP setup screens' branch of animate()
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const pressed = pads.some((pad) => pad && pad.buttons[CONTROLS_NAV_REBIND_BUTTON_INDEX] && pad.buttons[CONTROLS_NAV_REBIND_BUTTON_INDEX].pressed);
-    if (pressed && !pvpSettingsSquareWasPressed && !isPvpSettingsOpen()) openPvpSettings();
+    // Only polled while a PVP setup screen is up, so a gap since the last poll means we just arrived from another
+    // screen: a Square still held from the press that got us here (picking PVP) must be released before it counts.
+    const now = performance.now();
+    if (now - pvpSettingsLastPoll > 150) pvpSettingsSquareArmed = false;
+    pvpSettingsLastPoll = now;
+    if (!pressed) pvpSettingsSquareArmed = true;
+    if (pressed && pvpSettingsSquareArmed && !pvpSettingsSquareWasPressed && !isPvpSettingsOpen()) openPvpSettings();
     pvpSettingsSquareWasPressed = pressed;
   }
   document.getElementById("player-count-back-button").addEventListener("click", function () {
@@ -20191,12 +20355,16 @@
   // later the in-game body) only swaps the part that changed: setFace,
   // setHelmet, setClothing (player-model.js).
   // ------------------------------------------------------------------
-  const CUSTOMIZE_CATEGORIES = ["face", "headgear", "shirt", "pants", "shoes"];
-  const CUSTOMIZE_LABELS = { face: "Face", headgear: "Headgear", shirt: "Shirt", pants: "Pants", shoes: "Shoes" };
+  const CUSTOMIZE_CATEGORIES = ["face", "headgear", "shirt", "pants", "shoes", "team"]; // "team" only exists on the 3/4-player PVP setup screen
+  const CUSTOMIZE_LABELS = { face: "Face", headgear: "Headgear", shirt: "Shirt", pants: "Pants", shoes: "Shoes", team: "Team" };
+  const quadTeamsAvailable = () => pvpSetupSelected && titlePanels["quad-setup"].classList.contains("active");
+  const customizeCategoryCount = () => (quadTeamsAvailable() ? CUSTOMIZE_CATEGORIES.length : CUSTOMIZE_CATEGORIES.length - 1);
+  const quadTeamCount = () => (pvpMode === "infected" ? 2 : quadSetup.slots.length === 3 ? 3 : 4);
+  const teamOf = (c) => (pvpMode === "infected" ? (c.side | 0) & 1 : Math.min(c.team | 0, quadTeamCount() - 1)); // Infected mode keeps its own pick in c.side (default Human)
   const CUSTOMIZE_CATEGORY_RELEASE = 0.35; // stick back under this before the next category step
 
   function createCustomization() {
-    return { faceKey: null, helmetKey: "bag", shirtKey: null, pantsKey: null, shoeKey: null, category: 0 };
+    return { faceKey: null, helmetKey: "bag", shirtKey: null, pantsKey: null, shoeKey: null, category: 0, team: 0, side: 0 };
   }
   function pickCustomizeKey(keys, avoid) {
     let key;
@@ -20218,6 +20386,7 @@
     if (category === "headgear") return humanSystem.helmetName(c.helmetKey);
     if (category === "shirt") return c.shirtKey ? humanSystem.shirtName(c.shirtKey) : "";
     if (category === "shoes") return c.shoeKey ? humanSystem.shoeName(c.shoeKey) : "";
+    if (category === "team") return pvpTeamName(teamOf(c));
     return c.pantsKey ? humanSystem.pantsName(c.pantsKey) : "";
   }
   const stepKey = (keys, key, direction) => keys[(keys.indexOf(key) + direction + keys.length) % keys.length];
@@ -20230,20 +20399,21 @@
     else if (category === "headgear") c.helmetKey = stepKey(humanSystem.helmetKeys, c.helmetKey, direction);
     else if (category === "shirt") c.shirtKey = stepKey(humanSystem.shirtKeys, c.shirtKey, direction);
     else if (category === "shoes") c.shoeKey = stepKey(humanSystem.shoeKeys, c.shoeKey, direction);
+    else if (category === "team") { const t = (teamOf(c) + direction + quadTeamCount()) % quadTeamCount(); if (pvpMode === "infected") c.side = t; else c.team = t; }
     else c.pantsKey = stepKey(humanSystem.pantsKeys, c.pantsKey, direction);
     playClip("menu_click_01", { volume: 0.5 }); // the face picker's click
     return true;
   }
   // Selected category up (-1) or down (1), no wrap; false if it didn't move.
   function stepCustomizeCategory(c, direction) {
-    const next = Math.max(0, Math.min(CUSTOMIZE_CATEGORIES.length - 1, c.category + direction));
+    const next = Math.max(0, Math.min(customizeCategoryCount() - 1, c.category + direction));
     if (next === c.category || !c.faceKey) return false;
     c.category = next;
     playClip("menu_click_01", { volume: 0.35 });
     return true;
   }
   function selectCustomizeCategory(c, index) {
-    if (index === c.category || !c.faceKey) return false;
+    if (index === c.category || !c.faceKey || index >= customizeCategoryCount()) return false;
     c.category = index;
     playClip("menu_click_01", { volume: 0.35 });
     return true;
@@ -20293,7 +20463,10 @@
   function renderCustomizeList(listEl, c) {
     listEl.querySelectorAll(".customize-row").forEach((row, index) => {
       row.classList.toggle("selected", index === c.category);
-      row.querySelector(".customize-value").textContent = customizationValue(c, CUSTOMIZE_CATEGORIES[index]);
+      const valueEl = row.querySelector(".customize-value");
+      valueEl.textContent = customizationValue(c, CUSTOMIZE_CATEGORIES[index]);
+      valueEl.style.color = CUSTOMIZE_CATEGORIES[index] === "team" ? pvpTeamColor(teamOf(c)) : "";
+      valueEl.style.fontWeight = CUSTOMIZE_CATEGORIES[index] === "team" ? "bold" : "";
     });
   }
   function flashCustomizeArrow(listEl, direction) {
@@ -21778,6 +21951,35 @@
   // animation the player's real state: velocity, look pitch, crouch/slide,
   // aim, the active weapon and its reload/recoil/melee motion, damage and
   // death. Crouching is a real crouch pose now (not a squashed mesh).
+  // Team indicator: a team-coloured arrowhead over each player's head, drawn through walls, on its own layer that ONLY that
+  // player's teammates' cameras render (never an opponent's, never the owner's).
+  const TEAM_MARKER_LAYER = [10, 11, 12, 13];
+  function pvpRefreshTeamMarkers() {
+    allPlayers.forEach((p, i) => {
+      if (!p.pvpTeamMarker) {
+        const m = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.32, 4), new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, depthWrite: false, transparent: true }));
+        m.rotation.x = Math.PI; // tip down
+        m.renderOrder = 998;
+        m.layers.set(TEAM_MARKER_LAYER[i]);
+        m.visible = false;
+        scene.add(m);
+        p.pvpTeamMarker = m;
+      }
+      p.pvpTeamMarker.visible = false;
+      TEAM_MARKER_LAYER.forEach((layer) => p.camera.layers.disable(layer));
+    });
+    if (!pvpTeamsActive) return;
+    players.forEach((owner, i) => {
+      owner.pvpTeamMarker.material.color.set(pvpTeamColor(owner.pvpTeam));
+      players.forEach((viewer, v) => { if (v !== i && viewer.pvpTeam === owner.pvpTeam) viewer.camera.layers.enable(TEAM_MARKER_LAYER[i]); });
+    });
+  }
+  // teams: one team index per player, or null for free for all. Only counts as teams when two players share one.
+  function pvpApplyTeams(teams) {
+    pvpTeamsActive = !!teams && teams.some((t, i) => teams.indexOf(t) !== i);
+    players.forEach((p, i) => { p.pvpTeam = pvpTeamsActive ? teams[i] : null; });
+    pvpRefreshTeamMarkers();
+  }
   const HUMAN_MELEE_DURATION = 0.55; // s -- rough length of a swing, for the swing's animation progress
   function updatePlayerBodyMeshes(deltaSeconds) {
     for (let index = 0; index < players.length; index++) {
@@ -21786,6 +21988,7 @@
       const rig = player.bodyRig;
       human.root.visible = isCoopMatchActive && !(isPvpMatchActive && player.pvpIsPrematch);
       player.teammateMarker.visible = isCoopMatchActive && !isPvpMatchActive && !player.isDead;
+      if (player.pvpTeamMarker) player.pvpTeamMarker.visible = pvpTeamsOn() && human.root.visible && !player.isDead && !player.pvpAwaitingSpawn;
       if (!human.root.visible) {
         rig.lastHealth = player.health;
         rig.deadPos = null;
@@ -21803,6 +22006,7 @@
       // The model faces local +Z; a camera looks down -Z at the same yaw.
       const bodyYaw = at.yaw + Math.PI;
       human.root.rotation.y = bodyYaw;
+      if (player.pvpTeamMarker && player.pvpTeamMarker.visible) player.pvpTeamMarker.position.set(at.x, at.y + player.currentEyeHeight + 0.62 + Math.sin(performance.now() / 300) * 0.04, at.z);
       player.teammateMarker.position.set(at.x, at.y + (player.isDowned ? 0.9 : player.currentEyeHeight + 0.4) + Math.sin(performance.now() / 300) * 0.04, at.z);
 
       const carrying = !player.isDead && !!player.carriedTurret; // see TURRETS
@@ -22035,7 +22239,7 @@
 
   const quadSetup = {
     p1Scheme: "keyboard", // "keyboard" | "controller" -- P2-P4 are always controller
-    slots: Array.from({ length: QUAD_PLAYER_COUNT }, createQuadSlotState), // one per player this visit (3 or 4)
+    slots: Array.from({ length: QUAD_PLAYER_COUNT }, (_, i) => ({ ...createQuadSlotState(), team: i })), // everyone on their own team = free for all // one per player this visit (3 or 4)
     countdownRemaining: null, // null = no countdown running; otherwise seconds left
   };
   const quadSetupInput = Array.from({ length: QUAD_PLAYER_COUNT }, () => ({
@@ -22199,6 +22403,8 @@
       coopSpectatingLabelEls[i].textContent = "";
       coopSpectatorFullscreenButtonEls[i].innerHTML = `${readyIconHTML(i === 0 ? matchP1Scheme : "controller")}Give Screen Area`;
     });
+    players.forEach((p, i) => { p.pvpWantsInfected = pvpSetupSelected && pvpMode === "infected" && (quadSetup.slots[i].side | 0) === 1; });
+    pvpApplyTeams(pvpSetupSelected && playerCount >= 3 && pvpMode !== "infected" ? quadSetup.slots.map((s, i) => Math.min(s.team | 0, playerCount - 1)) : null);
     selectedMapId = pvpSetupSelected ? pvpMapId : "campus";
     applySelectedMap();
     placePlayersAtMapSpawn(players.slice());
@@ -22219,6 +22425,17 @@
   // marks them isDead so every existing system treats them as out of play).
   // ------------------------------------------------------------------
   function pvpWeaponOrder() { return Object.keys(WEAPON_DEFS); }
+  // Panel blurbs: class tag + 1..5 ratings (damage / range / fire rate) for the highlighted-weapon strip.
+  const PVP_WEAPON_INFO = {
+    pistol:  { tag: "Sidearm",   dmg: 2, rng: 3, rate: 3 },
+    glock:   { tag: "Sidearm",   dmg: 3, rng: 3, rate: 4 },
+    shotgun: { tag: "Close",     dmg: 5, rng: 1, rate: 1 },
+    smg:     { tag: "Automatic", dmg: 2, rng: 2, rate: 5 },
+    ak47:    { tag: "Rifle",     dmg: 3, rng: 4, rate: 4 },
+    sniper:  { tag: "Marksman",  dmg: 5, rng: 5, rate: 1 },
+    bat:     { tag: "Melee",     dmg: 5, rng: 1, rate: 1 },
+    katana:  { tag: "Melee",     dmg: 3, rng: 1, rate: 3 },
+  };
   function pvpWeaponLabel(id) { return id === "fists" ? "Fists" : WEAPON_DEFS[id].displayName; }
   function pvpPlayerLabel(p) { return "P" + (players.indexOf(p) + 1); }
 
@@ -22237,6 +22454,8 @@
     pvpUi.timerEl.id = "pvp-timer";
     pvpUi.killsEl = pvpCreateEl("div", "pvp-board", document.body);
     pvpUi.killsEl.id = "pvp-kills";
+    pvpUi.hillEl = pvpCreateEl("div", "", document.body);
+    pvpUi.hillEl.id = "pvp-zone-status";
     pvpUi.feedEl = pvpCreateEl("div", "", document.body);
     pvpUi.feedEl.id = "pvp-killfeed";
     for (let i = 0; i < 4; i++) {
@@ -22254,6 +22473,7 @@
         sub: pvpCreateEl("div", "pvp-panel-sub", panel),
         info: pvpCreateEl("div", "pvp-panel-sub", panel),
         list: pvpCreateEl("ul", "pvp-weapon-list", panel),
+        detail: pvpCreateEl("div", "pvp-detail", panel),
         countdown: pvpCreateEl("div", "pvp-countdown", panel),
         button: pvpCreateEl("button", "menu-button pvp-respawn", panel, "Respawn"),
         hint: pvpCreateEl("div", "pvp-hint", panel),
@@ -22261,8 +22481,15 @@
       };
       parts.list.style.position = "relative"; // so li.offsetTop is list-relative (auto-scroll)
       for (const id of pvpWeaponOrder()) {
-        const li = pvpCreateEl("li", "", parts.list, pvpWeaponLabel(id));
+        const li = pvpCreateEl("li", "", parts.list);
         li.dataset.weaponId = id;
+        if (GUN_ICON_URIS[id]) { const icon = pvpCreateEl("img", "", li); icon.src = GUN_ICON_URIS[id]; icon.alt = ""; icon.draggable = false; }
+        pvpCreateEl("span", "pvp-wname", li, pvpWeaponLabel(id));
+        pvpCreateEl("span", "pvp-wtag", li, (PVP_WEAPON_INFO[id] || {}).tag || "");
+        li.addEventListener("dblclick", function (event) {
+          event.stopPropagation();
+          if (players[i] && players[i].pvpAwaitingSpawn && !pvpIsGunGame()) pvpTryRespawn(players[i]);
+        });
         li.addEventListener("click", function (event) {
           event.stopPropagation();
           if (players[i] && players[i].pvpAwaitingSpawn && !pvpIsGunGame()) pvpSelectWeapon(players[i], id);
@@ -22283,8 +22510,10 @@
     document.addEventListener("keydown", function (event) {
       if (!p1PanelActive()) return;
       let handled = true;
-      if (event.code === "KeyW" || event.code === "ArrowUp") pvpStepWeapon(players[0], -1);
-      else if (event.code === "KeyS" || event.code === "ArrowDown") pvpStepWeapon(players[0], 1);
+      if (event.code === "KeyW" || event.code === "ArrowUp") pvpMoveWeapon(players[0], 0, -1);
+      else if (event.code === "KeyS" || event.code === "ArrowDown") pvpMoveWeapon(players[0], 0, 1);
+      else if (event.code === "KeyA" || event.code === "ArrowLeft") pvpMoveWeapon(players[0], -1, 0);
+      else if (event.code === "KeyD" || event.code === "ArrowRight") pvpMoveWeapon(players[0], 1, 0);
       else if (event.code === "Enter" || event.code === "NumpadEnter" || event.code === "Space") pvpTryRespawn(players[0]);
       else handled = false;
       if (handled) { event.preventDefault(); event.stopPropagation(); }
@@ -22301,6 +22530,7 @@
 
     pvpResultsContinueEl.addEventListener("click", function (event) {
       event.stopPropagation();
+      if (performance.now() < (pvpMatch.continueLockedUntil || 0)) return;
       pvpReturnToTitle();
     });
   }
@@ -22315,9 +22545,12 @@
       pvpUi.lastTimerText = "";
       pvpClearKillFeed();
       pvpSetBodyGlow(false);
+      allPlayers.forEach((p) => { if (p.pvpTeamMarker) p.pvpTeamMarker.visible = false; });
     }
     pvpResultsEl.classList.remove("visible");
-    document.body.classList.remove("pvp-mode");
+    document.body.classList.remove("pvp-mode", "pvp-hill", "pvp-infected");
+    pvpSetKatanaGreen(false);
+    pvpApplyHandSkins(false);
   }
 
   // One leaderboard row: face image + ": kills" (ZONE_PLAYER_COLORS accent).
@@ -22325,6 +22558,7 @@
     const player = players[index];
     const row = pvpCreateEl("div", "pvp-board-row", parent);
     row.style.borderLeftColor = ZONE_PLAYER_COLORS[index % 4];
+    if (pvpTeamsOn() && player.pvpTeam != null) pvpCreateEl("span", "pvp-team-dot", row).style.background = pvpTeamColor(player.pvpTeam);
     const face = pvpCreateEl("img", "pvp-board-face", row);
     const def = player.faceKey && FACE_TEXTURE_DEFS[player.faceKey];
     if (def) face.src = def.dataUri;
@@ -22332,11 +22566,13 @@
   }
 
   const pvpIsGunGame = () => pvpMatch.mode === "gungame";
+  const pvpIsHill = () => pvpMatch.mode === "hill";
   // What the board shows for a player: kills (Deathmatch) or "level/total" (Gun Game).
-  function pvpScoreText(p) { return pvpIsGunGame() ? (p.pvpLevel + 1) + "/" + PVP_GUN_GAME_LADDER.length : String(p.pvpKills); }
+  function pvpScoreText(p) { if (pvpIsHill()) return String(Math.floor(p.pvpHill || 0)); return pvpIsGunGame() ? (p.pvpLevel + 1) + "/" + PVP_GUN_GAME_LADDER.length : String(p.pvpKills); }
   // Board order. Gun Game: level, then kills, then whoever reached the level first.
   function pvpCompare(a, b) {
     const pa = players[a], pb = players[b];
+    if (pvpIsHill()) return (Math.floor(pb.pvpHill) - Math.floor(pa.pvpHill)) || (a - b);
     if (pvpIsGunGame()) return (pb.pvpLevel - pa.pvpLevel) || (pb.pvpKills - pa.pvpKills) || (pa.pvpLevelAt - pb.pvpLevelAt) || (a - b);
     return (pb.pvpKills - pa.pvpKills) || (pa.pvpDeaths - pb.pvpDeaths) || (a - b);
   }
@@ -22355,7 +22591,7 @@
     // Kills box: shared (not per viewport), rows sorted by kills, leader highlighted.
     if (pvpUi.rows.length !== players.length) {
       pvpUi.killsEl.textContent = "";
-      pvpCreateEl("div", "pvp-board-title", pvpUi.killsEl, pvpIsGunGame() ? "Level" : "Kills");
+      pvpCreateEl("div", "pvp-board-title", pvpUi.killsEl, pvpIsGunGame() ? "Level" : pvpIsHill() ? "Points" : "Kills");
       pvpUi.rows = players.map((p, i) => pvpMakeBoardRow(pvpUi.killsEl, i));
     }
     const order = pvpSortedPlayerIndices();
@@ -22370,7 +22606,7 @@
         setTimeout(() => r.kills.classList.remove("tick"), 250); // the brief number tick
       }
       const p = players[idx];
-      const isLeader = pvpIsGunGame() ? p.pvpLevel > 0 && p.pvpLevel === topPlayer.pvpLevel : topPlayer.pvpKills > 0 && p.pvpKills === topPlayer.pvpKills;
+      const isLeader = pvpIsHill() ? Math.floor(p.pvpHill) > 0 && Math.floor(p.pvpHill) === Math.floor(topPlayer.pvpHill) : pvpIsGunGame() ? p.pvpLevel > 0 && p.pvpLevel === topPlayer.pvpLevel : topPlayer.pvpKills > 0 && p.pvpKills === topPlayer.pvpKills;
       r.row.classList.toggle("leader", isLeader);
       if (pvpUi.killsEl.children[pos + 1] !== r.row) pvpUi.killsEl.appendChild(r.row);
     });
@@ -22388,10 +22624,20 @@
   }
 
   // Selected-weapon highlight + all text for one player's panel.
+  const pvpCountdownText = (t) => (pvpIsInfected() ? "Spawning in " + Math.max(0, Math.ceil(t)) + " seconds" : "Respawn in " + Math.ceil(t));
   function renderPvpPanel(player) {
     const i = players.indexOf(player);
     const parts = pvpUi.panels[i];
     if (!parts) return;
+    if (pvpIsInfected()) { // no weapon select: a plain 'spawning in N seconds' screen
+      parts.title.textContent = "INFECTED";
+      parts.sub.textContent = !pvpMatch.started ? "The humans spawn first" : player.pvpLastKilledBy ? "by " + pvpPlayerLabel(player.pvpLastKilledBy) : "";
+      parts.info.textContent = "";
+      for (const el of [parts.list, parts.detail, parts.button, parts.hint]) el.style.display = "none";
+      parts.countdown.textContent = pvpCountdownText(player.pvpRespawnTimer);
+      return;
+    }
+    for (const el of [parts.list, parts.detail, parts.button, parts.hint]) el.style.display = "";
     const gun = pvpIsGunGame();
     parts.title.textContent = player.pvpIsPrematch ? (gun ? "GUN GAME" : "CHOOSE YOUR WEAPON") : "ELIMINATED";
     parts.list.classList.toggle("hidden", gun);
@@ -22399,11 +22645,26 @@
     parts.sub.textContent = player.pvpIsPrematch ? "" : player.pvpLastKilledBy ? "by " + pvpPlayerLabel(player.pvpLastKilledBy) : (player.pvpDeathCause || "");
     parts.button.textContent = player.pvpIsPrematch ? "Deploy" : "Respawn";
     for (const li of parts.items) li.classList.toggle("selected", li.dataset.weaponId === player.pvpWeaponId);
+    // highlighted weapon: name, class, ratings
+    const info = PVP_WEAPON_INFO[player.pvpWeaponId];
+    parts.detail.textContent = "";
+    if (!gun && info) {
+      const left = pvpCreateEl("div", "", parts.detail);
+      pvpCreateEl("div", "pvp-dname", left, pvpWeaponLabel(player.pvpWeaponId));
+      pvpCreateEl("div", "pvp-dtag", left, info.tag);
+      const stats = pvpCreateEl("div", "pvp-dstats", parts.detail);
+      for (const [label, v] of [["Damage", info.dmg], ["Range", info.rng], ["Fire rate", info.rate]]) {
+        pvpCreateEl("span", "", stats, label);
+        const bar = pvpCreateEl("span", "pvp-bar", stats);
+        pvpCreateEl("i", "", bar).style.width = v * 20 + "%";
+      }
+    }
     const isKeyboard = i === 0 && matchP1Scheme === "keyboard";
     const act = player.pvpIsPrematch ? "deploy" : "respawn";
-    parts.hint.textContent = isKeyboard
-      ? (gun ? "" : "W/S or Wheel: weapon · ") + "Enter/Space/Click: " + act
-      : (gun ? "" : "D-pad/Stick: weapon · ") + "Square/Cross: " + act;
+    const key = (t) => "<kbd>" + t + "</kbd>";
+    parts.hint.innerHTML = isKeyboard
+      ? (gun ? "" : key("W") + key("A") + key("S") + key("D") + " / arrows / wheel: choose &nbsp;·&nbsp; ") + key("Enter") + " / click: " + act
+      : (gun ? "" : key("D-pad") + " / stick: choose &nbsp;·&nbsp; ") + key("&#9633;") + " / " + key("&#10005;") + ": " + act;
     const ready = player.pvpRespawnTimer <= 0;
     parts.el.classList.toggle("ready", ready);
     if (!ready) parts.countdown.textContent = "Respawn in " + Math.ceil(player.pvpRespawnTimer);
@@ -22431,11 +22692,34 @@
       else if (li.offsetTop + li.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = li.offsetTop + li.offsetHeight - list.clientHeight + 2;
     }
   }
-  function pvpStepWeapon(player, dir) {
+  // The picker is a grid of cards: how many fit on a row depends on the panel's size, so count them from the layout.
+  function pvpGridColumns(parts) {
+    const items = parts.items;
+    if (!items.length) return 1;
+    const top = items[0].offsetTop;
+    let cols = 0;
+    for (const li of items) { if (Math.abs(li.offsetTop - top) < 4) cols++; else break; }
+    return Math.max(1, cols);
+  }
+  // dx/dy in cards. Never wraps: pushing past an edge stays put (a short last row clamps to its last card).
+  function pvpMoveWeapon(player, dx, dy) {
     if (pvpIsGunGame()) return; // no picker in Gun Game
+    const parts = pvpUi.panels[players.indexOf(player)];
+    if (!parts) return;
+    const order = pvpWeaponOrder(), n = order.length, cols = pvpGridColumns(parts);
+    const at = Math.max(0, order.indexOf(player.pvpWeaponId));
+    const lastRow = Math.floor((n - 1) / cols);
+    const row = Math.max(0, Math.min(lastRow, Math.floor(at / cols) + dy));
+    const col = Math.max(0, Math.min(cols - 1, (at % cols) + dx));
+    const idx = Math.min(n - 1, row * cols + col);
+    if (idx !== at) pvpSelectWeapon(player, order[idx]);
+  }
+  function pvpStepWeapon(player, dir) { // the mouse wheel: one card forward / back, no wrapping
+    if (pvpIsGunGame()) return;
     const order = pvpWeaponOrder();
     const at = Math.max(0, order.indexOf(player.pvpWeaponId));
-    pvpSelectWeapon(player, order[(at + dir + order.length) % order.length]);
+    const idx = Math.max(0, Math.min(order.length - 1, at + dir));
+    if (idx !== at) pvpSelectWeapon(player, order[idx]);
   }
   function pvpTryRespawn(player) {
     if (!player.pvpAwaitingSpawn || player.pvpRespawnTimer > 0 || pvpMatch.ended) return false;
@@ -22454,9 +22738,13 @@
       return;
     }
     const edge = (idx) => pressed[idx] && !nav.prevButtons[idx];
-    if (edge(12)) pvpStepWeapon(player, -1);
-    if (edge(13)) pvpStepWeapon(player, 1);
-    stepHeldStickAxis(nav.stick, pad.axes[1] || 0, deltaSeconds, (dir) => pvpStepWeapon(player, dir));
+    if (edge(12)) pvpMoveWeapon(player, 0, -1);
+    if (edge(13)) pvpMoveWeapon(player, 0, 1);
+    if (edge(14)) pvpMoveWeapon(player, -1, 0);
+    if (edge(15)) pvpMoveWeapon(player, 1, 0);
+    if (!nav.stickX) nav.stickX = { isPastDeadzone: false, direction: 0, timeUntilNextStep: 0 };
+    stepHeldStickAxis(nav.stick, pad.axes[1] || 0, deltaSeconds, (dir) => pvpMoveWeapon(player, 0, dir));
+    stepHeldStickAxis(nav.stickX, pad.axes[0] || 0, deltaSeconds, (dir) => pvpMoveWeapon(player, dir, 0));
     const confirm = edge(CONTROLS_NAV_REBIND_BUTTON_INDEX) || edge(0);
     nav.prevButtons = pressed;
     if (confirm) pvpTryRespawn(player);
@@ -22480,10 +22768,29 @@
     showPvpPanel(p);
   }
 
+  // Every PVP match starts at a random time of day (75% day, 25% night -- a little more day than the clock's own 67%) and in random
+  // weather (53% clear, 20% overcast, 15% rain, 12% fog); the weather is started and fast-forwarded most of the way in.
+  function pvpRandomizeStartConditions() {
+    dayNightTime = Math.random() < 0.75 ? Math.random() * DAY_DURATION : DAY_DURATION + Math.random() * NIGHT_DURATION;
+    resetWeather();
+    const roll = Math.random();
+    let began = true;
+    if (roll < 0.20) beginOvercast();
+    else if (roll < 0.35) beginStorm();
+    else if (roll < 0.47) beginFog(dayNightTime < DAY_DURATION * 0.5 ? "morning" : "dusk");
+    else began = false;
+    if (began) weather.stateTime = weather.stateDuration * 0.85;
+    weather.lastDayNightTime = dayNightTime;
+    applyDayNightLook();
+    pvpMatch.startWeather = began ? weather.state : "CLEAR";
+  }
   function startPvpMatchExtras() {
     buildPvpUi();
     document.body.classList.add("pvp-mode");
-    pvpMatch.timeLeft = PVP_MATCH_SECONDS;
+    pvpMatch.timeLeft = pvpMode === "hill" ? PVP_HILL_SECONDS : pvpMode === "infected" ? PVP_INFECTED_SECONDS : PVP_MATCH_SECONDS;
+    document.body.classList.toggle("pvp-hill", pvpMode === "hill");
+    document.body.classList.toggle("pvp-infected", pvpMode === "infected");
+    pvpMatch.hillState = "empty";
     pvpMatch.started = false;
     pvpMatch.ended = false;
     pvpMatch.resultsTimer = 0;
@@ -22494,6 +22801,7 @@
     pvpClearKillFeed();
     pvpSetBodyGlow(true);
     initZone(); // after resetSharedWorldState's resetZone; the PVP centre is the map centre
+    pvpRandomizeStartConditions();
     for (const p of players) {
       p.pvpKills = 0;
       p.pvpDeaths = 0;
@@ -22501,12 +22809,14 @@
       p.pvpLastKilledBy = null;
       p.pvpDeathCause = "";
       p.pvpLevel = 0;   // Gun Game ladder index
+      p.pvpHill = 0;    // Zone mode: seconds held alone
       p.pvpLevelAt = 0; // match clock when the current level was reached (tie-break)
       p.pvpProtectedFor = 0;
-      p.pvpNav = { stick: { isPastDeadzone: false, direction: 0, timeUntilNextStep: 0 }, prevButtons: null };
+      p.pvpNav = { stick: { isPastDeadzone: false, direction: 0, timeUntilNextStep: 0 }, stickX: { isPastDeadzone: false, direction: 0, timeUntilNextStep: 0 }, prevButtons: null };
       pvpEnterAwaitingSpawn(p, true);
     }
     pvpUi.rows.length = 0;
+    if (pvpIsInfected()) pvpStartInfectedRound();
     updatePvpHud();
   }
 
@@ -22567,7 +22877,11 @@
   function pvpMakeGlowMaterial(index) {
     const base = humanSystem.bodyMaterial;
     const mat = base.clone();
-    mat.emissive.set(ZONE_PLAYER_COLORS[index % 4]).lerp(new THREE.Color(1, 0.85, 0.6), 0.5).multiplyScalar(0.2);
+    if (pvpIsInfected()) { // humans glow blue; the infected glow green and wear green skin
+      const infected = !!allPlayers[index].pvpInfected;
+      mat.emissive.set(PVP_INFECTED_COLORS[infected ? 1 : 0]).multiplyScalar(infected ? 0.3 : 0.45);
+      if (infected) mat.color.multiply(new THREE.Color("#78d684"));
+    } else mat.emissive.set(ZONE_PLAYER_COLORS[index % 4]).lerp(new THREE.Color(1, 0.85, 0.6), 0.5).multiplyScalar(0.2);
     mat.customProgramCacheKey = () => "pvpGlow";
     mat.onBeforeCompile = (shader, renderer) => {
       base.onBeforeCompile(shader, renderer);
@@ -22591,7 +22905,7 @@
   function pvpSetBodyGlow(on) {
     allPlayers.forEach((p, i) => {
       if (!p.human) return;
-      if (on && !p.pvpGlowMaterial) p.pvpGlowMaterial = pvpMakeGlowMaterial(i);
+      if (on) { if (p.pvpGlowMaterial) p.pvpGlowMaterial.dispose(); p.pvpGlowMaterial = pvpMakeGlowMaterial(i); }
       for (const mesh of p.human.meshes) mesh.material = on ? p.pvpGlowMaterial : humanSystem.bodyMaterial;
     });
   }
@@ -22607,6 +22921,81 @@
     player.activeSlotIndex = 0;
     setActiveViewModel(player); // re-raises the weapon and syncs the ammo HUD (infinity symbol)
   }
+  // ---- INFECTED mode ---------------------------------------------------------------------------------------------------
+  // Humans spawn first with a loadout set by how many survivors are left (3+: pistol, 2: glock, 1: SMG + shotgun); the infected
+  // wait PVP_RESPAWN_DELAY_SECONDS, then spawn with only a green katana that does 25. A human who dies becomes infected and comes
+  // back after the same delay (no weapon select). Humans heal 15 for killing an infected. No humans left = the infected win; the
+  // timer running out = the humans win.
+  const pvpIsInfected = () => pvpMatch.mode === "infected";
+  const pvpSurvivors = () => players.filter((p) => !p.pvpInfected).length;
+  const pvpHumanTier = () => Math.min(3, pvpSurvivors());
+  function pvpGiveHumanLoadout(p) {
+    const tier = pvpHumanTier();
+    p.pvpLoadoutTier = tier;
+    if (tier >= 3) pvpGiveWeapon(p, "pistol");
+    else if (tier === 2) pvpGiveWeapon(p, "glock");
+    else {
+      pvpGiveWeapon(p, "smg");
+      const second = createWeaponSlotState("shotgun");
+      second.reserveAmmo = PVP_INFINITE_RESERVE;
+      p.inventorySlots[1] = second;
+    }
+  }
+  function pvpGiveSpawnLoadout(p) {
+    if (!pvpIsInfected()) { pvpGiveWeapon(p, pvpLoadoutWeaponId(p)); return; }
+    if (p.pvpInfected) pvpGiveWeapon(p, "katana"); else pvpGiveHumanLoadout(p);
+  }
+  function pvpRefreshHumanLoadouts() { // a survivor fell: everyone still human gets the next tier at once
+    for (const p of players) if (!p.pvpInfected && !p.pvpAwaitingSpawn && !p.isDead && p.pvpLoadoutTier !== pvpHumanTier()) pvpGiveHumanLoadout(p);
+  }
+  // Infected: the first-person hands (bare fists and the gun/reload hands) are swapped for green copies on the infected player's
+  // own view model only; humans keep normal skin. force === false restores everyone.
+  function pvpApplyHandSkins(force) {
+    allPlayers.forEach((p) => {
+      if (!p.viewModelRoot) return;
+      const green = force !== false && pvpIsInfected() && !!p.pvpInfected;
+      p.viewModelRoot.traverse((o) => {
+        if (!o.isMesh || !(o.userData.isHandSkin || o.material === reloadHandSkinMaterial || o.userData.origHandMat)) return;
+        if (!o.userData.origHandMat) o.userData.origHandMat = o.material;
+        if (!o.userData.greenHandMat) { o.userData.greenHandMat = o.userData.origHandMat.clone(); o.userData.greenHandMat.color.set(0x5ec46a); o.userData.greenHandMat.emissive.set(0x0a2a10); }
+        o.material = green ? o.userData.greenHandMat : o.userData.origHandMat;
+      });
+    });
+  }
+  function pvpSetKatanaGreen(on) { // the katana's blade, first-person and on other players' bodies
+    katanaBladeMaterial.color.set(on ? 0x39ff6a : 0xd9dde2);
+    katanaBladeMaterial.emissive.set(on ? 0x14a63a : 0x000000);
+    if (humanSystem.setKatanaBladeTint) humanSystem.setKatanaBladeTint(on ? 0x39ff6a : null);
+  }
+  function pvpAssignInfectedRoles() {
+    let wanted = players.filter((p) => p.pvpWantsInfected);
+    if (wanted.length === 0) wanted = [players[Math.floor(Math.random() * players.length)]]; // everyone chose human: one is picked at random
+    else if (wanted.length === players.length) wanted = [wanted[Math.floor(Math.random() * wanted.length)]]; // nobody left to hunt: keep one
+    players.forEach((p) => { p.pvpInfected = wanted.includes(p); p.pvpTeam = p.pvpInfected ? 1 : 0; p.pvpWantsInfected = false; p.pvpLoadoutTier = 0; });
+    pvpTeamsActive = true;
+    pvpRefreshTeamMarkers();
+  }
+  function pvpStartInfectedRound() {
+    pvpAssignInfectedRoles();
+    pvpSetKatanaGreen(true);
+    pvpApplyHandSkins();
+    pvpSetBodyGlow(true);
+    for (const p of players) if (p.pvpInfected) pvpEnterAwaitingSpawn(p, false); // 'spawning in 5 seconds'; the match clock starts with the humans
+    for (const p of players) if (!p.pvpInfected) pvpRespawnPlayer(p);
+  }
+  function pvpInfectedOnDeath(victim) { // called from pvpRecordKill
+    if (victim.pvpInfected) return;
+    victim.pvpInfected = true;
+    victim.pvpTeam = 1;
+    pvpToast(victim, "You are infected");
+    pvpRefreshTeamMarkers();
+    pvpApplyHandSkins();
+    pvpSetBodyGlow(true);
+    pvpUi.rows.length = 0; // leaderboard colours
+    if (pvpSurvivors() === 0) { pvpMatch.pendingWinner = victim; return; }
+    pvpRefreshHumanLoadouts();
+  }
+
   // What a player spawns with: the picked weapon (Deathmatch) or their ladder level (Gun Game).
   function pvpLoadoutWeaponId(p) {
     return pvpIsGunGame() ? PVP_GUN_GAME_LADDER[p.pvpLevel] : p.pvpWeaponId;
@@ -22622,12 +23011,13 @@
     if (killer) {
       killer.pvpKills++;
       pvpToast(killer, "Eliminated " + pvpPlayerLabel(victim));
-      if (!killer.isDead) { // heal on every kill, up to max health
-        killer.health = Math.min(getMaxHealth(killer), killer.health + PVP_HEAL_ON_KILL);
+      if (!killer.isDead) { // heal on every kill, up to max health (Infected: only humans killing an infected, and for less)
+        killer.health = Math.min(getMaxHealth(killer), killer.health + (pvpIsInfected() ? (!killer.pvpInfected && victim.pvpInfected ? PVP_INFECTED_KILL_HEAL : 0) : PVP_HEAL_ON_KILL));
         updateHealthUI(killer);
       }
       if (pvpIsGunGame()) pvpAdvanceLadder(killer);
     }
+    if (pvpIsInfected()) pvpInfectedOnDeath(victim);
     updatePvpHud();
   }
 
@@ -22651,10 +23041,10 @@
   function pvpRespawnPlayer(player) {
     resetPlayerState(player); // health, flags, stamina (G14), physics, view model, HUD
     if (typeof player.input.forceRelease === "function") player.input.forceRelease("fire"); // the click/press that confirmed the respawn must not fire
-    pvpGiveWeapon(player, pvpLoadoutWeaponId(player));
+    pvpGiveSpawnLoadout(player);
     const spot = pickPvpSpawnPoint(player);
-    player.camera.position.set(spot.x, EYE_HEIGHT, spot.z);
-    player.campusGroundY = 0;
+    player.camera.position.set(spot.x, EYE_HEIGHT + (spot.y || 0), spot.z);
+    player.campusGroundY = spot.y || 0;
     player.yaw = spot.yaw;
     player.pitch = 0;
     applyCameraRotation(player);
@@ -22688,15 +23078,15 @@
     const valid = (x, zz) => w.insidePlayableEdge(x, zz, 2) && w.isWalkable(x, zz, PVP_SPAWN.CLEARANCE) && !w.isSpawnExcluded(x, zz, 0.5) && w.isReachable(x, zz);
     const minDist = Math.min(tuning.MIN_DISTANCE, z.radius * 0.6); // a small final circle can't keep the full distance
     const pools = { okHidden: null, ok: null, any: null };
-    const consider = (x, zz, fixedYaw, inHouse) => {
+    const consider = (x, zz, fixedYaw, inHouse, floorY) => {
       let minD = Infinity;
       for (const o of others) minD = Math.min(minD, Math.hypot(o.camera.position.x - x, o.camera.position.z - zz));
       let visible = 0;
       for (const o of others) {
-        if (!w.segmentBlocked(o.camera.position.x, o.camera.position.z, x, zz, 0, false, targetStandingY(o), 0)) visible++;
+        if (!w.segmentBlocked(o.camera.position.x, o.camera.position.z, x, zz, 0, false, targetStandingY(o), floorY || 0)) visible++;
       }
       const score = Math.min(minD, tuning.DISTANCE_CAP) - visible * PVP_SPAWN.VISIBLE_PENALTY - (inHouse ? 40 : 0) + Math.random() * 5;
-      const cand = { x, z: zz, score, yaw: fixedYaw };
+      const cand = { x, z: zz, score, yaw: fixedYaw, y: floorY || 0 };
       const key = minD >= minDist && !inHouse ? (visible === 0 ? "okHidden" : "ok") : "any";
       if (!pools[key] || score > pools[key].score) pools[key] = cand;
     };
@@ -22712,6 +23102,14 @@
       if (!inCircle(x, zz, safeR)) { const q = randomInCircle(safeR); x = q.x; zz = q.z; fixedYaw = undefined; } // no fixed point left inside the circle
       if (!valid(x, zz) || !inCircle(x, zz, safeR)) continue;
       consider(x, zz, fixedYaw, w.isInsideHouseInterior(x, zz, 0.5));
+    }
+    if (w.interiorSpawns) { // ground floors, garages and basements: a random sample of the indoor points, judged like any other spawn
+      const indoor = w.interiorSpawns();
+      for (let n = 0; n < PVP_SPAWN.INDOOR_CANDIDATES && indoor.length; n++) {
+        const q = indoor[Math.floor(Math.random() * indoor.length)];
+        if (!inCircle(q[0], q[1], safeR)) continue;
+        consider(q[0], q[1], q[2], false, q[3]);
+      }
     }
     if (!pools.okHidden && !pools.ok && !pools.any) { // dense scan of the circle (1.5 m lattice), no margin beyond a body width
       const r = Math.max(1, z.radius - 0.8);
@@ -22732,7 +23130,7 @@
       inStorm = !inCircle(pick.x, pick.z, z.radius);
     }
     const yaw = pick.yaw !== undefined ? pick.yaw : Math.atan2(-(z.center.x - pick.x), -(z.center.z - pick.z));
-    return { x: pick.x, z: pick.z, yaw, inStorm };
+    return { x: pick.x, z: pick.z, yaw, inStorm, y: pick.y || 0 };
   }
 
   function pickPvpSpawnPoint(player) {
@@ -22794,6 +23192,29 @@
     return { x: pick.x, z: pick.z, yaw };
   }
 
+  // ZONE MODE: the basements (and the tunnel and stairwell below ground between them) are the hill. One player alone in it earns a
+  // point per second; two or more opponents in it = contested, nobody scores (teammates together don't contest and share the
+  // point). Kills score nothing. Dead / choosing-a-weapon players are not in it.
+  function pvpHillHolders() {
+    if (!currentWorld || !currentWorld.isUnderground) return [];
+    return players.filter((p) => !p.isDead && !p.pvpAwaitingSpawn && !p.pvpIsPrematch && currentWorld.isUnderground(p.camera.position.x, p.camera.position.z, targetStandingY(p)));
+  }
+  function pvpUpdateHill(dt) {
+    const holders = pvpHillHolders();
+    const teams = new Set(holders.map((p) => (pvpTeamsOn() && p.pvpTeam != null ? "t" + p.pvpTeam : "p" + players.indexOf(p))));
+    let text, color = "#fff";
+    if (holders.length === 0) { pvpMatch.hillState = "empty"; text = "ZONE EMPTY"; color = "#bbb"; }
+    else if (teams.size > 1) { pvpMatch.hillState = "contested"; text = "ZONE CONTESTED"; color = "#ff9d3b"; }
+    else {
+      pvpMatch.hillState = "holding";
+      for (const p of holders) p.pvpHill += dt / holders.length;
+      const first = holders[0];
+      text = (pvpTeamsOn() && first.pvpTeam != null ? PVP_TEAM_NAMES[first.pvpTeam].toUpperCase() + " TEAM" : pvpPlayerLabel(first)) + " HOLDS THE ZONE";
+      color = ZONE_PLAYER_COLORS[(pvpTeamsOn() && first.pvpTeam != null ? first.pvpTeam : players.indexOf(first)) % 4];
+    }
+    if (pvpUi.hillEl && pvpUi.hillEl.textContent !== text) pvpUi.hillEl.textContent = text;
+    if (pvpUi.hillEl) pvpUi.hillEl.style.color = color;
+  }
   function updatePvpMatch(deltaSeconds) {
     if (pvpMatch.pendingWinner) { endPvpMatch(); return; }
     pvpUpdateKillFeed(deltaSeconds);
@@ -22804,8 +23225,9 @@
         const parts = pvpUi.panels[i];
         const ready = p.pvpRespawnTimer <= 0;
         parts.el.classList.toggle("ready", ready);
+        if (ready && pvpIsInfected() && !pvpMatch.ended) { pvpTryRespawn(p); continue; } // the infected spawn by themselves
         if (!ready) {
-          const t = "Respawn in " + Math.ceil(p.pvpRespawnTimer);
+          const t = pvpCountdownText(p.pvpRespawnTimer);
           if (parts.countdown.textContent !== t) parts.countdown.textContent = t;
         }
       }
@@ -22815,6 +23237,8 @@
     if (pvpMatch.started) {
       pvpMatch.clock += deltaSeconds;
       pvpMatch.timeLeft -= deltaSeconds;
+      if (pvpIsHill()) pvpUpdateHill(deltaSeconds);
+      if (pvpIsInfected() && pvpUi.hillEl) { pvpUi.hillEl.textContent = "SURVIVORS: " + pvpSurvivors(); pvpUi.hillEl.style.color = PVP_INFECTED_COLORS[0]; }
       if (pvpMatch.timeLeft <= 0) {
         pvpMatch.timeLeft = 0;
         endPvpMatch();
@@ -22822,6 +23246,14 @@
       }
     }
     updatePvpHud();
+    { // the leaderboard's real size, so the top panels can keep their contents clear of it
+      const br = pvpUi.killsEl.getBoundingClientRect(), bh = Math.round(br.height), bw = Math.round(br.width);
+      if (bh !== pvpUi.boardH || bw !== pvpUi.boardW) {
+        pvpUi.boardH = bh; pvpUi.boardW = bw;
+        document.documentElement.style.setProperty("--pvp-board-h", bh + "px");
+        document.documentElement.style.setProperty("--pvp-board-w", bw + "px");
+      }
+    }
     // Panels/badges follow each player's viewport (handles resize and every layout).
     for (let i = 0; i < players.length; i++) {
       const rect = getPlayerViewportRect(i);
@@ -22833,6 +23265,13 @@
         parts.el.style.top = rect.y + "px";
         parts.el.style.width = rect.width + "px";
         parts.el.style.height = rect.height + "px";
+        const wide = rect.width > window.innerWidth * 0.9;
+        parts.el.style.setProperty("--ph", rect.height + "px"); // the panel's own padding/gap scale with its height (cqh units only reach its children)
+        parts.el.classList.toggle("top-row", rect.y < 2);
+        parts.el.classList.toggle("bottom-row", rect.y >= 2);
+        parts.el.classList.toggle("wide", wide);
+        parts.el.classList.toggle("left-col", !wide && rect.x < 2);
+        parts.el.classList.toggle("right-col", !wide && rect.x >= 2);
         pvpUi.badges[i].style.left = rect.x + rect.width - 8 + "px";
         pvpUi.badges[i].style.top = rect.y + 130 + "px"; // below the top-right kill feed
       }
@@ -22858,16 +23297,38 @@
     } else if (gun) { // timer: furthest level, then kills, then whoever got there first; a full tie shares the win
       const t = players[order[0]];
       winners = order.filter((i) => players[i].pvpLevel === t.pvpLevel && players[i].pvpKills === t.pvpKills && players[i].pvpLevelAt === t.pvpLevelAt);
+    } else if (pvpIsInfected()) { // Infected: the humans win if any survive to the end, otherwise the infected
+      const humansWin = pvpSurvivors() > 0;
+      winners = order.filter((i) => !players[i].pvpInfected === humansWin);
+    } else if (pvpIsHill()) { // Zone: most points (a team's points are its members' combined); kills score nothing
+      const pts = (p) => Math.floor(p.pvpHill);
+      const score = pvpTeamsOn() ? (i) => players.reduce((sum, p) => sum + (p.pvpTeam === players[i].pvpTeam ? pts(p) : 0), 0) : (i) => pts(players[i]);
+      const top = Math.max(...order.map(score));
+      winners = order.filter((i) => score(i) === top);
+    } else if (pvpTeamsOn()) { // teams: the team with the most combined kills wins; every member is a winner
+      const tot = {};
+      players.forEach((p) => { tot[p.pvpTeam] = (tot[p.pvpTeam] || 0) + p.pvpKills; });
+      const topTeam = Math.max(...Object.values(tot));
+      winners = order.filter((i) => tot[players[i].pvpTeam] === topTeam);
     } else {
       const top = players[order[0]].pvpKills;
       winners = order.filter((i) => players[i].pvpKills === top);
     }
+    const winTeams = new Set(winners.map((i) => players[i].pvpTeam));
+    const teamWinner = !gun && pvpTeamsOn() && winners.length < players.length && winTeams.size === 1 ? [...winTeams][0] : null;
     const banner = document.getElementById("pvp-results-banner");
-    banner.textContent = winners.length === 1 ? pvpPlayerLabel(players[winners[0]]) + " WINS"
+    banner.textContent = "";
+    const infHumans = pvpIsInfected() ? pvpSurvivors() > 0 : null;
+    const bannerText = infHumans !== null ? (infHumans ? "HUMANS SURVIVE" : "THE INFECTED WIN") : teamWinner !== null ? PVP_TEAM_NAMES[teamWinner].toUpperCase() + " TEAM WINS" : winners.length === 1 ? pvpPlayerLabel(players[winners[0]]) + " WINS"
       : gun ? winners.map((i) => pvpPlayerLabel(players[i])).join(" & ") + " WIN" : "DRAW";
+    const hasWinner = winners.length === 1 || gun || teamWinner !== null || infHumans !== null;
+    if (hasWinner) pvpCreateEl("span", "pvp-win-trophy", banner, "\u{1F3C6}");
+    banner.appendChild(document.createTextNode(bannerText));
+    banner.style.color = hasWinner ? (infHumans !== null ? PVP_INFECTED_COLORS[infHumans ? 0 : 1] : ZONE_PLAYER_COLORS[(teamWinner !== null ? teamWinner : winners[0]) % 4]) : "#ffffff"; // the winner's own colour
+    banner.style.animation = "none"; void banner.offsetWidth; banner.style.animation = "";
     const board = document.getElementById("pvp-results-board");
     board.textContent = "";
-    pvpCreateEl("div", "pvp-board-title", board, gun ? "Level" : "Kills");
+    pvpCreateEl("div", "pvp-board-title", board, gun ? "Level" : pvpIsHill() ? "Points" : "Kills");
     for (const idx of order) {
       const p = players[idx];
       const r = pvpMakeBoardRow(board, idx);
@@ -22877,9 +23338,16 @@
       r.row.insertBefore(name, r.kills);
       pvpCreateEl("span", "pvp-stat", r.row, gun
         ? "K " + p.pvpKills + " · D " + p.pvpDeaths + " · " + pvpWeaponLabel(PVP_GUN_GAME_LADDER[p.pvpLevel])
-        : "D " + p.pvpDeaths + " · K/D " + (p.pvpDeaths ? (p.pvpKills / p.pvpDeaths).toFixed(2) : p.pvpKills.toFixed(2)));
-      if ((winners.length === 1 || gun) && winners.includes(idx)) r.row.classList.add("winner");
+        : pvpIsHill() ? "K " + p.pvpKills + " · D " + p.pvpDeaths : "D " + p.pvpDeaths + " · K/D " + (p.pvpDeaths ? (p.pvpKills / p.pvpDeaths).toFixed(2) : p.pvpKills.toFixed(2)));
+      if (hasWinner && winners.includes(idx)) {
+        r.row.classList.add("winner");
+        pvpCreateEl("span", "pvp-winner-tag", r.row, "\u2605 WINNER");
+      }
     }
+    board.classList.toggle("has-winner", hasWinner);
+    // Players often press buttons the instant this appears: Continue stays locked for a moment.
+    pvpMatch.continueLockedUntil = performance.now() + PVP_RESULTS_CONTINUE_LOCK_SECONDS * 1000;
+    pvpResultsContinueEl.disabled = true;
     document.getElementById("pvp-results-return").textContent = "Returning to title in " + PVP_RESULTS_AUTO_RETURN_SECONDS;
     pvpResultsEl.classList.add("visible");
     if (document.pointerLockElement === canvas) {
@@ -23045,6 +23513,7 @@
       const height = els.modelCanvas.clientHeight;
       if (width !== preview.renderedWidth || height !== preview.renderedHeight) {
         preview.renderer.setSize(width, height, false);
+        if (width > 0 && height > 0) { preview.camera.aspect = width / height; preview.camera.updateProjectionMatrix(); } // keep the proportions true at any size
         preview.renderedWidth = width;
         preview.renderedHeight = height;
       }
@@ -23256,16 +23725,16 @@
   const MOUSE_SENSITIVITY_STORAGE_KEY = "escapeFromKise.mouseSensitivity";
   const CONTROLLER_SENSITIVITY_STORAGE_KEY = "escapeFromKise.controllerSensitivity";
 
-  function loadStoredSensitivityPercent(key) {
+  function loadStoredSensitivityPercent(key, defaultPercent = 50) {
     try {
       const raw = localStorage.getItem(key);
-      if (raw === null) return 50; // default per spec
+      if (raw === null) return defaultPercent; // default per spec (50, or the slider's own default)
       const stored = Number(raw);
       if (Number.isFinite(stored) && stored >= 0 && stored <= 100) return stored;
     } catch (e) {
       // Fall through to the default below.
     }
-    return 50;
+    return defaultPercent;
   }
 
   function storeSensitivityPercent(key, percent) {
@@ -23282,6 +23751,13 @@
   // goreEnabled/ammoMode elsewhere.
   let mouseSensitivityScale = loadStoredSensitivityPercent(MOUSE_SENSITIVITY_STORAGE_KEY) / 50;
   let controllerSensitivityScale = loadStoredSensitivityPercent(CONTROLLER_SENSITIVITY_STORAGE_KEY) / 50;
+  // Aim-down-sights look sensitivity (mouse and stick both): 0.05x..2x of the weapon's normal ADS feel, never fully frozen.
+  const ADS_SENSITIVITY_DEFAULT_PERCENT = 35; // both aim-down-sights sliders start here
+  const ADS_SENSITIVITY_STORAGE_KEY = "escapeFromKise.adsSensitivity";
+  const SNIPER_ADS_SENSITIVITY_STORAGE_KEY = "escapeFromKise.sniperAdsSensitivity";
+  const adsScaleOf = (percent) => Math.max(0.05, percent / 50);
+  adsSensitivityScale = adsScaleOf(loadStoredSensitivityPercent(ADS_SENSITIVITY_STORAGE_KEY, ADS_SENSITIVITY_DEFAULT_PERCENT));
+  sniperAdsSensitivityScale = adsScaleOf(loadStoredSensitivityPercent(SNIPER_ADS_SENSITIVITY_STORAGE_KEY, ADS_SENSITIVITY_DEFAULT_PERCENT));
 
   // Referenced by the controls-tab-button click handler further below
   // (toggled in sync with controlsListEl/controllerControlsListEl) and by
@@ -23292,8 +23768,8 @@
   const mouseSensitivitySliderEl = document.getElementById("mouse-sensitivity-slider");
   const controllerSensitivitySliderEl = document.getElementById("controller-sensitivity-slider");
 
-  function wireSensitivitySlider(sliderEl, valueEl, storageKey, onChange) {
-    const initialPercent = loadStoredSensitivityPercent(storageKey);
+  function wireSensitivitySlider(sliderEl, valueEl, storageKey, onChange, defaultPercent = 50) {
+    const initialPercent = loadStoredSensitivityPercent(storageKey, defaultPercent);
     sliderEl.value = String(initialPercent);
     valueEl.textContent = `${initialPercent}%`;
     sliderEl.addEventListener("input", function () {
@@ -23313,6 +23789,10 @@
     MOUSE_SENSITIVITY_STORAGE_KEY,
     (scale) => { mouseSensitivityScale = scale; }
   );
+  const adsSensitivitySliderEl = document.getElementById("ads-sensitivity-slider");
+  const sniperAdsSensitivitySliderEl = document.getElementById("sniper-ads-sensitivity-slider");
+  wireSensitivitySlider(adsSensitivitySliderEl, document.getElementById("ads-sensitivity-value"), ADS_SENSITIVITY_STORAGE_KEY, (scale) => { adsSensitivityScale = adsScaleOf(scale * 50); }, ADS_SENSITIVITY_DEFAULT_PERCENT);
+  wireSensitivitySlider(sniperAdsSensitivitySliderEl, document.getElementById("sniper-ads-sensitivity-value"), SNIPER_ADS_SENSITIVITY_STORAGE_KEY, (scale) => { sniperAdsSensitivityScale = adsScaleOf(scale * 50); }, ADS_SENSITIVITY_DEFAULT_PERCENT);
   wireSensitivitySlider(
     controllerSensitivitySliderEl,
     document.getElementById("controller-sensitivity-value"),
@@ -23501,6 +23981,7 @@
     // so Square (see pollControllerControlsNav) .click()s it directly
     // instead of trying to start a rebind.
     controllerControlsRowEls.push(document.getElementById("controls-reset-button"));
+    controllerControlsRowEls.push(adsSensitivitySliderEl, sniperAdsSensitivitySliderEl);
 
     updateControllerControlsSelectionHighlight();
   }
@@ -23622,6 +24103,7 @@
   // itself rebindable to something else, same idea as COOP_READY_BUTTON_INDEX.
   const CONTROLS_NAV_REBIND_BUTTON_INDEX = 2; // Square (west face button, Standard Mapping)
   const controllerSensitivityStickState = { floatValue: 50, wasPastDeadzone: false }; // see driveSliderWithStick
+  const adsStickState = { floatValue: 50, wasPastDeadzone: false }, sniperAdsStickState = { floatValue: 50, wasPastDeadzone: false };
   function pollControllerControlsNav(deltaSeconds) {
     if (isGamepadRebindListening) return;
 
@@ -23720,6 +24202,10 @@
     if (controllerControlsSelectedIndex === 1) {
       const stickX = pad.axes[GAMEPAD_AXIS_MOVE_X] || 0;
       driveSliderWithStick(controllerSensitivitySliderEl, stickX, controllerSensitivityStickState, deltaSeconds);
+    } else {
+      const selectedSlider = controllerControlsRowEls[controllerControlsSelectedIndex];
+      if (selectedSlider === adsSensitivitySliderEl) driveSliderWithStick(adsSensitivitySliderEl, pad.axes[GAMEPAD_AXIS_MOVE_X] || 0, adsStickState, deltaSeconds);
+      else if (selectedSlider === sniperAdsSensitivitySliderEl) driveSliderWithStick(sniperAdsSensitivitySliderEl, pad.axes[GAMEPAD_AXIS_MOVE_X] || 0, sniperAdsStickState, deltaSeconds);
     }
   }
 
@@ -23980,6 +24466,7 @@
     if (a < 1e-8) return out;
     for (const target of players) {
       if (target === shooter || target.isDead || target.pvpAwaitingSpawn) continue;
+      if (!pvpFriendlyFire && pvpSameTeam(shooter, target)) continue; // shots pass through teammates
       const pos = target.camera.position;
       const ox = origin.x - pos.x, oz = origin.z - pos.z;
       const b = 2 * (ox * direction.x + oz * direction.z);
@@ -24007,6 +24494,7 @@
   // Applies one PVP hit: directional damage feedback on the victim, kill credit
   // via takeDamage's attacker, and the attacker's own hit marker.
   function damagePvpPlayer(attacker, target, amount, isHeadshot) {
+    if (!pvpFriendlyFire && pvpSameTeam(attacker, target)) return;
     takeDamage(target, amount, { x: attacker.camera.position.x, z: attacker.camera.position.z }, attacker);
     showHitMarker(attacker, isHeadshot);
   }
@@ -24159,7 +24647,11 @@
   }
 
   function updateHitMarker(player, deltaSeconds) {
-    if (player.hitMarkerTimer <= 0) return;
+    if (player.hitMarkerTimer <= 0) {
+      const el = hudRefsFor(player).hitMarkerEl;
+      if (el.classList.contains("visible")) el.classList.remove("visible", "headshot"); // never leave a stale marker up
+      return;
+    }
     player.hitMarkerTimer -= deltaSeconds;
     if (player.hitMarkerTimer <= 0) {
       player.hitMarkerTimer = 0;
@@ -24517,7 +25009,7 @@
       player.nextPunchFist = player.nextPunchFist === "left" ? "right" : "left";
     }
 
-    const meleeDamage = def ? def.melee.damage : FIST_MELEE_DAMAGE;
+    const meleeDamage = def ? def.melee.damage : (isPvpMatchActive ? PVP_FIST_MELEE_DAMAGE : FIST_MELEE_DAMAGE);
     const meleeRange = def ? def.melee.range : FIST_MELEE_RANGE;
 
     if (isBat) {
@@ -24640,7 +25132,7 @@
     if (isPvpMatchActive) { // PVP: sweep the other players instead of enemies
       const pvpTargets = [];
       for (const target of players) {
-        if (target === player || target.isDead || target.pvpAwaitingSpawn) continue;
+        if (target === player || target.isDead || target.pvpAwaitingSpawn || (!pvpFriendlyFire && pvpSameTeam(player, target))) continue;
         const dx = target.camera.position.x - player.camera.position.x;
         const dz = target.camera.position.z - player.camera.position.z;
         const distance = Math.hypot(dx, dz);
@@ -25319,7 +25811,7 @@
     if (isPvpMatchActive) { // PVP: the same arc test against the other players
       for (const target of players) {
         if (sweep.hitEnemies.size >= KATANA_MAX_TARGETS) break;
-        if (target === player || target.isDead || target.pvpAwaitingSpawn || sweep.hitEnemies.has(target)) continue;
+        if (target === player || target.isDead || target.pvpAwaitingSpawn || sweep.hitEnemies.has(target) || (!pvpFriendlyFire && pvpSameTeam(player, target))) continue;
         const tx = target.camera.position.x;
         const tz = target.camera.position.z;
         const dx = tx - camX;
@@ -25334,7 +25826,7 @@
         if (!hasLineOfSight(camX, camZ, tx, tz, 0, isWorldMap ? targetStandingY(player) : undefined, isWorldMap ? targetStandingY(target) : undefined)) continue;
         sweep.hitEnemies.add(target);
         playKatanaImpactAudio();
-        damagePvpPlayer(player, target, sweep.damage, false);
+        damagePvpPlayer(player, target, pvpIsInfected() ? PVP_INFECTED_KATANA_DAMAGE : sweep.damage, false);
       }
     }
 
@@ -25516,7 +26008,7 @@
     forwardVector.normalize();
 
     const forwardSpeed = player.velocity.dot(forwardVector);
-    if (forwardSpeed < SLIDE_TRIGGER_SPEED * pvpMoveSpeedMultiplier()) return;
+    if (forwardSpeed < SLIDE_TRIGGER_SPEED * pvpMoveSpeedMultiplier(player)) return;
     if (player.stamina < SLIDE_MIN_STAMINA) return;
 
     player.stamina = Math.max(0, player.stamina - getSlideStaminaCost(player));
@@ -25530,7 +26022,7 @@
     // front. See getSlideDecayDuration.
     player.slideDecayDuration = getSlideDecayDuration(player);
     const durationScale = player.slideDecayDuration / SLIDE_DECAY_DURATION;
-    player.slidePeakSpeed = (WALK_SPEED + (SLIDE_PEAK_SPEED - WALK_SPEED) * durationScale * durationScale) * pvpMoveSpeedMultiplier();
+    player.slidePeakSpeed = (WALK_SPEED + (SLIDE_PEAK_SPEED - WALK_SPEED) * durationScale * durationScale) * pvpMoveSpeedMultiplier(player);
 
     player.isSliding = true;
     player.slideElapsed = 0;
@@ -26019,7 +26511,7 @@
     // Heavy weapons slow you a little (gun.moveSpeedMultiplier -- the sniper).
     const heldDef = getActiveWeaponDef(player);
     if (heldDef && heldDef.gun.moveSpeedMultiplier && !isDowned) maxSpeed *= heldDef.gun.moveSpeedMultiplier;
-    maxSpeed *= pvpMoveSpeedMultiplier();
+    maxSpeed *= pvpMoveSpeedMultiplier(player);
 
     // Smoothly lerp eye height toward the standing or crouching target.
     // Sliding shares the crouched pose, so this also covers sliding --
@@ -26040,7 +26532,7 @@
       // mid-slide can't change a slide already in progress.
       const t = Math.min(1, player.slideElapsed / player.slideDecayDuration);
       const eased = 1 - (1 - t) * (1 - t);
-      const targetSpeed = player.slidePeakSpeed - (player.slidePeakSpeed - WALK_SPEED * pvpMoveSpeedMultiplier()) * eased;
+      const targetSpeed = player.slidePeakSpeed - (player.slidePeakSpeed - WALK_SPEED * pvpMoveSpeedMultiplier(player)) * eased;
 
       // Limited steering: nudge the slide's direction toward the wish
       // direction without touching its speed, so it can be aimed slightly
@@ -26126,12 +26618,25 @@
       const feetY = (player.campusGroundY || 0) + player.jumpOffset;
       const supportY = campusSupportHeight(player.camera.position, PLAYER_RADIUS, feetY);
       const drop = feetY - supportY;
-      player.jumpOffset = (wasGrounded && drop <= currentWorld.stepUpHeight + 0.01) ? 0 : Math.max(0, drop);
+      const snapped = wasGrounded && drop <= currentWorld.stepUpHeight + 0.01;
+      // a grounded snap to a new floor height (step, stair, curb, roof slope) would pop the camera by that much: hand it to
+      // a view offset that eases out instead, so the eyes glide while the collision floor stays exact
+      if (snapped && player.jumpOffset === 0 && drop !== 0) player.viewGlide = Math.max(-0.75, Math.min(0.75, (player.viewGlide || 0) + drop));
+      player.jumpOffset = snapped ? 0 : Math.max(0, drop);
       player.campusGroundY = supportY;
     }
 
     player.verticalVelocity += GRAVITY * deltaSeconds;
     player.jumpOffset += player.verticalVelocity * deltaSeconds;
+    if (isWorldMap && player.verticalVelocity > 0 && currentWorld.ceilingAt) {
+      // head-bump: a floor slab over a basement, a lintel, the earth over a tunnel. Stop the rise just under the underside.
+      const bodyTop = (player.campusGroundY || 0) + player.jumpOffset + 1.85;
+      const ceil = currentWorld.ceilingAt(player.camera.position.x, player.camera.position.z, PLAYER_RADIUS, bodyTop - 0.4);
+      if (bodyTop > ceil - 0.01) {
+        player.jumpOffset = Math.max(0, ceil - 0.01 - 1.85 - (player.campusGroundY || 0));
+        player.verticalVelocity = Math.min(player.verticalVelocity, 0);
+      }
+    }
     const landingSpeed = Math.max(0, -player.verticalVelocity); // for the landing dip, if this frame lands
 
     if (player.jumpOffset <= 0) {
@@ -26171,7 +26676,11 @@
     if (player.isGrounded && !wasGrounded) landGait(player, landingSpeed, isCrouching || isDowned);
     updateGait(player, deltaSeconds, isCrouching || isDowned); // a crawl is as quiet as a crouch-walk
 
-    player.camera.position.y = player.currentEyeHeight + player.jumpOffset + (isWorldMap ? player.campusGroundY : 0);
+    if (player.viewGlide) { // eases to 0 (about 0.2 s to settle); a fall or a jump drops it at once
+      player.viewGlide = (player.jumpOffset > 0 || !isWorldMap) ? 0 : player.viewGlide * Math.exp(-13 * deltaSeconds);
+      if (Math.abs(player.viewGlide) < 0.002) player.viewGlide = 0;
+    }
+    player.camera.position.y = player.currentEyeHeight + player.jumpOffset + (isWorldMap ? player.campusGroundY : 0) + (player.viewGlide || 0);
 
     if (isWorldMap) {
       // Campus: the playable area's edge (the grass border beyond is off limits).
@@ -28115,6 +28624,7 @@
         return;
       }
       document.getElementById("pvp-results-return").textContent = "Returning to title in " + Math.ceil(pvpMatch.resultsTimer);
+      if (pvpResultsContinueEl.disabled && performance.now() >= (pvpMatch.continueLockedUntil || 0)) pvpResultsContinueEl.disabled = false;
     }
 
     // Extra defensive re-hide (user-reported, intermittent -- "pretty
@@ -28342,7 +28852,7 @@
     {
       key: "pvp-settings", // first: it sits on top of the PVP setup screens
       isActive: () => isPvpSettingsOpen(),
-      getEls: () => [pvpSettingSliderEls.health, pvpSettingSliderEls.speed, document.getElementById("pvp-settings-reset"), document.getElementById("pvp-settings-done")],
+      getEls: () => [pvpSettingSliderEls.health, pvpSettingSliderEls.speed, ...(pvpMode === "infected" ? [pvpSettingSliderEls.humanHealth, pvpSettingSliderEls.humanSpeed, pvpSettingSliderEls.infectedHealth, pvpSettingSliderEls.infectedSpeed] : []), pvpFfButtonEl, document.getElementById("pvp-settings-reset"), document.getElementById("pvp-settings-done")],
     },
     {
       key: "title-main",
@@ -29104,11 +29614,12 @@
         }
         pvpSetupSelected = false;
       },
+      pvpSurvivors, pvpHandleDeath, pvpRandomizeStartConditions, PVP_INFECTED_KATANA_DAMAGE, PVP_INFECTED_KILL_HEAL, pvpTeamName, get pvpFriendlyFire() { return pvpFriendlyFire; }, setPvpFriendlyFire, getAimSensitivityMultiplier, pvpGiveWeapon, pvpApplyTeams, pvpSameTeam, damagePvpPlayer, setPvpSetup, quadSetup, cycleCustomization, stepCustomizeCategory, customizationValue, customizeCategoryCount, titlePanels,
       pvpSettings, PVP_SETTINGS_DEFAULT, setPvpSetting, openPvpSettings, closePvpSettings, isPvpSettingsOpen, getMaxHealth, pvpMoveSpeedMultiplier, PVP_DAMAGE_TABLE, PVP_HIT_ZONES, pvpHitZone, pvpGunDamage, updateHealthUI,
       ensureZoneStaticLayer, zoneUi, zoneMapRect, get campusWorld() { return campusWorld; }, get isCampusMap() { return isCampusMap; }, findAimAssistTarget, setAimAssistScale(v) { aimAssistScale = v; }, getAimAssistScale() { return aimAssistScale; }, pvpRecordKill, fallDamageAmount, stepPvpMode, setPvpSetup, PVP_MATCH_SECONDS, PVP_GUN_GAME_LADDER, PVP_HEAL_ON_KILL, pvpUi, renderer,
       get pvpMode() { return pvpMode; },
       pvpRespawnPlayer, pickPvpSpawnPoint, findPvpPlayerHits, updatePvpMatch, endPvpMatch, pvpMatch, pvpTryRespawn,
-      pvpSelectWeapon, tryStartSlide, targetStandingY, hudRefsFor, updateCoopMatchFrame, resetGame, getMaxStamina,
+      pvpSelectWeapon, pvpMoveWeapon, pvpStepWeapon, pvpGridColumns, tryStartSlide, targetStandingY, hudRefsFor, updateCoopMatchFrame, resetGame, getMaxStamina,
       toggleInventory, PVP_SPAWN, PVP_INFINITE_RESERVE, PVP_RESPAWN_DELAY_SECONDS,
       get isPvpMatchActive() { return isPvpMatchActive; },
       get isCoopMatchActive() { return isCoopMatchActive; },

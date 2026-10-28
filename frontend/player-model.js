@@ -1662,7 +1662,7 @@
         shotgun: { hold: "rifle", support: [0.0, -0.02, 0.36], parts: [cyl(0.014, 0.014, 0.62, 0, 0.05, 0.42, STEEL), cyl(0.015, 0.015, 0.5, 0, 0.022, 0.36, BLK), box(0.045, 0.06, 0.2, 0, 0.035, 0.04, BLK), box(0.05, 0.05, 0.14, 0, 0.018, 0.36, WOOD), box(0.04, 0.09, 0.32, 0, -0.005, -0.2, WOOD, 0.12)] },
         ak47: { hold: "rifle", support: [0.0, -0.03, 0.3], parts: [box(0.05, 0.07, 0.32, 0, 0.04, 0.08, BLK), cyl(0.011, 0.011, 0.42, 0, 0.06, 0.42, STEEL), box(0.05, 0.05, 0.2, 0, 0.035, 0.32, WOOD), box(0.03, 0.17, 0.05, 0, -0.07, 0.15, 0x3a2a1a, 0.35), box(0.03, 0.1, 0.045, 0, -0.03, -0.01, WOOD, -0.25), box(0.04, 0.07, 0.26, 0, 0.01, -0.2, WOOD, 0.1)] },
         sniper: { hold: "rifle", support: [0.0, -0.03, 0.34], parts: [box(0.05, 0.07, 0.4, 0, 0.035, 0.1, TAN), cyl(0.012, 0.01, 0.62, 0, 0.055, 0.6, STEEL), cyl(0.022, 0.022, 0.3, 0, 0.125, 0.08, BLK), box(0.045, 0.1, 0.3, 0, 0.0, -0.22, TAN, 0.08), box(0.03, 0.1, 0.045, 0, -0.035, -0.02, TAN, -0.25)] },
-        bat: { hold: "melee", support: [0, -0.1, 0], parts: [cyl(0.014, 0.017, 0.2, 0, 0.0, 0, 0x2a2a2a, "y"), cyl(0.018, 0.034, 0.62, 0, 0.42, 0, 0xb8894a, "y"), cyl(0.02, 0.02, 0.02, 0, -0.1, 0, 0x2a2a2a, "y")] },
+        bat: { hold: "melee", support: [0, -0.1, 0], parts: [cyl(0.022, 0.026, 0.3, 0, 0.04, 0, 0x2a2a2a, "y"), cyl(0.028, 0.05, 0.7, 0, 0.5, 0, 0xb8894a, "y"), cyl(0.034, 0.034, 0.03, 0, -0.11, 0, 0x2a2a2a, "y")] },
         katana: { hold: "melee", support: [0, -0.1, 0], parts: [cyl(0.015, 0.015, 0.26, 0, -0.02, 0, 0x2a1d1d, "y"), cyl(0.04, 0.04, 0.008, 0, 0.12, 0, 0x8a7a4a, "y"), box(0.006, 0.7, 0.03, 0, 0.47, 0, 0xd0d4d8)] },
       };
     })();
@@ -2407,6 +2407,12 @@
       pantsKeys: PANTS_KEYS,
       pantsName: (key) => (PANTS[key] || PANTS.jeans).name,
       setWeapon,
+      setKatanaBladeTint(hex) { // Infected mode: a green blade on every body's katana (null = back to steel)
+        const m = weaponMaterial(0xd0d4d8);
+        m.color.set(hex === null ? 0xd0d4d8 : hex);
+        m.emissive.set(hex === null ? 0x000000 : hex);
+        m.emissiveIntensity = hex === null ? 0 : 0.45;
+      },
       registerWeapon,
       update,
       bodyMaterial,

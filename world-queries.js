@@ -32,7 +32,9 @@
     return c;
   }
 
-  function createColliderQueries({ colliders, bounds, groundHeightAt, stepUpHeight = 0.5, margin = 20, groundMaterialAt }) {
+  // levelBaseAt(x, z, fromY): optional level-aware floor under a point (basements, stairwells, tunnels): the highest floor
+  // at or below fromY, or null/undefined to use groundHeightAt. groundHeightAt(x, z) stays the visible surface (rays, impacts).
+  function createColliderQueries({ colliders, bounds, groundHeightAt, levelBaseAt, stepUpHeight = 0.5, margin = 20, groundMaterialAt }) {
     const STEP_UP_M = stepUpHeight;
     const SIGHT_MIN_HEIGHT_M = 1.2;  // shorter than this doesn't block line of sight (curbs, low steps)
     const SIGHT_MAX_BASE_M = 1.6;
@@ -83,18 +85,23 @@
     };
     const toWorld = (c, lx, lz) => ({ x: c.cx + lx * c.cos + lz * c.sin, z: c.cz - lx * c.sin + lz * c.cos });
 
-    function blocksBody(c, feetY, grounded, bodyHeight) {
-      if (c.ceiling) return false; // hollow-house roof slab: solid to shots, never a head-bump / push-out for bodies under it
-      if (feetY >= c.height - 0.01) return false;
+    // A ramp collider (roofs) is a sloped walkable surface: c.rampHeight(x, z) gives its height at a world point of its
+    // footprint. It is body-only (c.bodyOnly): shots and sight use the stepped boxes that sit with it.
+    const clampTo = (v, lo, hi) => Math.max(lo, Math.min(v, hi));
+    const rampAt = (c, x, z) => c.rampHeight(clampTo(x, c.minX, c.maxX), clampTo(z, c.minZ, c.maxZ));
+
+    function blocksBody(c, feetY, grounded, bodyHeight, topY = c.height) {
+      if (c.ceiling || c.slab) return false; // a slab is a floor above and a ceiling below (see ceilingAt), never a sideways wall // hollow-house roof slab: solid to shots, never a head-bump / push-out for bodies under it
+      if (feetY >= topY - 0.01) return false;
       if (c.base && feetY + bodyHeight <= c.base) return false;
-      if (grounded && c.height - feetY <= STEP_UP_M) return false;
+      if (grounded && topY - feetY <= STEP_UP_M) return false;
       return true;
     }
 
     function resolveCircle(body, radius, feetY = 0, grounded = true, bodyHeight = 1.85) {
       for (let pass = 0; pass < 2; pass++) {
         forEachColliderIn(body.x - radius, body.z - radius, body.x + radius, body.z + radius, (c) => {
-          if (!blocksBody(c, feetY, grounded, bodyHeight)) return;
+          if (!blocksBody(c, feetY, grounded, bodyHeight, c.ramp ? rampAt(c, body.x, body.z) : c.height)) return;
           if (c.shape === "cylinder") {
             const dx = body.x - c.cx, dz = body.z - c.cz;
             const minDist = c.radius + radius;
@@ -135,8 +142,17 @@
 
     function supportHeightAt(x, z, radius, fromY) {
       let support = groundHeightAt(x, z);
+      if (levelBaseAt) { const lb = levelBaseAt(x, z, fromY); if (lb !== null && lb !== undefined) support = lb; }
       forEachColliderIn(x - radius, z - radius, x + radius, z + radius, (c) => {
-        if (c.ceiling || c.noStand || c.height > fromY + 0.01 || c.height <= support) return; // railings / roof slabs block but never carry you
+        if (c.ceiling || c.noStand) return; // railings / roof slabs block but never carry you
+        if (c.ramp) { // sloped surface: the height under the nearest point of its footprint, smooth as you walk
+          const qx = clampTo(x, c.minX, c.maxX), qz = clampTo(z, c.minZ, c.maxZ);
+          if ((x - qx) ** 2 + (z - qz) ** 2 >= radius * radius) return;
+          const h = c.rampHeight(qx, qz);
+          if (h <= fromY + 0.01 && h > support) support = h;
+          return;
+        }
+        if (c.height > fromY + 0.01 || c.height <= support) return;
         if (c.shape === "cylinder") {
           const r = c.radius + radius;
           if ((x - c.cx) ** 2 + (z - c.cz) ** 2 < r * r) support = c.height;
@@ -150,7 +166,22 @@
       return support;
     }
 
-    const blocksSight = (c) => !c.isTree && !c.seeThrough && c.height >= SIGHT_MIN_HEIGHT_M && !(c.base > SIGHT_MAX_BASE_M);
+    // The lowest underside above a body's head within its circle (a floor slab over a basement, a lintel, the earth over a
+    // tunnel, a ceiling): the game stops a jump there instead of letting the head pass through. Infinity = open sky.
+    function ceilingAt(x, z, radius, headY) {
+      let best = Infinity;
+      forEachColliderIn(x - radius, z - radius, x + radius, z + radius, (c) => {
+        if (c.ramp || c.bodyOnly || c.noStand || c.base === undefined || c.base < headY - 0.02 || c.base >= best) return;
+        if (c.shape === "cylinder") { if ((x - c.cx) ** 2 + (z - c.cz) ** 2 < (c.radius + radius) ** 2) best = c.base; return; }
+        const local = toLocal(c, x, z);
+        const dx = local.x - Math.max(-c.halfX, Math.min(local.x, c.halfX));
+        const dz = local.z - Math.max(-c.halfZ, Math.min(local.z, c.halfZ));
+        if (dx * dx + dz * dz < radius * radius) best = c.base;
+      });
+      return best;
+    }
+
+    const blocksSight = (c) => !c.bodyOnly && !c.isTree && !c.seeThrough && c.height >= SIGHT_MIN_HEIGHT_M && !(c.base > SIGHT_MAX_BASE_M);
 
     // Liang-Barsky clip of the segment a->b (collider frame) against the box grown by hx/hz.
     function clipsBox(a, b, hx, hz) {
@@ -168,7 +199,7 @@
     function segmentBlocked3D(x1, z1, ya, x2, z2, yb, clearance, includeFences) {
       const pad = clearance + 0.01;
       return forEachColliderIn(Math.min(x1, x2) - pad, Math.min(z1, z2) - pad, Math.max(x1, x2) + pad, Math.max(z1, z2) + pad, (c) => {
-        if (c.isTree || (c.seeThrough && !includeFences)) return false;
+        if (c.bodyOnly || c.isTree || (c.seeThrough && !includeFences)) return false;
         const r = c.shape === "cylinder" ? c.radius : null;
         const hit = clipsBox(toLocal(c, x1, z1), toLocal(c, x2, z2), (r ?? c.halfX) + clearance, (r ?? c.halfZ) + clearance);
         if (!hit) return false;
@@ -241,7 +272,7 @@
         if (t > 0 && t < best) { best = t; hit = { distance: t, nx: 0, ny: 1, nz: 0, ground: true }; }
       }
       const test = (c) => {
-        if (c.noImpact) return;
+        if (c.noImpact || c.bodyOnly) return;
         const a = toLocal(c, ox, oz);
         const ldx = dx * c.cos - dz * c.sin, ldz = dx * c.sin + dz * c.cos;
         const bottom = c.base !== undefined ? c.base : (c.groundY !== undefined ? c.groundY : -2);
@@ -299,7 +330,7 @@
     }
 
     return {
-      addCollider, forEachColliderIn, resolveCircle, supportHeightAt, segmentBlocked, isWalkable, raycast,
+      addCollider, forEachColliderIn, resolveCircle, supportHeightAt, ceilingAt, segmentBlocked, isWalkable, raycast,
       distanceToNearestBuilding, blocksSight, minimapFootprints,
     };
   }

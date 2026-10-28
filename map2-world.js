@@ -15,14 +15,31 @@
   const MAP2_SCALE_MULT = 1.25;                      // streets / sidewalks / lots vs campus widths
   const CAMPUS_ROAD_M = 17 * 0.66;                   // campus ROAD_WIDTH_PX * MAP_SCALE: 11.22 m curb to curb
   const MAP2_ROAD_PX = 71;                           // 11th St S curb to curb in topdownview.png
-  const MAP2_M_PER_PX = CAMPUS_ROAD_M * MAP2_SCALE_MULT / MAP2_ROAD_PX;  // 0.1975 m per image px
+  const MAP2_BASE_M_PER_PX = CAMPUS_ROAD_M * MAP2_SCALE_MULT / MAP2_ROAD_PX;  // 0.1975 m per image px: the street scale
+  const MAP2_LOT_SCALE = 1.12;                       // houses, lots, yards, trees: this much bigger than the street scale
+  const MAP2_M_PER_PX = MAP2_BASE_M_PER_PX * MAP2_LOT_SCALE;  // metres per image px for everything off the street
   const MAP2_ORIGIN_PX = { x: 177.5, y: 411 };       // centre of the 11th St / 4th Ave intersection
   const BARRIER_HEIGHT_M = 200;
+  const MAP2_FINAL_ZONE_SCALE = 1.15;               // final storm circle vs the pink circle's radius on the annotation image
 
-  function mapToWorld(px, py) {
-    return { x: (px - MAP2_ORIGIN_PX.x) * MAP2_M_PER_PX, z: (py - MAP2_ORIGIN_PX.y) * MAP2_M_PER_PX };
+  // The street band (road + boulevard strip + sidewalks, as px offsets from each street's centre line) keeps the base
+  // scale, so the streets are exactly as wide as before; everything farther out is scaled by MAP2_LOT_SCALE.
+  const WARP_X = { neg: 65.5, pos: 70.5 };   // 11th St S: west sidewalk outer edge x 112, east x 248
+  const WARP_Z = { neg: 81, pos: 87 };       // 4th Ave S: north sidewalk outer edge y 330, south y 498
+  function warpAxis(u, band) {
+    const edge = u >= 0 ? band.pos : band.neg, a = Math.abs(u);
+    const m = MAP2_BASE_M_PER_PX * (Math.min(a, edge) + MAP2_LOT_SCALE * Math.max(0, a - edge));
+    return u >= 0 ? m : -m;
   }
-  const pxOfWorld = (x, z) => ({ x: x / MAP2_M_PER_PX + MAP2_ORIGIN_PX.x, y: z / MAP2_M_PER_PX + MAP2_ORIGIN_PX.y });
+  function unwarpAxis(w, band) {
+    const edge = w >= 0 ? band.pos : band.neg, a = Math.abs(w) / MAP2_BASE_M_PER_PX;
+    const u = a <= edge ? a : edge + (a - edge) / MAP2_LOT_SCALE;
+    return w >= 0 ? u : -u;
+  }
+  function mapToWorld(px, py) {
+    return { x: warpAxis(px - MAP2_ORIGIN_PX.x, WARP_X), z: warpAxis(py - MAP2_ORIGIN_PX.y, WARP_Z) };
+  }
+  const pxOfWorld = (x, z) => ({ x: unwarpAxis(x, WARP_X) + MAP2_ORIGIN_PX.x, y: unwarpAxis(z, WARP_Z) + MAP2_ORIGIN_PX.y });
   const inRect = (px, py, r) => px >= r[0] && px <= r[2] && py >= r[1] && py <= r[3];
 
   // ---- layout, image px ------------------------------------------------
@@ -73,6 +90,20 @@
   // 1104 / 1114 / the garages are traced from 'topdowncloseup.png' (coloured outlines), registered onto topdownview.png
   // px with one isotropic scale (closeup px = 2.83 x topdown px, closeup (60,60) = topdown (225.6,114.8), NCC 0.935).
   const TALL_H = 5.4, LOW_H = 3.0, TALL_PITCH = 0.55;
+  const HOLLOW_EAVE_H = 3.9, HOLLOW_CEIL_H = 3.7; // hollow buildings: the ceiling clears a full jump (floor 0.34 + 1.85 body + 1.36 apex); eaves sit just above it
+  const ROOF_STEP_M = 0.38; // roof colliders are stairs: each step is lower than the 0.5 m step-up, so a roof can be walked
+  // Basements under 1108 and 1114 (the same footprint as their ground floors), a dirt tunnel between them, and the
+  // stairs down. STAIRS px are the stairwell openings in the ground floor (annotated blue outlines on topdowncloseup.png);
+  // the stair keeps going under the floor slab until it reaches the basement floor. top = the end that is level with the
+  // ground floor (the stair descends away from it).
+  const BASEMENT_DEPTH = 2.6, STAIR_SLOPE = 0.68, STAIR_LANDING = 0.45, TUNNEL_H = 2.4; // STAIR_LANDING: the flat 0.45 m at the top, so the floor does not step down while the body's circle is still over the slab
+  const BASEMENT_WALL_COLOR = 0x8a8c8e, BASEMENT_FLOOR_COLOR = 0x5b5d60, BASEMENT_CEIL_COLOR = 0xd9d5c9, DIRT_COLOR = 0x6e5136, DIRT_DARK = 0x5a4029;
+  const TUNNEL_PX = [450, 239.5, 466.4, 248.0]; // the red line between the houses: 1108's east wall to 1114's west wing
+  const STAIRS = [
+    { region: "h1108", px: [390.6, 239.5, 409.6, 250.8], top: "W" }, // beside 1108's new west doorway, descends east toward the tunnel
+    { region: "h1114", px: [508, 237.0, 527, 246.6], top: "E" },     // beside the back door, descends west toward the tunnel
+  ];
+  const GARAGE_DOOR_H = 2.4;   // sectional garage door height; 'h' of its opening = how far it is raised (80% / 85% open)
   const HOUSES = [
     // 1104 (black outline): L-shaped, 2 storeys for the back block and the east wing, 1 storey for the front-west
     // wing (L1) and the porch wing (L2, carries the door); the notch at the front-left is open yard.
@@ -80,12 +111,12 @@
     ["1104e", [340, 245.5, 361.6, 268.5], "S", { wallH: TALL_H, storeys: 2, pitch: TALL_PITCH, form: "gable-ns", wall: 0xd8d1bc, roof: 0x4d5054, nodoor: true, noSides: "NW" }],
     ["1104w", [300, 245.5, 340, 259.5], "W", { wallH: LOW_H, storeys: 1, pitch: TALL_PITCH, form: "gable-ew", wall: 0xd8d1bc, roof: 0x45484c, nodoor: true, noSides: "NES" }],
     ["1104p", [317.1, 259.5, 340, 268.5], "S", { wallH: LOW_H, storeys: 1, pitch: TALL_PITCH, form: "gable-ew", wall: 0xd8d1bc, roof: 0x45484c, porch: "deck", number: "1104", noSides: "NE" }],
-    ["1108", [383, 210, 450, 275], "S", { storeys: 1, form: "gable-ew", wall: 0xe3d6a8, roof: 0x8a7c6c, porch: "stoop", number: "1108", hollow: true }],
+    ["1108", [383, 210, 450, 275], "S", { region: "h1108", floorY: 0.34, openings: [{ door: true, face: "S", w: 1.4, h: 2.2 }, { px: [380.8, 240.9, 385.6, 250.1], h: 2.2, jambs: true, face: "W" }], steps: [{ px: [383, 245.5], face: "W" }], wallH: HOLLOW_EAVE_H, ceilH: HOLLOW_CEIL_H, storeys: 1, form: "gable-ew", wall: 0xe3d6a8, roof: 0x8a7c6c, porch: "stoop", number: "1108", hollow: true }],
     // 1114 (pink outline): L-shaped, 2 storeys outside, only the main floor (H) is hollow; the east wing (E1) is
     // 1 storey; the yellow garage shares the wall at H's north-east corner but has no way in.
-    ["1114", [489.2, 209.5, 527.5, 272.4], "S", { wallH: TALL_H, ceilH: 3.2, storeys: 2, pitch: TALL_PITCH, form: "gable-ns", wall: 0xf1f1ee, roof: 0x7a5a48, porch: "stoop", number: "1114", chimney: [-0.2, -0.1], shutters: true, hollow: true, doorU: -2.38, noSides: "WE" }],
-    ["1114w", [466.4, 209.5, 489.2, 265.9], "S", { wallH: TALL_H, storeys: 2, pitch: TALL_PITCH, form: "gable-ns", wall: 0xf1f1ee, roof: 0x6f5042, nodoor: true, noSides: "E" }],
-    ["1114e", [527.5, 237.1, 540.4, 272.4], "S", { wallH: LOW_H, storeys: 1, pitch: TALL_PITCH, form: "gable-ns", wall: 0xf1f1ee, roof: 0x7a5a48, nodoor: true, noSides: "W" }],
+    ["1114", [489.2, 209.5, 527.5, 272.4], "S", { region: "h1114", floorY: 0.34, openings: [{ door: true, face: "S", w: 1.4, h: 2.2 }], wallH: TALL_H, ceilH: HOLLOW_CEIL_H, storeys: 2, pitch: TALL_PITCH, form: "gable-ns", wall: 0xf1f1ee, roof: 0x7a5a48, porch: "stoop", number: "1114", chimney: [-0.2, -0.1], shutters: true, hollow: true, doorU: -2.38, noSides: "WE" }],
+    ["1114w", [466.4, 209.5, 489.2, 265.9], "S", { region: "h1114", floorY: 0.34, ceilH: HOLLOW_CEIL_H, wallH: TALL_H, storeys: 2, pitch: TALL_PITCH, form: "gable-ns", wall: 0xf1f1ee, roof: 0x6f5042, nodoor: true, noSides: "E" }],
+    ["1114e", [527.5, 237.1, 540.4, 272.4], "S", { region: "h1114", floorY: 0.34, ceilH: HOLLOW_CEIL_H, openings: [{ px: [531, 234.5, 537.2, 239.8], h: 2.2, jambs: true, face: "N" }], steps: [{ px: [534.1, 237.1], face: "N" }], wallH: HOLLOW_EAVE_H, storeys: 1, pitch: TALL_PITCH, form: "gable-ns", wall: 0xf1f1ee, roof: 0x7a5a48, nodoor: true, noSides: "WN" }],
     ["1118", [595, 195, 640, 268], "S", { storeys: 2, form: "gable-ns", wall: 0xecebe6, roof: 0x7d8186, porch: "porch", number: "1118" }],
     ["1118w", [570, 175, 630, 195], "S", { storeys: 1, form: "gable-ew", wall: 0xecebe6, roof: 0x6a6e73, nodoor: true }],
     ["320", [302, 15, 372, 97], "W", { storeys: 1.5, form: "hip", wall: 0xbfa886, roof: 0x5b4e44, porch: "stoop", number: "320" }],
@@ -98,8 +129,8 @@
     // solid 1-storey garages (no way in): ORANGE behind 1104 (door on the west face, onto the yellow car's drive),
     // PURPLE in 1108's back yard (door on the north face, at the end of the back alley), YELLOW on 1114's NE corner
     ["garageE", [298.7, 130.9, 357, 182.5], "W", { height: 2.7, pitch: 0.3, form: "gable-ew", wall: 0x8d968a, roof: 0x60666c, nodoor: true, garageDoor: true, garageDoorW: 7.2, doorU: -0.4 }],
-    ["garageP", [392.9, 121.9, 440.1, 164.8], "N", { height: 2.7, pitch: 0.3, form: "hip", wall: 0xc9c2ae, roof: 0x4a4d52, nodoor: true, garageDoor: true, garageDoorW: 4.8 }],
-    ["garageY", [526.8, 182.5, 557.6, 230.7], "E", { height: 2.7, pitch: 0.3, form: "gable-ns", wall: 0xe2dccb, roof: 0x6b5f52, nodoor: true }],
+    ["garageP", [392.9, 121.9, 440.1, 164.8], "W", { height: HOLLOW_EAVE_H, ceilH: HOLLOW_CEIL_H, pitch: 0.3, form: "hip", wall: 0xc9c2ae, roof: 0x4a4d52, nodoor: true, garageDoor: true, region: "garageP", openings: [{ px: [390, 127.9, 397, 160.7], h: GARAGE_DOOR_H * 0.8, leaf: true, face: "W" }] }],
+    ["garageY", [526.8, 182.5, 557.6, 224.5], "S", { height: HOLLOW_EAVE_H, ceilH: HOLLOW_CEIL_H, pitch: 0.3, form: "gable-ns", wall: 0xe2dccb, roof: 0x6b5f52, nodoor: true, garageDoor: true, noSides: "W", region: "garageY", openings: [{ px: [534.8, 221, 554.6, 227], h: GARAGE_DOOR_H * 0.85, leaf: true, face: "S" }, { px: [524, 196.8, 531, 207.4], h: 2.1, face: "W" }] }],
     ["garageN", [455, 5, 480, 35], "S", { height: 3.4, form: "gable-ew", wall: 0xb9bcbf, roof: 0x4a4d52, nodoor: true }],
     ["houseNE", [618, 20, 640, 70], "W", { storeys: 1, form: "gable-ns", wall: 0xaeb2b5, roof: 0x6d7176, nodoor: true }],
     // backdrop: outside the playable polygon, drawn but not solid
@@ -110,7 +141,7 @@
   // [px, py, canopy radius px, flowering]
   const TREES = [
     [222, 285, 48], [455, 192, 45], [470, 100, 45], [366, 147, 27], [530, 30, 40], [600, 30, 35],
-    [603, 118, 35], [405, 70, 30], [68, 292, 28], [72, 352, 30, true], [262, 103, 24], [552, 205, 22],
+    [603, 118, 35], [405, 70, 30], [68, 292, 28], [72, 352, 30, true], [262, 103, 24], [576, 214, 22],
     [572, 272, 20], [630, 300, 22], [310, 462, 28, true], [255, 508, 30], [597, 462, 25], [630, 522, 20],
     [18, 112, 30], [15, 280, 25], [182, 80, 22],
   ];
@@ -241,7 +272,24 @@
     }
     const worldRect = (r) => { const a = mapToWorld(r[0], r[1]), b = mapToWorld(r[2], r[3]); return [a.x, a.z, b.x, b.z]; };
 
-    mergedPlanes([[-400, -400, 400, 400]], 0, 6, grassMaterial);
+    {
+      // the lawn plane, minus the stairwell openings (so you can see down them)
+      let rects = [[-400, -400, 400, 400]];
+      for (const st of STAIRS) {
+        const a = mapToWorld(st.px[0], st.px[1]), b = mapToWorld(st.px[2], st.px[3]);
+        const h = [Math.min(a.x, b.x), Math.min(a.z, b.z), Math.max(a.x, b.x), Math.max(a.z, b.z)], next = [];
+        for (const r of rects) {
+          if (h[2] <= r[0] || h[0] >= r[2] || h[3] <= r[1] || h[1] >= r[3]) { next.push(r); continue; }
+          if (h[0] > r[0]) next.push([r[0], r[1], h[0], r[3]]);
+          if (h[2] < r[2]) next.push([h[2], r[1], r[2], r[3]]);
+          const mx0 = Math.max(h[0], r[0]), mx1 = Math.min(h[2], r[2]);
+          if (h[1] > r[1]) next.push([mx0, r[1], mx1, h[1]]);
+          if (h[3] < r[3]) next.push([mx0, h[3], mx1, r[3]]);
+        }
+        rects = next;
+      }
+      mergedPlanes(rects, 0, 6, grassMaterial);
+    }
     mergedPlanes(SIDEWALKS.map(worldRect).concat(DRIVEWAYS.map(worldRect), FRONT_WALKS.map(worldRect)), 0.012, 1.5, concreteMaterial);
     mergedPlanes(ASPHALT.map(worldRect), 0.024, 6, asphaltMaterial);
     {
@@ -368,6 +416,36 @@
     const OVERHANG = 0.3;
     const FLOOR_H = 2.9;
     const houseRecords = [];
+    const pits = []; // below-ground volumes: { x0,x1,z0,z1, floorAt(x,z), stair?: true, hole?: rect }
+    const accessTargets = []; // buildings whose roof gets a crate staircase (see addRoofAccess)
+    // A roof you can stand on: nested boxes shrinking toward the ridge, each ROOF_STEP_M higher than the one outside
+    // it (so the union is a staircase that follows the slope; the step-up walks it). base = eave height, so they
+    // never block anything under the roof and never show on the minimap. form: "gable-ns" | "gable-ew" | "hip".
+    function addRoofColliders(cx, cz, W, D, wallH, pitch, form) {
+      const ridgeNS = form === "gable-ns";
+      const halfSpan = form === "hip" ? Math.min(W, D) / 2 : (ridgeNS ? W : D) / 2;
+      const n = Math.max(1, Math.ceil((halfSpan * pitch) / ROOF_STEP_M));
+      const stepW = halfSpan / n;
+      for (let k = 0; k < n; k++) {
+        const inset = k * stepW, h = wallH + pitch * (inset + stepW / 2);
+        const hx = form === "hip" ? W / 2 - inset : (ridgeNS ? W / 2 - inset : W / 2);
+        const hz = form === "hip" ? D / 2 - inset : (ridgeNS ? D / 2 : D / 2 - inset);
+        const c = makeCollider(cx, cz, hx, hz, h, 0);
+        c.base = wallH; c.style = "house"; c.roof = true;
+        c.ceiling = true; // shots only: bodies use the smooth ramp below
+        addCollider(c);
+      }
+      // the walkable surface: a continuous slope from the eave up to the ridge (hip: to the nearest edge)
+      const ridgeH = wallH + pitch * halfSpan;
+      const ramp = makeCollider(cx, cz, W / 2, D / 2, ridgeH, 0);
+      ramp.base = wallH; ramp.style = "house"; ramp.ramp = true; ramp.bodyOnly = true; ramp.fx = "wood";
+      ramp.rampHeight = (x, z) => {
+        const dx = W / 2 - Math.abs(x - cx), dz = D / 2 - Math.abs(z - cz);
+        const d = form === "hip" ? Math.min(dx, dz) : ridgeNS ? dx : dz;
+        return wallH + pitch * Math.min(halfSpan, Math.max(0, d));
+      };
+      addCollider(ramp);
+    }
     const plates = [];  // { text, x, y, z, yaw }
 
     const HOLLOW_WALL_T = 0.3, HOLLOW_DOOR_W = 1.4, HOLLOW_DOOR_H = 2.2;
@@ -375,6 +453,39 @@
     const HOLLOW_WALL_COLOR = 0xe9e3d3, HOLLOW_FLOOR_COLOR = 0x7d6244, HOLLOW_CEIL_COLOR = 0xf1eee6;
     const FACE = { N: { x: 0, z: -1 }, S: { x: 0, z: 1 }, E: { x: 1, z: 0 }, W: { x: -1, z: 0 } };
     const WOOD = 0x8a6a4a, WHITE = 0xf4f3ee, DARK = 0x3a3d40, FOUNDATION = 0x5a5d60, BRICK = 0x8c4a3a;
+
+    // Every solid building's volume (walls to the eave + roof), so a window can be refused where it would end up inside a
+    // neighbouring wall or roof, under the building's own eave, or in a doorway.
+    const houseVolumes = HOUSES.filter((h) => !h[3].backdrop).map(([nm, r, fr, op]) => {
+      const a = mapToWorld(r[0], r[1]), b = mapToWorld(r[2], r[3]);
+      const wH = op.wallH || op.height || (op.storeys > 1 ? 5.8 : 3.2), pt = op.pitch || PITCH;
+      return { name: nm, x0: Math.min(a.x, b.x), x1: Math.max(a.x, b.x), z0: Math.min(a.z, b.z), z1: Math.max(a.z, b.z), wallH: wH, pitch: pt, form: op.form };
+    });
+    function volumeTopAt(v, x, z) { // height of the building's solid at a point (-Infinity outside its footprint + eave overhang)
+      const dx = Math.max(v.x0 - x, x - v.x1, 0), dz = Math.max(v.z0 - z, z - v.z1, 0), out = Math.max(dx, dz);
+      if (out > OVERHANG) return -Infinity;
+      if (out > 0) return v.wallH - v.pitch * out;
+      const cx = (v.x0 + v.x1) / 2, cz = (v.z0 + v.z1) / 2, hx = (v.x1 - v.x0) / 2 - Math.abs(x - cx), hz = (v.z1 - v.z0) / 2 - Math.abs(z - cz);
+      const d = v.form === "hip" ? Math.min(hx, hz) : v.form === "gable-ns" ? hx : hz;
+      const span = v.form === "hip" ? Math.min(hx + Math.abs(x - cx), hz + Math.abs(z - cz)) : v.form === "gable-ns" ? (v.x1 - v.x0) / 2 : (v.z1 - v.z0) / 2;
+      return v.wallH + v.pitch * Math.min(span, Math.max(0, d));
+    }
+    // a window (centre on the wall face, width 1.3, rows wy..wy+wh) is fine if its corners are clear of every other building
+    function windowFits(self, px, pz, n, along, wy, wh, openings) {
+      if (wy + wh + 0.1 > self.wallH - 0.2) return false; // would run into its own eave / roof line
+      for (const o of openings) { // a doorway on this face
+        const oc = { x: (o.x0 + o.x1) / 2, z: (o.z0 + o.z1) / 2 }, ox = (o.x1 - o.x0) / 2 + 0.85, oz = (o.z1 - o.z0) / 2 + 0.85;
+        if (Math.abs(px - oc.x) < ox && Math.abs(pz - oc.z) < oz && o.h > wy - 0.3) return false;
+      }
+      for (const v of houseVolumes) {
+        if (v.name === self.name) continue;
+        for (const k of [-0.75, 0, 0.75]) for (const y of [wy - 0.1, wy + wh + 0.1]) {
+          const sx = px + along.x * k + n.x * 0.12, sz = pz + along.z * k + n.z * 0.12;
+          if (sx > v.x0 - 0.05 && sx < v.x1 + 0.05 && sz > v.z0 - 0.05 && sz < v.z1 + 0.05 && y < volumeTopAt(v, sx, sz) + 0.05) return false;
+        }
+      }
+      return true;
+    }
 
     function buildHouse([name, rectPx, front, o]) {
       const a = mapToWorld(rectPx[0], rectPx[1]), b = mapToWorld(rectPx[2], rectPx[3]);
@@ -387,7 +498,8 @@
       const form = o.form;
       // walls (siding), on a dark foundation band
       const hollow = !!o.hollow;
-      if (!hollow) {
+      const region = !!o.region; // walls/floor/openings are built per region by buildRegion (hollow, any footprint)
+      if (!hollow && !region) {
         put("siding", cx, 0.5 + (wallH - 0.5) / 2, cz, W, wallH - 0.5, D, 0, o.wall);
         box(cx, 0, cz, W + 0.08, 0.5, D + 0.08, 0, FOUNDATION);
       }
@@ -421,12 +533,31 @@
         box(hx, roofTop + 0.6, hz, 0.95, 0.12, 0.95, 0, 0x6b6e70);
       }
       // collider: the whole footprint, up to the ridge (hollow houses: wall ring + floor + roof slab instead)
-      const record = { name, x: cx, z: cz, halfX: W / 2, halfZ: D / 2, height: roofTop, wallH, hollow, door: null };
-      if (hollow) buildHollowShell();
+      const record = { name, x: cx, z: cz, halfX: W / 2, halfZ: D / 2, height: roofTop, wallH, hollow: hollow || region, door: null };
+      if (region) {
+        const spec = regionSpecs[o.region] || (regionSpecs[o.region] = { rects: [], openings: [], steps: [] });
+        spec.rects.push({ x0: cx - W / 2, z0: cz - D / 2, x1: cx + W / 2, z1: cz + D / 2, wallH, ceilH: o.ceilH || wallH, floorY: o.floorY || 0, wall: o.wall });
+        for (const op of o.openings || []) if (op.door) { // a door: centred on the house's doorU, through the front wall
+          const n = FACE[front], nxa = Math.abs(n.x), T = HOLLOW_WALL_T, dirv = nxa ? n.x : n.z;
+          const edge = nxa ? cx + n.x * W / 2 : cz + n.z * D / 2, along = (nxa ? cz : cx) + (o.doorU || 0), w = op.w || 1.4;
+          const lo = Math.min(edge - dirv * (T + 0.02), edge + dirv * 0.02), hi = Math.max(edge - dirv * (T + 0.02), edge + dirv * 0.02);
+          spec.openings.push(nxa ? { x0: lo, x1: hi, z0: along - w / 2, z1: along + w / 2, h: op.h, face: front, jambs: true }
+                                  : { x0: along - w / 2, x1: along + w / 2, z0: lo, z1: hi, h: op.h, face: front, jambs: true });
+        }
+        for (const op of (o.openings || []).filter((q) => !q.door)) {
+          const p0 = mapToWorld(op.px[0], op.px[1]), p1 = mapToWorld(op.px[2], op.px[3]);
+          spec.openings.push({ x0: Math.min(p0.x, p1.x), x1: Math.max(p0.x, p1.x), z0: Math.min(p0.z, p1.z), z1: Math.max(p0.z, p1.z), h: op.h, leaf: !!op.leaf, jambs: !!op.jambs, face: op.face });
+        }
+        for (const st of o.steps || []) spec.steps.push({ ...st, p: mapToWorld(st.px[0], st.px[1]) });
+        addRoofColliders(cx, cz, W, D, wallH, pitch, form);
+        accessTargets.push({ name, x: cx, z: cz, halfX: W / 2, halfZ: D / 2, wallH, front, region: o.region });
+      } else if (hollow) buildHollowShell();
       else if (!o.backdrop) {
-        const c = makeCollider(cx, cz, W / 2, D / 2, roofTop, 0);
+        const c = makeCollider(cx, cz, W / 2, D / 2, wallH, 0);
         c.style = "house";
         addCollider(c);
+        addRoofColliders(cx, cz, W, D, wallH, pitch, form);
+        accessTargets.push({ name, x: cx, z: cz, halfX: W / 2, halfZ: D / 2, wallH, front });
       }
       if (!o.backdrop) houseRecords.push(record);
 
@@ -477,9 +608,13 @@
         floor.render = false; floor.seeThrough = true; floor.fx = "wood";
         addCollider(floor);
         // roof slab on top of the walls: solid to shots, never pushes a body under it
-        const roofSlab = makeCollider(cx, cz, W / 2, D / 2, roofTop, 0);
-        roofSlab.base = ceilH; roofSlab.ceiling = true; roofSlab.style = "house";
-        addCollider(roofSlab);
+        if (wallH - ceilH > 0.05) { // the air between the ceiling and the eave: shots only
+          const gap = makeCollider(cx, cz, W / 2, D / 2, wallH, 0);
+          gap.base = ceilH; gap.ceiling = true; gap.style = "house";
+          addCollider(gap);
+        }
+        addRoofColliders(cx, cz, W, D, wallH, pitch, form);
+        accessTargets.push({ name, x: cx, z: cz, halfX: W / 2, halfZ: D / 2, wallH, front });
       }
       // windows on every facade; door + steps on the front
       const doorU = o.doorU || 0;
@@ -492,6 +627,7 @@
         const faceYaw = Math.atan2(n.x, n.z);
         const isFront = side === front;
         if (o.noSides && o.noSides.includes(side)) continue;
+        if (o.garageDoor && isFront && region) continue; // the raised door panel is drawn by buildRegion
         if (o.garageDoor && isFront) {
           // white double sectional door on the gable end, with panel seams
           const dw = o.garageDoorW || L * 0.8, gu = o.doorU || 0, dxg = cx + n.x * half + along.x * gu, dzg = cz + n.z * half + along.z * gu;
@@ -516,9 +652,11 @@
             const wy = (o.height ? 1.4 : 1.15) + f * floorH;
             const wh = o.height ? 1.0 : 1.35;
             const px = cx + n.x * half + along.x * u, pz = cz + n.z * half + along.z * u;
+            const spec = o.region ? regionSpecs[o.region] : null;
+            if (!windowFits(houseVolumes.find((q) => q.name === name) || { name, wallH }, px, pz, n, along, wy, wh, spec ? spec.openings : [])) continue;
             box(px + n.x * 0.03, wy - 0.1, pz + n.z * 0.03, 1.3 * Math.abs(along.x) + 0.07 * Math.abs(n.x), 1.55, 1.3 * Math.abs(along.z) + 0.07 * Math.abs(n.z), 0, WHITE);
             box(px + n.x * 0.06, wy, pz + n.z * 0.06, 1.1 * Math.abs(along.x) + 0.05 * Math.abs(n.x), wh, 1.1 * Math.abs(along.z) + 0.05 * Math.abs(n.z), 0, 0x39495a);
-            if (hollow && f === 0) { // inside faces of the (still solid) window
+            if ((hollow || region) && f === 0) { // inside faces of the (still solid) window
               const ix = cx + n.x * (half - HOLLOW_WALL_T - 0.055) + along.x * u, iz = cz + n.z * (half - HOLLOW_WALL_T - 0.055) + along.z * u;
               box(ix, wy - 0.1, iz, 1.3 * Math.abs(along.x) + 0.07 * Math.abs(n.x), 1.55, 1.3 * Math.abs(along.z) + 0.07 * Math.abs(n.z), 0, WHITE);
               box(ix - n.x * 0.025, wy, iz - n.z * 0.025, 1.1 * Math.abs(along.x) + 0.05 * Math.abs(n.x), wh, 1.1 * Math.abs(along.z) + 0.05 * Math.abs(n.z), 0, 0x39495a);
@@ -586,7 +724,312 @@
         }
       }
     }
+    const regionSpecs = {};
     for (const h of HOUSES) buildHouse(h);
+
+    // ---- hollow regions: garages and the L-shaped 1114 -------------------------------------------------
+    // A region is a union of footprint rects. Its walls are the band of thickness T just inside the union's outline
+    // (so shared edges between rects have NO wall: one open interior), cut by openings (a doorway, or a garage door
+    // raised to height h: the wall above it stays as a lintel carrying the raised door panel). The grid is the
+    // compressed coordinates of every edge and edge +/- T, so corners and notches come out exact.
+    const tunnelW = (() => { const a = mapToWorld(TUNNEL_PX[0], TUNNEL_PX[1]), b = mapToWorld(TUNNEL_PX[2], TUNNEL_PX[3]); return { x0: Math.min(a.x, b.x), x1: Math.max(a.x, b.x), z0: Math.min(a.z, b.z), z1: Math.max(a.z, b.z) }; })();
+    const stairHoleW = (st) => { const a = mapToWorld(st.px[0], st.px[1]), b = mapToWorld(st.px[2], st.px[3]); return { x0: Math.min(a.x, b.x), x1: Math.max(a.x, b.x), z0: Math.min(a.z, b.z), z1: Math.max(a.z, b.z) }; };
+    function buildRegion(name, spec) {
+      const T = HOLLOW_WALL_T, R = spec.rects, E = 1e-4, DEP = BASEMENT_DEPTH;
+      const stairDef = STAIRS.find((q) => q.region === name) || null;
+      const hasBasement = !!stairDef;
+      // stairs: hole = the opening in the ground floor; the run continues under the floor to the basement floor
+      let hole = null, stair = null;
+      if (stairDef) {
+        hole = stairHoleW(stairDef);
+        const dir = stairDef.top === "W" ? 1 : -1, topX = stairDef.top === "W" ? hole.x0 : hole.x1;
+        const run = (HOLLOW_FLOOR_Y + DEP) / STAIR_SLOPE + STAIR_LANDING, botX = topX + dir * run;
+        stair = { dir, topX, botX, run, x0: Math.min(topX, botX), x1: Math.max(topX, botX), z0: hole.z0, z1: hole.z1 };
+        stair.floorAt = (x) => Math.max(-DEP, HOLLOW_FLOOR_Y - STAIR_SLOPE * Math.max(0, dir * (x - topX) - STAIR_LANDING));
+      }
+      const inRect = (r, x, z) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1;
+      const inUnion = (x, z) => R.some((r) => inRect(r, x, z));
+      const squareInUnion = (x, z, h) => { for (const dx of [-h, 0, h]) for (const dz of [-h, 0, h]) if (!inUnion(x + dx, z + dz)) return false; return true; };
+      const uniq = (a) => { a.sort((p, q) => p - q); return a.filter((v, i) => i === 0 || v - a[i - 1] > 1e-3); };
+      const extraX = hole ? [hole.x0, hole.x1] : [], extraZ = hole ? [hole.z0, hole.z1] : [];
+      const xs = uniq(R.flatMap((r) => [r.x0, r.x1, r.x0 + T, r.x1 - T]).concat(spec.openings.flatMap((o) => [o.x0, o.x1]), extraX));
+      const zs = uniq(R.flatMap((r) => [r.z0, r.z1, r.z0 + T, r.z1 - T]).concat(spec.openings.flatMap((o) => [o.z0, o.z1]), extraZ, hasBasement ? [tunnelW.z0, tunnelW.z1] : []));
+      const NX = xs.length - 1, NZ = zs.length - 1;
+      const cell = (j, i) => ({ x: (xs[i] + xs[i + 1]) / 2, z: (zs[j] + zs[j + 1]) / 2 });
+      const grid = () => Array.from({ length: NZ }, () => new Array(NX).fill(null));
+      const wallM = grid(), floorM = grid(), ceilM = grid(), intM = grid(), opM = grid(), bwM = grid(), bfM = grid();
+      for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
+        const c = cell(j, i);
+        if (!inUnion(c.x, c.z)) continue;
+        const here = R.filter((r) => inRect(r, c.x, c.z));
+        const top = Math.max(...here.map((r) => r.wallH)), ceilH = Math.min(...here.map((r) => r.ceilH)), fl = Math.max(...here.map((r) => r.floorY));
+        const op = spec.openings.find((o) => c.x > o.x0 && c.x < o.x1 && c.z > o.z0 && c.z < o.z1);
+        opM[j][i] = op || null;
+        const inHole = hole && c.x > hole.x0 && c.x < hole.x1 && c.z > hole.z0 && c.z < hole.z1;
+        if (squareInUnion(c.x, c.z, T - E)) { // a room cell
+          intM[j][i] = true;
+          if (!inHole) floorM[j][i] = fl.toFixed(3);
+          ceilM[j][i] = ceilH.toFixed(3) + "_" + top.toFixed(3);
+          if (hasBasement) bfM[j][i] = "f";
+        } else { // a wall cell, cut by an opening (the part above it stays as a lintel / carries the raised door)
+          const y0 = op ? op.h : 0;
+          if (y0 < top) wallM[j][i] = y0.toFixed(3) + "_" + top.toFixed(3) + "_" + here[0].wall;
+          if (op) floorM[j][i] = fl.toFixed(3); // threshold under the opening
+          if (hasBasement) { // the basement wall under it; the tunnel mouth is open up to the tunnel's ceiling
+            const toTunnel = c.x > tunnelW.x0 - T - 0.04 && c.x < tunnelW.x1 + T + 0.04 && c.z > tunnelW.z0 && c.z < tunnelW.z1;
+            bwM[j][i] = toTunnel ? "L" : "W";
+          }
+        }
+      }
+      // greedy merge of equal-key cells into boxes
+      function merge(m) {
+        const open = new Map(), boxes = [];
+        for (let j = 0; j < NZ; j++) {
+          const next = new Map();
+          for (let i = 0; i < NX;) {
+            const key = m[j][i];
+            if (!key) { i++; continue; }
+            let i1 = i; while (i1 + 1 < NX && m[j][i1 + 1] === key) i1++;
+            const rk = i + "_" + i1 + "_" + key, prev = open.get(rk);
+            if (prev) { prev.j1 = j; next.set(rk, prev); } else { const bx = { i0: i, i1, j0: j, j1: j, key }; boxes.push(bx); next.set(rk, bx); }
+            i = i1 + 1;
+          }
+          open.clear(); for (const [k, v] of next) open.set(k, v);
+        }
+        return boxes;
+      }
+      const dims = (bx) => { const x0 = xs[bx.i0], x1 = xs[bx.i1 + 1], z0 = zs[bx.j0], z1 = zs[bx.j1 + 1]; return { x0, x1, z0, z1, cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, sx: x1 - x0, sz: z1 - z0 }; };
+      // walls (with a basement the ground-floor walls start just above the ground: a body in the basement passes beneath them)
+      for (const bx of merge(wallM)) {
+        const [y0s, y1s, col] = bx.key.split("_"), y0 = parseFloat(y0s), y1 = parseFloat(y1s), d = dims(bx), ys = Math.max(y0, 0.5);
+        if (y1 > ys) put("siding", d.cx, (ys + y1) / 2, d.cz, d.sx, y1 - ys, d.sz, 0, parseInt(col, 10));
+        if (y0 < 0.5) box(d.cx, 0, d.cz, d.sx + 0.04, Math.min(y1, 0.5), d.sz + 0.04, 0, FOUNDATION);
+        const c = makeCollider(d.cx, d.cz, d.sx / 2, d.sz / 2, y1, 0);
+        if (y0 > 0) c.base = y0; else if (hasBasement) c.base = 0.02;
+        c.style = "house";
+        addCollider(c);
+      }
+      // floors (rooms + the threshold under every opening): flush with the door steps
+      for (const bx of merge(floorM)) {
+        const fl = parseFloat(bx.key), d = dims(bx);
+        if (fl > 0.01) {
+          put("interior", d.cx, fl / 2, d.cz, d.sx, fl, d.sz, 0, HOLLOW_FLOOR_COLOR);
+          const fc = makeCollider(d.cx, d.cz, d.sx / 2, d.sz / 2, fl, 0);
+          fc.render = false; fc.fx = "wood";
+          if (hasBasement) { fc.base = -0.01; fc.slab = true; } // over a basement: a slab (a floor above, a ceiling below, never a wall), solid to sight and shots
+          else fc.seeThrough = true;
+          addCollider(fc);
+        } else put("interior", d.cx, 0.02, d.cz, d.sx, 0.04, d.sz, 0, 0x8d8b86);
+      }
+      // ceilings (one continuous plate over every room cell) + the sealed air gap up to the eave (shots only)
+      for (const bx of merge(ceilM)) {
+        const [cs, ts] = bx.key.split("_"), ceilH = parseFloat(cs), top = parseFloat(ts), d = dims(bx);
+        put("interior", d.cx, ceilH - 0.05, d.cz, d.sx, 0.1, d.sz, 0, HOLLOW_CEIL_COLOR);
+        if (top - ceilH > 0.05) {
+          const gap = makeCollider(d.cx, d.cz, d.sx / 2, d.sz / 2, top, 0);
+          gap.base = ceilH; gap.ceiling = true; gap.style = "house";
+          addCollider(gap);
+        }
+      }
+      // interior lining: a plaster panel + dark baseboard on every wall face that looks into a room
+      const isRoom = (j, i) => j >= 0 && j < NZ && i >= 0 && i < NX && intM[j][i];
+      for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
+        if (!wallM[j][i] && !opM[j][i]) continue;
+        const [y0s] = wallM[j][i] ? wallM[j][i].split("_") : [String(opM[j][i].h)];
+        const d = dims({ i0: i, i1: i, j0: j, j1: j });
+        for (const [dj, di] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+          if (!isRoom(j + dj, i + di)) continue;
+          const fl = HOLLOW_FLOOR_Y, ceilH = parseFloat(ceilM[j + dj][i + di].split("_")[0]);
+          const yLow = Math.max(parseFloat(y0s), fl), h = ceilH - yLow;
+          if (h <= 0.05) continue;
+          const px = di === -1 ? d.x0 - 0.02 : di === 1 ? d.x1 + 0.02 : d.cx, pz = dj === -1 ? d.z0 - 0.02 : dj === 1 ? d.z1 + 0.02 : d.cz;
+          const len = [di ? 0.04 : d.sx, h, dj ? 0.04 : d.sz];
+          put("interior", px, yLow + h / 2, pz, len[0], len[1], len[2], 0, HOLLOW_WALL_COLOR);
+          if (yLow <= fl + 0.01) put("interior", px + di * 0.02, fl + 0.07, pz + dj * 0.02, di ? 0.08 : d.sx, 0.14, dj ? 0.08 : d.sz, 0, 0x6b5a45);
+        }
+      }
+      // openings: raised garage door panel above the clear height; white jambs on doors
+      for (const op of spec.openings) {
+        const ocx = (op.x0 + op.x1) / 2, ocz = (op.z0 + op.z1) / 2;
+        const r = R.find((q) => ocx > q.x0 - 1 && ocx < q.x1 + 1 && ocz > q.z0 - 1 && ocz < q.z1 + 1);
+        if (!r || !op.face) continue;
+        const n = FACE[op.face], nxa = Math.abs(n.x), nza = Math.abs(n.z);
+        const edge = op.face === "W" ? r.x0 : op.face === "E" ? r.x1 : op.face === "N" ? r.z0 : r.z1;
+        const px0 = nxa ? edge : ocx, pz0 = nza ? edge : ocz;
+        const len = nxa ? op.z1 - op.z0 : op.x1 - op.x0;
+        if (op.leaf) {
+          const top = Math.min(GARAGE_DOOR_H, r.wallH - 0.05), ph = top - op.h;
+          if (ph > 0.05) {
+            box(px0 + n.x * 0.05, op.h, pz0 + n.z * 0.05, nxa * 0.1 + nza * len, ph, nza * 0.1 + nxa * len, 0, 0xf2f1ec);
+            for (let k = 1; k * 0.6 < ph; k++) box(px0 + n.x * 0.1, op.h + k * 0.6, pz0 + n.z * 0.1, nxa * 0.04 + nza * len, 0.03, nza * 0.04 + nxa * len, 0, 0xb9b8b2);
+          }
+          for (const k of [-1, 1]) box(px0 + n.x * 0.1 + nza * k * len / 2, 0, pz0 + n.z * 0.1 + nxa * k * len / 2, nxa * 0.1 + nza * 0.08, op.h, nza * 0.1 + nxa * 0.08, 0, 0xb9b8b2);
+        }
+        if (op.jambs) {
+          const fl = r.floorY;
+          for (const k of [-1, 1]) {
+            const jx = px0 - n.x * (T / 2) + nza * k * (len / 2 + 0.04), jz = pz0 - n.z * (T / 2) + nxa * k * (len / 2 + 0.04);
+            box(jx, fl, jz, nxa * (T + 0.06) + nza * 0.07, op.h - fl - 0.1, nza * (T + 0.06) + nxa * 0.07, 0, WHITE); // 0.07 wide, its far face 0.005 inside the wall: nothing coplanar
+          }
+          box(px0 - n.x * (T / 2), op.h - 0.1, pz0 - n.z * (T / 2), nxa * (T + 0.06) + nza * (len + 0.06), 0.1, nza * (T + 0.06) + nxa * (len + 0.06), 0, WHITE); // head trim under the lintel
+        }
+      }
+      // steps up to a raised door (a landing, then two risers; walkable colliders like the porch steps)
+      for (const st of spec.steps) {
+        const n = FACE[st.face], nxa = Math.abs(n.x), nza = Math.abs(n.z), slabH = HOLLOW_FLOOR_Y, landD = 0.9, wd = 1.7, stepD = 0.3;
+        const addStep = (cx, cz, along, depth, h) => {
+          box(cx, 0, cz, along * nza + depth * nxa, h, along * nxa + depth * nza, 0, 0x8f8c85);
+          const c = makeCollider(cx, cz, (along * nza + depth * nxa) / 2, (along * nxa + depth * nza) / 2, h, 0);
+          c.render = false; c.seeThrough = true; c.fx = "wood";
+          addCollider(c);
+        };
+        addStep(st.p.x + n.x * landD / 2, st.p.z + n.z * landD / 2, wd, landD, slabH);
+        for (let k = 1; k <= 2; k++) addStep(st.p.x + n.x * (landD + stepD * (k - 0.5)), st.p.z + n.z * (landD + stepD * (k - 0.5)), 1.3, stepD, slabH * (1 - k / 3));
+      }
+      if (!hasBasement) return;
+
+      // ---------------------------------------------------------------- the basement
+      // below-ground volumes for the level-aware floor (see levelBaseAt): one pit per footprint rect, then the stair
+      for (const r of R) pits.push({ x0: r.x0, x1: r.x1, z0: r.z0, z1: r.z1, floorAt: () => -DEP });
+      pits.push({ x0: stair.x0, x1: stair.x1, z0: stair.z0, z1: stair.z1, floorAt: (x) => stair.floorAt(x), stair: true, hole });
+      const basementCol = (cx, cz, hx, hz, topY, baseY, fx) => { const c = makeCollider(cx, cz, hx, hz, topY, 0); c.base = baseY; c.render = false; c.style = "house"; if (fx) c.fx = fx; return addCollider(c); };
+      // floor: concrete slab (a collider top at -DEP so shots and impacts land on it; the level floor itself is levelBaseAt)
+      for (const bx of merge(bfM)) {
+        const d = dims(bx);
+        put("interior", d.cx, -DEP - 0.05, d.cz, d.sx, 0.1, d.sz, 0, BASEMENT_FLOOR_COLOR);
+        basementCol(d.cx, d.cz, d.sx / 2, d.sz / 2, -DEP, -DEP - 0.6, "concrete");
+      }
+      // ceiling lining: the underside of the ground-floor slab
+      for (const bx of merge(floorM)) { const d = dims(bx); put("interior", d.cx, -0.03, d.cz, d.sx, 0.04, d.sz, 0, BASEMENT_CEIL_COLOR); }
+      // walls: concrete ring under the ground-floor walls (collider top = ground level, so it never stops anyone above)
+      for (const bx of merge(bwM)) {
+        const d = dims(bx);
+        if (bx.key === "W") {
+          put("interior", d.cx, -DEP / 2 - 0.0025, d.cz, d.sx, DEP - 0.005, d.sz, 0, BASEMENT_WALL_COLOR);
+          basementCol(d.cx, d.cz, d.sx / 2, d.sz / 2, 0, -DEP - 0.6, "concrete");
+        } else { // the tunnel mouth: dirt lintel above the opening
+          const y0 = -DEP + TUNNEL_H;
+          put("interior", d.cx, (y0 - 0.005) / 2, d.cz, d.sx, -y0 - 0.005, d.sz, 0, DIRT_DARK);
+        }
+      }
+      // stairs: solid treads sampled from the ramp the support function follows, side walls, a rear wall at the top
+      const runSteps = stair.run - STAIR_LANDING, nSteps = Math.max(8, Math.round(runSteps / 0.28)), tread = runSteps / nSteps, zc = (stair.z0 + stair.z1) / 2, zw = stair.z1 - stair.z0;
+      put("interior", stair.topX + stair.dir * STAIR_LANDING / 2, (HOLLOW_FLOOR_Y - DEP) / 2, zc, STAIR_LANDING, HOLLOW_FLOOR_Y + DEP, zw, 0, HOLLOW_FLOOR_COLOR); // the flat landing at the top
+      for (let k = 0; k < nSteps; k++) {
+        const along = STAIR_LANDING + (k + 0.5) * tread, x = stair.topX + stair.dir * along, hTop = stair.floorAt(x);
+        if (hTop <= -DEP + 0.02) continue;
+        put("interior", x, (hTop - DEP) / 2, zc, tread + 0.004, hTop + DEP, zw, 0, k % 2 ? 0x82694c : 0x8f7352);
+      }
+      for (const side of [-1, 1]) {
+        const z = side < 0 ? stair.z0 - 0.05 : stair.z1 + 0.05, cx = (stair.x0 + stair.x1) / 2, hx = (stair.x1 - stair.x0) / 2;
+        put("interior", cx, -DEP / 2, z, stair.x1 - stair.x0, DEP, 0.12, 0, BASEMENT_WALL_COLOR);
+        basementCol(cx, z, hx, 0.06, 0, -DEP - 0.6, "concrete");
+        // the open stairwell above the floor: a low guard rail along it (vaultable, never a floor)
+        const rx0 = Math.max(hole.x0, stair.x0), rx1 = Math.min(hole.x1, stair.x1);
+        const rc = makeCollider((rx0 + rx1) / 2, z, (rx1 - rx0) / 2, 0.05, HOLLOW_FLOOR_Y + 0.95, 0);
+        rc.base = HOLLOW_FLOOR_Y; rc.render = false; rc.seeThrough = true; rc.noStand = true; rc.fx = "wood";
+        addCollider(rc);
+        box((rx0 + rx1) / 2, HOLLOW_FLOOR_Y + 0.9, z, rx1 - rx0, 0.05, 0.06, 0, 0x7a5c3e);
+        for (let q = 0; q <= 4; q++) box(rx0 + (rx1 - rx0) * q / 4, HOLLOW_FLOOR_Y, z, 0.06, 0.9, 0.06, 0, 0x7a5c3e);
+      }
+      { // rear of the stair (under the floor behind the top step) + the guard rail across the deep end of the opening
+        const rearX = stair.topX - stair.dir * 0.06;
+        basementCol(rearX, zc, 0.06, zw / 2, HOLLOW_FLOOR_Y, -DEP - 0.6, "concrete");
+        put("interior", rearX, (HOLLOW_FLOOR_Y - 0.01 - DEP) / 2, zc, 0.12, HOLLOW_FLOOR_Y - 0.01 + DEP, zw, 0, BASEMENT_WALL_COLOR);
+        const farX = stair.dir > 0 ? hole.x1 : hole.x0, ry = HOLLOW_FLOOR_Y;
+        const rc = makeCollider(farX, zc, 0.05, zw / 2, ry + 0.95, 0);
+        rc.base = ry; rc.render = false; rc.seeThrough = true; rc.noStand = true; rc.fx = "wood";
+        addCollider(rc);
+        box(farX, ry + 0.9, zc, 0.06, 0.05, zw, 0, 0x7a5c3e);
+        for (let q = 0; q <= 3; q++) box(farX, ry, hole.z0 + (hole.z1 - hole.z0) * q / 3, 0.06, 0.9, 0.06, 0, 0x7a5c3e);
+      }
+    }
+    // the dirt tunnel between the two basements: floor, side walls (solid below ground level only), a low ceiling of earth
+    function buildTunnel() {
+      const DEP = BASEMENT_DEPTH, T = HOLLOW_WALL_T, x0 = tunnelW.x0 - T, x1 = tunnelW.x1 + T, z0 = tunnelW.z0, z1 = tunnelW.z1;
+      const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, ceilY = -DEP + TUNNEL_H;
+      pits.push({ x0: tunnelW.x0, x1: tunnelW.x1, z0, z1, floorAt: () => -DEP });
+      put("interior", cx, -DEP - 0.05, cz, x1 - x0, 0.1, z1 - z0, 0, DIRT_COLOR);
+      put("interior", cx, (ceilY - 0.03) / 2, cz, x1 - x0, -0.03 - ceilY, z1 + 0.6 - z0 + 0.0, 0, DIRT_DARK); // earth roof: wider than the tunnel, resting on the walls (a hair under the lawn)
+      for (const side of [-1, 1]) {
+        const z = side < 0 ? z0 - 0.15 : z1 + 0.15;
+        // visible dirt walls only between the house walls (inside the wall thickness they would share faces with the concrete)
+        put("interior", (tunnelW.x0 + tunnelW.x1) / 2, (-DEP + ceilY) / 2, z, tunnelW.x1 - tunnelW.x0, DEP + ceilY, 0.3, 0, DIRT_COLOR);
+        const c = makeCollider(cx, z, (x1 - x0) / 2, 0.15, 0, 0);
+        c.base = -DEP - 0.6; c.render = false; c.fx = "concrete";
+        addCollider(c);
+      }
+      const fl = makeCollider(cx, cz, (x1 - x0) / 2, (z1 - z0) / 2, -DEP, 0);
+      fl.base = -DEP - 0.6; fl.render = false; fl.seeThrough = true; fl.fx = "concrete";
+      addCollider(fl);
+      const lid = makeCollider(cx, cz, (x1 - x0) / 2, (z1 - z0) / 2, 0, 0); // the earth over the tunnel: the head bumps it, the lawn above is still the floor
+      lid.base = ceilY; lid.slab = true; lid.render = false; lid.fx = "concrete";
+      addCollider(lid);
+    }
+    for (const [name, spec] of Object.entries(regionSpecs)) buildRegion(name, spec);
+    buildTunnel();
+
+    // ---- roof access: a staircase of wooden crates against low buildings, so anyone who wants to can jump up onto them.
+    // Each crate is CRATE_STEP higher than the one before (a jump clears 1.36 m); the last one sits against the wall and
+    // its top + a jump reaches the eave. Buildings taller than REACH_MAX (the 2-storey blocks) get none.
+    const CRATE_STEP = 0.95, CRATE_W = 1.3, CRATE_D = 0.95, REACH_MAX = 4.3, FENCE_CLEAR = 4.5; // FENCE_CLEAR: a crate top (1.9+ m) + a jump would clear a 1.8 m fence
+    const crateWood = [0xa07a4a, 0x8f6b3e];
+    function addRoofAccess() {
+      const asphaltPx = ASPHALT.concat(SIDEWALKS, DRIVEWAYS, [[213, 114, 300, 150]]);
+      const blocked = (x0, z0, x1, z1) => {
+        for (const c of colliders) if (c.maxX > x0 && c.minX < x1 && c.maxZ > z0 && c.minZ < z1) return true;
+        for (const [qx, qz] of [[x0, z0], [x1, z0], [x0, z1], [x1, z1], [(x0 + x1) / 2, (z0 + z1) / 2]]) {
+          const p = pxOfWorld(qx, qz);
+          if (!insidePlayableEdge(qx, qz, 0.8) || asphaltPx.some((r) => inRect(p.x, p.y, r))) return true;
+        }
+        return false;
+      };
+      const done = new Set();
+      const ex = EXCLUSION_PX[0], exA = mapToWorld(ex[0], ex[1]), exB = mapToWorld(ex[2], ex[3]);
+      const fences = colliders.filter((c) => c.fx === "wood" && c.height >= 1.3 && c.height <= 2.3 && !c.base && Math.max(c.halfX, c.halfZ) > 1.5); // long runs only: not crates
+      const nearFence = (x0, z0, x1, z1) => fences.some((c) => c.maxX > x0 - FENCE_CLEAR && c.minX < x1 + FENCE_CLEAR && c.maxZ > z0 - FENCE_CLEAR && c.minZ < z1 + FENCE_CLEAR);
+      for (const t of accessTargets) {
+        const key = t.region || t.name;
+        if (done.has(key) || t.wallH > REACH_MAX) continue;
+        if (t.x > exA.x && t.x < exB.x && t.z > exA.z && t.z < exB.z) continue; // the sealed yard: nobody gets in or out, so no stairs there
+        if (t.region && t.wallH < 3.5) continue; // (low parts of a hollow region are handled through their tallest low part)
+        const k = Math.max(1, Math.ceil((t.wallH + 0.45 - 1.36 - STEP_UP_M) / CRATE_STEP)); // crates needed: top + jump apex + step-up must clear the eave and the first roof step
+        const frontSide = t.front, order = ["N", "E", "W", "S"].filter((q) => q !== frontSide); // never on the door side: it would block the steps
+        let placed = false;
+        for (const side of order) {
+          const n = FACE[side], nxa = Math.abs(n.x), along = nxa ? { x: 0, z: 1 } : { x: 1, z: 0 };
+          const half = nxa ? t.halfX : t.halfZ, L = nxa ? t.halfZ * 2 : t.halfX * 2;
+          for (const u of [0, 1.5, -1.5, 3, -3, 4.5, -4.5]) {
+            if (Math.abs(u) > L / 2 - CRATE_W / 2 - 0.2) continue;
+            const depth = k * CRATE_D, gap = 0.12;
+            const cx0 = t.x + n.x * (half + gap + depth / 2) + along.x * u, cz0 = t.z + n.z * (half + gap + depth / 2) + along.z * u;
+            // test area: the crate footprint plus 0.5 m of clearance on the three open sides (none on the wall side)
+            const hx = (nxa ? depth : CRATE_W) / 2, hz = (nxa ? CRATE_W : depth) / 2;
+            const ax0 = cx0 - hx - (n.x < 0 || !nxa ? 0.5 : 0) + (n.x > 0 ? 0.02 : 0) - (nxa ? 0 : 0.0), ax1 = cx0 + hx + (n.x > 0 || !nxa ? 0.5 : 0) - (n.x < 0 ? 0.02 : 0);
+            const az0 = cz0 - hz - (n.z < 0 || nxa ? 0.5 : 0) + (n.z > 0 ? 0.02 : 0), az1 = cz0 + hz + (n.z > 0 || nxa ? 0.5 : 0) - (n.z < 0 ? 0.02 : 0);
+            if (blocked(ax0, az0, ax1, az1) || nearFence(ax0, az0, ax1, az1)) continue;
+            for (let i = 0; i < k; i++) { // i = 0 is the lowest, farthest from the wall
+              const h = CRATE_STEP * (i + 1), off = half + gap + (k - 1 - i) * CRATE_D + CRATE_D / 2;
+              const x = t.x + n.x * off + along.x * u, z = t.z + n.z * off + along.z * u;
+              const sx = nxa ? CRATE_D : CRATE_W, sz = nxa ? CRATE_W : CRATE_D;
+              box(x, 0, z, sx, h, sz, 0, crateWood[i % 2]);
+              for (let b = 1; b * 0.32 < h; b++) box(x, b * 0.32 - 0.02, z, sx + 0.04, 0.04, sz + 0.04, 0, 0x5a4026); // plank seams
+              for (const [ex, ez] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) box(x + ex * (sx / 2 - 0.035), 0, z + ez * (sz / 2 - 0.035), 0.09, h + 0.02, 0.09, 0, 0x5a4026); // corner posts, proud of the planks by 1 cm
+              const c = makeCollider(x, z, sx / 2, sz / 2, h, 0);
+              c.fx = "wood";
+              addCollider(c);
+            }
+            accessSteps.push({ name: key, side, u, crates: k, x: cx0, z: cz0 });
+            placed = true;
+            break;
+          }
+          if (placed) break;
+        }
+        if (placed) done.add(key);
+      }
+    }
+    const accessSteps = [];
+    addRoofAccess();
 
     // ---- fences and hedges on the polygon, curbs ----------------------
     const fenceRuns = [];
@@ -816,7 +1259,7 @@
 
     // ---- ROAD CLOSED / SIDEWALK CLOSED barricades (campus builder) -------
     const closureResult = window.campusKit.buildClosureBarricades(THREE, root, CLOSURES, {
-      mapToWorld, groundHeightAt: () => 0, makeCollider, canvasTexture, mapScale: MAP2_M_PER_PX, sidewalkWidthPx: 16, mapCenter,
+      mapToWorld, groundHeightAt: () => 0, makeCollider, canvasTexture, mapScale: MAP2_BASE_M_PER_PX, sidewalkWidthPx: 16, mapCenter,
       barrierHeight: BARRIER_HEIGHT_M,
       addCollider: (c) => addCollider(c),
     });
@@ -922,7 +1365,29 @@
       return m === "grass" ? "grass" : "concrete";
     }
 
-    const queries = window.createColliderQueries({ colliders, bounds, groundHeightAt: () => 0, stepUpHeight: STEP_UP_M, groundMaterialAt });
+    // Level-aware floor: the lawn is 0, a basement/tunnel is -BASEMENT_DEPTH, a stair is a smooth slope. A point inside a stair
+    // volume only has the stair under it; elsewhere the floor is the highest level at or below the body's reach (fromY), and
+    // the lawn counts only for bodies at ground level or higher (so someone in a basement never gets lifted onto the grass).
+    function levelBaseAt(x, z, fromY) {
+      let best = -Infinity, lowest = Infinity, any = false;
+      for (const p of pits) {
+        if (x < p.x0 || x > p.x1 || z < p.z0 || z > p.z1) continue;
+        const f = p.floorAt(x, z);
+        if (p.stair) return f; // the stair volume: only the stair is under you
+        any = true;
+        if (f < lowest) lowest = f;
+        if (f <= fromY + 0.01 && f > best) best = f;
+      }
+      if (!any) return 0;
+      if (fromY >= -0.01 && best < 0) best = 0; // ground level or above: the lawn / the slab above is the floor
+      return best === -Infinity ? lowest : best;
+    }
+    // The visible surface at a point (rays, impacts): the lawn, or the stair seen down an open stairwell.
+    function surfaceHeightAt(x, z) {
+      for (const p of pits) if (p.stair && p.hole && x > p.hole.x0 && x < p.hole.x1 && z > p.hole.z0 && z < p.hole.z1) return p.floorAt(x, z);
+      return 0;
+    }
+    const queries = window.createColliderQueries({ colliders, bounds, groundHeightAt: surfaceHeightAt, levelBaseAt, stepUpHeight: STEP_UP_M, groundMaterialAt });
     const cars = window.createCarQueries(vehicleSystem, queries);
 
     // ---- spawn rules: exclusion region, reachability, house interiors -----------------
@@ -1012,9 +1477,40 @@
       if (vehicleSystem) vehicleSystem.update(viewers, views, lodScale);
     }
 
+    // ---- indoor spawns: ground floors, garages and basements of the hollow buildings ---------------------------------
+    // A 1.5 m lattice inside every hollow room (floor height from the region's floorY) and inside every basement pit (floor -DEP).
+    // A candidate is kept when a 0.5 m body stands there unmoved, the floor under it is the expected one (so stairwell holes
+    // and stair treads drop out) and there is at least 2.4 m of headroom. Built on first use.
+    let interiorSpawnsCache = null;
+    function interiorSpawns() {
+      if (interiorSpawnsCache) return interiorSpawnsCache;
+      const out = [], R = 0.5, STEP = 1.5, tmp = { x: 0, y: 0, z: 0 };
+      const tryAdd = (x, z, feet, cx, cz) => {
+        if (isSpawnExcluded(x, z, 0.5)) return;
+        tmp.x = x; tmp.z = z;
+        queries.resolveCircle(tmp, R, feet + 0.05, true, 1.85);
+        if (Math.abs(tmp.x - x) > 1e-4 || Math.abs(tmp.z - z) > 1e-4) return;
+        const floor = queries.supportHeightAt(x, z, R, feet + 0.05);
+        if (Math.abs(floor - feet) > 0.05) return;
+        if (queries.ceilingAt(x, z, R, feet + 1.4) < feet + 2.4) return;
+        out.push([x, z, Math.atan2(-(cx - x), -(cz - z)), feet]); // faces the room's middle
+      };
+      const lattice = (x0, z0, x1, z1, feet) => {
+        const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, m = 1.0;
+        for (let x = x0 + m; x <= x1 - m + 1e-6; x += STEP) for (let z = z0 + m; z <= z1 - m + 1e-6; z += STEP) tryAdd(x, z, feet, cx, cz);
+      };
+      for (const spec of Object.values(regionSpecs)) for (const r of spec.rects) lattice(r.x0, r.z0, r.x1, r.z1, r.floorY || 0);
+      for (const p of pits) if (!p.stair && p.x0 !== tunnelW.x0) lattice(p.x0, p.z0, p.x1, p.z1, p.floorAt(0, 0));
+      return (interiorSpawnsCache = out);
+    }
+
+    // ZONE mode hill: below ground inside any basement, stairwell or the tunnel
+    const isUnderground = (x, z, feetY) => feetY < -1.0 && pits.some((p) => x > p.x0 && x < p.x1 && z > p.z0 && z < p.z1);
     const sp = pvpSpawnPoints[0];
     return {
       id: "map2",
+      isUnderground,
+      interiorSpawns,
       root,
       bounds,
       zones: [],
@@ -1022,9 +1518,11 @@
       spawn: { x: sp[0], z: sp[1] },
       stepUpHeight: STEP_UP_M,
       renderDistance: 450,
-      groundHeightAt: () => 0,
+      groundHeightAt: surfaceHeightAt,
+      levelBaseAt, pits, stairs: STAIRS, tunnel: tunnelW,
       resolveCircle: queries.resolveCircle,
       supportHeightAt: queries.supportHeightAt,
+      ceilingAt: queries.ceilingAt,
       segmentBlocked: queries.segmentBlocked,
       isWalkable: queries.isWalkable,
       raycast: queries.raycast,
@@ -1069,7 +1567,7 @@
       pvpSpawnPoints,
       pvpSpawnTuning: { MIN_DISTANCE: 15, DISTANCE_CAP: 60 },
       // Final storm circle: the pink circle on 'topdownview - annotations.png' (px centre 462,245, radius ~78 px = ~15.4 m)
-      pvpFinalZone: (() => { const p = mapToWorld(462, 245); return { x: p.x, z: p.z, radius: 78 * MAP2_M_PER_PX }; })(),
+      pvpFinalZone: (() => { const p = mapToWorld(462, 245); return { x: p.x, z: p.z, radius: 78 * MAP2_M_PER_PX * MAP2_FINAL_ZONE_SCALE }; })(),
       pvpPickupSpots: [pvpSpawnPoints[6], [0, 0], (() => { const p = mapToWorld(420, 300); return [p.x, p.z]; })()],  // on the 1108 front lawn (never inside a house)
       pvpExclusionRects: exclusionRects,
       isSpawnExcluded, isInsideHouseInterior, isReachable, reachablePoints,
@@ -1080,9 +1578,13 @@
       },
       playablePolygon: polygon,
       houses: houseRecords,
+      debugLists: lists,
+      debugColliders: colliders,
+      get openingRects() { return Object.values(regionSpecs).flatMap((sp) => sp.openings); },
+      roofAccess: accessSteps,
       minimapRoads: () => roadRectsWorld,
       pxOfWorld,
-      constants: { MAP2_SCALE_MULT, MAP2_M_PER_PX, MAP2_ORIGIN_PX },
+      constants: { MAP2_SCALE_MULT, MAP2_M_PER_PX, MAP2_BASE_M_PER_PX, MAP2_LOT_SCALE, MAP2_FINAL_ZONE_SCALE, MAP2_ORIGIN_PX },
     };
   }
 

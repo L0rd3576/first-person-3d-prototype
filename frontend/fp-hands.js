@@ -463,6 +463,7 @@
       const geometry = armGeometry || (armGeometry = buildArmGeometry(I, { upperArm, forearm, wrist, fingers, cmc, tmcp, tip }));
       const mesh = new THREE.SkinnedMesh(geometry, skinMaterial);
       mesh.frustumCulled = false; // its bind-pose bounds don't follow the bones
+      mesh.userData.isHandSkin = true; // Infected mode swaps this for a green copy (see pvpApplyHandSkins)
       side.add(mesh);
       side.updateMatrixWorld(true);
       mesh.bind(new THREE.Skeleton(bones));
